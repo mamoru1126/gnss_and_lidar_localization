@@ -5,7 +5,8 @@ gll_localizer:
     base_frame: base_link
     publish_tf: true          # map -> base_link
     output_rate: 50.0         # [Hz]
-    # map_local_origin: [450000.0, 3950000.0]  # 可視化用の map -> map_local のオフセット [E, N]（指定しなければ出さない）
+    # map_local_origin: [450000.0, 3950000.0]  # 可視化用の map -> map_local のオフセット [E, N]
+    #                                           （指定しなければ、地図があれば最初のグループのアンカー付近にする）
     debug_csv_path: ""        # 空でなければ出力を CSV に書く（docs/validation_i2nav.md 5.3 節）
 
     estimator:
@@ -60,6 +61,11 @@ gll_localizer:
       init_yaw_stddev_deg: 15.0
       ready_yaw_stddev_deg: 2.0
       ready_pos_stddev: 0.1
+      saved_pose_path: ""                 # 空でなければ、推定した位置を定期的に保存する（地図だけの現場の起動用）
+      use_saved_pose: false               # 起動時に保存した位置を初期姿勢にする（地図の上なら周りを探して初期化）
+      saved_pose_stddev_xy: 0.5
+      saved_pose_stddev_yaw_deg: 10.0
+      save_interval: 1.0                  # [s]
 
     output:
       max_rate_xy: 0.1
@@ -73,7 +79,81 @@ gll_localizer:
       lost_stddev: 1.0
       dr_error_distance: 30.0             # 位置の観測なしでこの距離を走ったら diagnostics で ERROR（仮の値。実データで調整）
 
+    arbiter:                              # GNSS FIX 中の LiDAR（設計書 3.13.2 節）
+      lidar_cov_inflation_under_fix: 4.0
+      consistency_xy: 0.15
+      consistency_yaw_deg: 1.0
+      anchor_mismatch_warn_xy: 0.10       # アンカーずれがこれを超えたら diagnostics で WARN
+      anchor_mismatch_warn_yaw_deg: 0.5
+
     recovery:
       reanchor_confirm_gnss: 3
+      reanchor_confirm_lidar: 5
       reanchor_consistency_xy: 0.10
+      reanchor_consistency_yaw_deg: 1.0
       candidate_max_age: 5.0
+
+    # --- LiDAR と地図（Phase 2。map.config_path が空なら使わない） ---
+    map:
+      config_path: ""                     # maps.yaml（地図グループとアンカー。README 参照）
+      load_radius: 60.0                   # [m]
+      unload_radius: 90.0                 # [m]
+      lookahead_time: 3.0                 # [s]
+      update_distance: 1.0                # [m]
+      update_interval: 1.0                # [s]
+      group_switch_margin: 10.0           # アクティブグループの切り替えのヒステリシス [m]
+      min_target_points: 500
+      publish_points_max: 200000          # ~/debug/map_points に出す点数の上限
+
+    lidar:
+      extrinsic_xyz: [0.0, 0.0, 0.0]      # base_link から見た LiDAR の位置 [m]
+      extrinsic_rpy_deg: [0.0, 0.0, 0.0]  # base_link -> LiDAR の回転 [deg]
+      time_field: auto                    # 点ごとの時刻のフィールド（auto / 名前 / "" で使わない）
+      stamp_offset: 0.0                   # 点ごとの時刻が無いときの、header.stamp からスキャン時刻へのずれ [s]
+      min_range: 1.0
+      max_range: 50.0
+      crop_box_enabled: false             # 車体の点を除く箱（base_link 座標系）
+      crop_box_min: [-1.0, -1.0, -1.0]
+      crop_box_max: [1.0, 1.0, 2.0]
+      deskew: true
+      source_voxel_size: 0.5
+      source_num_neighbors: 10
+      min_source_points: 100
+      max_correspondence_distance: 1.0
+      max_iterations: 20
+      num_threads: 4
+      min_inlier_ratio: 0.6
+      overlap_distance: 0.3
+      min_overlap: 0.5
+      max_jump_xy: 1.0
+      max_jump_yaw_deg: 5.0
+      cov_scale: 0.15                     # 観測共分散 = cov_scale * N_inlier * H^-1（実データで調整）
+      min_stddev_xy: 0.02
+      min_stddev_yaw_deg: 0.2
+      min_interval: 0.0                   # 照合の最小間隔 [s]
+      base_link_height: 0.0               # 地面から base_link までの高さ [m]（地図上の初期化で z を決める）
+
+    relocalize:                           # 地図上での初期化と再位置推定（設計書 3.11 節・3.13.4 節）
+      init_min_radius: 0.5
+      init_max_radius: 5.0
+      init_min_yaw_deg: 10.0
+      init_max_yaw_deg: 180.0
+      init_map_distance: 10.0             # 初期姿勢がタイルからこの距離以内なら地図上で初期化する [m]
+      init_max_attempts: 5
+      position_step: 1.0
+      yaw_step_deg: 20.0
+      coarse_voxel_size: 2.0
+      coarse_source_voxel: 1.0
+      coarse_max_iterations: 10
+      refine_candidates: 5
+      distinct_xy: 1.0
+      distinct_yaw_deg: 10.0
+      uniqueness_ratio: 1.5
+      min_overlap: 0.6
+      after_rejects: 20
+      min_radius: 1.0
+      radius_per_dr_distance: 0.05
+      max_radius: 3.0
+      max_yaw_deg: 30.0
+      max_attempts: 3
+      lost_retry_interval: 5.0

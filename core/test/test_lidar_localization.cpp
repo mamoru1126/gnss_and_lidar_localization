@@ -94,6 +94,7 @@ TEST(LidarMeasurementBuilder, CovarianceQualityAndConversion) {
   class T : public MatchTarget {
    public:
     std::optional<double> groundHeight(double, double, double, double) const override { return 0.0; }
+    std::vector<Vec3f> samplePoints(std::size_t) const override { return {}; }
   } target;
   AnchorConfig ac;
   ac.use_utm = true;

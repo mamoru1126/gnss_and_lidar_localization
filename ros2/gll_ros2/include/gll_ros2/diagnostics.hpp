@@ -24,4 +24,8 @@ diagnostic_msgs::msg::DiagnosticStatus makeLocalizationStatus(const gll::Localiz
 /// 入力数・採用数・棄却理由などのカウンタ（常に OK）。
 diagnostic_msgs::msg::DiagnosticStatus makeCounterStatus(const gll::Diagnostics& d);
 
+/// 地図と LiDAR の照合の状態（設計書 3.13.2 節・5 章）。地図グループのアンカーずれ（GNSS FIX 中の LiDAR との差の平均）が
+/// 閾値を超えたら WARN「アンカーの較正が必要」。タイルの読み込みに失敗していても WARN。
+diagnostic_msgs::msg::DiagnosticStatus makeMapStatus(const gll::Diagnostics& d, const gll::ArbiterConfig& arb);
+
 }  // namespace gll_ros2

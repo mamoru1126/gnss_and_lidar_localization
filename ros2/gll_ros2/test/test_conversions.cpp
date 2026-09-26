@@ -2,6 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <string>
+#include <vector>
+
 using namespace gll_ros2;
 
 TEST(Conversions, StampRoundTrip) {
@@ -67,4 +73,113 @@ TEST(Conversions, Covariance6RoundTrip) {
   EXPECT_DOUBLE_EQ(c6[5], 0.2);    // x-yaw
   EXPECT_DOUBLE_EQ(c6[14], 1e4);   // z-z
   EXPECT_LT((fromCovariance6(c6) - c).norm(), 1e-15);
+}
+
+namespace {
+
+/// x, y, z（FLOAT32）と、指定した時刻のフィールドを持つ PointCloud2 を作る。
+sensor_msgs::msg::PointCloud2 makeCloud(const std::string& time_name, uint8_t time_type,
+                                        const std::vector<std::array<double, 4>>& pts, double stamp) {
+  using sensor_msgs::msg::PointField;
+  sensor_msgs::msg::PointCloud2 m;
+  m.header.stamp = toStamp(stamp);
+  m.height = 1;
+  m.width = static_cast<uint32_t>(pts.size());
+  uint32_t off = 0;
+  for (const char* n : {"x", "y", "z"}) {
+    PointField f;
+    f.name = n;
+    f.offset = off;
+    f.datatype = PointField::FLOAT32;
+    f.count = 1;
+    m.fields.push_back(f);
+    off += 4;
+  }
+  uint32_t tsize = 0;
+  if (!time_name.empty()) {
+    PointField f;
+    f.name = time_name;
+    f.offset = off;
+    f.datatype = time_type;
+    f.count = 1;
+    m.fields.push_back(f);
+    tsize = time_type == PointField::FLOAT64 ? 8 : 4;
+  }
+  m.point_step = off + tsize;
+  m.row_step = m.point_step * m.width;
+  m.data.resize(m.row_step);
+  for (std::size_t i = 0; i < pts.size(); ++i) {
+    uint8_t* p = &m.data[i * m.point_step];
+    for (int k = 0; k < 3; ++k) {
+      const float v = static_cast<float>(pts[i][k]);
+      std::memcpy(p + 4 * k, &v, 4);
+    }
+    if (time_type == PointField::FLOAT32) {
+      const float v = static_cast<float>(pts[i][3]);
+      std::memcpy(p + off, &v, 4);
+    } else if (time_type == PointField::FLOAT64) {
+      std::memcpy(p + off, &pts[i][3], 8);
+    } else if (time_type == PointField::UINT32) {
+      const uint32_t v = static_cast<uint32_t>(pts[i][3]);
+      std::memcpy(p + off, &v, 4);
+    }
+  }
+  return m;
+}
+
+}  // namespace
+
+TEST(Conversions, PointCloudRelativeSecondsFloat32) {
+  // Velodyne 型: ヘッダの時刻からの秒（FLOAT32）。スキャンの最後の点の時刻が t になる
+  const auto m = makeCloud("time", sensor_msgs::msg::PointField::FLOAT32,
+                           {{1, 2, 3, 0.0}, {4, 5, 6, 0.05}, {7, 8, 9, 0.1}}, 100.0);
+  std::string field;
+  const auto s = toCore(m, PointCloudOptions(), &field);
+  EXPECT_EQ(field, "time");
+  ASSERT_EQ(s.points.size(), 3u);
+  EXPECT_NEAR(s.t, 100.1, 1e-6);
+  ASSERT_EQ(s.times.size(), 3u);
+  EXPECT_NEAR(s.times[0], -0.1, 1e-6);
+  EXPECT_NEAR(s.times[2], 0.0, 1e-6);
+  EXPECT_FLOAT_EQ(s.points[1].y(), 5.0f);
+}
+
+TEST(Conversions, PointCloudNanosecondsUint32AndNan) {
+  // Ouster 型: ヘッダの時刻からの ns（UINT32）。NaN の点は捨てる
+  const auto m = makeCloud("t", sensor_msgs::msg::PointField::UINT32,
+                           {{1, 0, 0, 0}, {std::nan(""), 0, 0, 5e7}, {2, 0, 0, 1e8}}, 50.0);
+  const auto s = toCore(m, PointCloudOptions());
+  ASSERT_EQ(s.points.size(), 2u);
+  EXPECT_NEAR(s.t, 50.1, 1e-6);
+  EXPECT_NEAR(s.times[0], -0.1, 1e-6);
+}
+
+TEST(Conversions, PointCloudAbsoluteSecondsFloat64) {
+  // Hesai 型: 絶対時刻の秒（FLOAT64）
+  const auto m = makeCloud("timestamp", sensor_msgs::msg::PointField::FLOAT64,
+                           {{1, 0, 0, 1727400000.00}, {2, 0, 0, 1727400000.08}}, 1727400000.0);
+  const auto s = toCore(m, PointCloudOptions());
+  EXPECT_NEAR(s.t, 1727400000.08, 1e-6);
+  EXPECT_NEAR(s.times[0], -0.08, 1e-5);
+}
+
+TEST(Conversions, PointCloudWithoutTimeField) {
+  const auto m = makeCloud("", 0, {{1, 0, 0, 0}, {2, 0, 0, 0}}, 10.0);
+  PointCloudOptions opt;
+  opt.stamp_offset = 0.1;  // ヘッダの時刻がスキャン開始なら、スキャン終了に合わせるなど
+  std::string field = "x";
+  const auto s = toCore(m, opt, &field);
+  EXPECT_TRUE(field.empty());
+  EXPECT_TRUE(s.times.empty());
+  EXPECT_NEAR(s.t, 10.1, 1e-9);
+  ASSERT_EQ(s.points.size(), 2u);
+}
+
+TEST(Conversions, PointCloudRoundTrip) {
+  const std::vector<gll::Vec3f> pts = {gll::Vec3f(1, 2, 3), gll::Vec3f(-4, 5.5f, 6)};
+  const auto m = toPointCloud2(pts, "map_local", toStamp(3.0));
+  EXPECT_EQ(m.header.frame_id, "map_local");
+  const auto s = toCore(m, PointCloudOptions());
+  ASSERT_EQ(s.points.size(), 2u);
+  EXPECT_FLOAT_EQ(s.points[1].y(), 5.5f);
 }

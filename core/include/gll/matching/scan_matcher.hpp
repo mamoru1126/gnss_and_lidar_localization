@@ -28,6 +28,9 @@ class MatchTarget {
   /// 地図座標 (x, y) から水平距離 radius 以内の点の z を小さい順に並べ、下から fraction の位置の値を返す
   /// （地面の高さの推定。地図上での初期化で z を決めるのに使う）。点が無ければ nullopt。
   virtual std::optional<double> groundHeight(double x, double y, double radius, double fraction = 0.1) const = 0;
+
+  /// 可視化用に、ターゲットの点を最大 max_points 点まで間引いて返す（地図座標系）。
+  virtual std::vector<Vec3f> samplePoints(std::size_t max_points) const = 0;
 };
 
 /// 前処理した（間引いて点ごとの共分散を付けた）スキャン。base_link 座標系。

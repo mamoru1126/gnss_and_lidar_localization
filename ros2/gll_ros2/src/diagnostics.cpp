@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace gll_ros2 {
 namespace {
@@ -13,6 +14,7 @@ const char* phaseName(gll::Initializer::Phase p) {
   switch (p) {
     case gll::Initializer::Phase::WAIT_FIX: return "WAIT_FIX";
     case gll::Initializer::Phase::WAIT_MOTION: return "WAIT_MOTION";
+    case gll::Initializer::Phase::WAIT_MAP_MATCH: return "WAIT_MAP_MATCH";
     case gll::Initializer::Phase::CONVERGING: return "CONVERGING";
     case gll::Initializer::Phase::READY: return "READY";
   }
@@ -96,6 +98,51 @@ DiagStatus makeCounterStatus(const gll::Diagnostics& d) {
   st.values.push_back(kv("odom_stale", std::to_string(d.odom_stale_count)));
   st.values.push_back(kv("imu_fallback", std::to_string(d.imu_fallback_count)));
   for (const auto& [reason, n] : d.gnss_reject_reasons) st.values.push_back(kv("gnss_reject_" + reason, std::to_string(n)));
+  st.values.push_back(kv("lidar", std::to_string(d.lidar_count)));
+  st.values.push_back(kv("lidar_matched", std::to_string(d.lidar_matched)));
+  st.values.push_back(kv("lidar_accepted", std::to_string(d.lidar_accepted)));
+  st.values.push_back(kv("lidar_deferred", std::to_string(d.lidar_deferred)));
+  st.values.push_back(kv("lidar_mismatch", std::to_string(d.lidar_mismatch)));
+  st.values.push_back(kv("lidar_dropped", std::to_string(d.lidar_dropped)));
+  st.values.push_back(kv("lidar_no_target", std::to_string(d.lidar_no_target)));
+  st.values.push_back(kv("lidar_too_old", std::to_string(d.lidar_too_old)));
+  st.values.push_back(kv("lidar_reanchor", std::to_string(d.lidar_reanchor_count)));
+  for (const auto& [reason, n] : d.lidar_reject_reasons) st.values.push_back(kv("lidar_reject_" + reason, std::to_string(n)));
+  st.values.push_back(kv("relocalize", std::to_string(d.relocalize_success) + "/" + std::to_string(d.relocalize_attempts)));
+  st.values.push_back(kv("map_init_attempts", std::to_string(d.map_init_attempts)));
+  return st;
+}
+
+DiagStatus makeMapStatus(const gll::Diagnostics& d, const gll::ArbiterConfig& arb) {
+  DiagStatus st;
+  st.name = "gll_localizer: map";
+  st.hardware_id = "localization";
+  st.level = DiagStatus::OK;
+  st.message = d.map.active_group.empty() ? "no active map group" : "active map group: " + d.map.active_group;
+  st.values.push_back(kv("active_map_group", d.map.active_group));
+  st.values.push_back(kv("loaded_tiles", std::to_string(d.map.loaded_tiles)));
+  st.values.push_back(kv("target_tiles", std::to_string(d.map.target_tiles)));
+  st.values.push_back(kv("target_points", std::to_string(d.map.target_points)));
+  st.values.push_back(kv("last_match_ms", toFixed(d.last_match_ms, 1)));
+  st.values.push_back(kv("last_inlier_ratio", toFixed(d.last_inlier_ratio, 2)));
+  st.values.push_back(kv("last_overlap", toFixed(d.last_overlap, 2)));
+  std::vector<std::string> warn;
+  if (d.map.tile_load_failures > 0) warn.push_back(std::to_string(d.map.tile_load_failures) + " tile load failures");
+  for (const auto& [group, ms] : d.anchor_mismatch) {
+    const double exy = ms.mean_world.head<2>().norm();
+    const double eyaw = std::abs(ms.mean_world.z());
+    st.values.push_back(kv("anchor_mismatch_" + group, toFixed(exy, 3) + " m, " + toFixed(gll::rad2deg(eyaw), 2) +
+                                                         " deg (n=" + std::to_string(ms.count) + ")"));
+    if (static_cast<int>(ms.count) >= arb.anchor_mismatch_min_count &&
+        (exy > arb.anchor_mismatch_warn_xy || eyaw > arb.anchor_mismatch_warn_yaw))
+      warn.push_back("anchor of map group " + group + " needs calibration (" + toFixed(exy, 2) + " m, " +
+                     toFixed(gll::rad2deg(eyaw), 2) + " deg from GNSS)");
+  }
+  if (!warn.empty()) {
+    st.level = DiagStatus::WARN;
+    st.message.clear();
+    for (std::size_t i = 0; i < warn.size(); ++i) st.message += (i ? "; " : "") + warn[i];
+  }
   return st;
 }
 

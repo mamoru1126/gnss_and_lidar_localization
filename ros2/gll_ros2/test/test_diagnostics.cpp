@@ -83,3 +83,43 @@ TEST(Diagnostics, Counters) {
   EXPECT_EQ(valueOf(st, "gnss_accepted"), "7");
   EXPECT_EQ(valueOf(st, "gnss_reject_NOT_RTK_FIX"), "3");
 }
+
+TEST(Diagnostics, MapStatusWarnsOnAnchorMismatch) {
+  gll::Diagnostics d;
+  d.map.active_group = "area_b";
+  d.map.loaded_tiles = 12;
+  gll::MismatchStats ok;
+  ok.count = 100;
+  ok.mean_world = gll::Vec3(0.02, -0.01, gll::deg2rad(0.1));
+  gll::MismatchStats bad;
+  bad.count = 100;
+  bad.mean_world = gll::Vec3(0.15, 0.05, gll::deg2rad(0.2));
+  d.anchor_mismatch["area_a"] = ok;
+  gll::ArbiterConfig arb;
+  DiagStatus st = makeMapStatus(d, arb);
+  EXPECT_EQ(st.level, DiagStatus::OK);
+  EXPECT_EQ(st.message, "active map group: area_b");
+  EXPECT_EQ(valueOf(st, "loaded_tiles"), "12");
+
+  d.anchor_mismatch["area_b"] = bad;
+  st = makeMapStatus(d, arb);
+  EXPECT_EQ(st.level, DiagStatus::WARN);
+  EXPECT_NE(st.message.find("anchor of map group area_b needs calibration"), std::string::npos);
+  EXPECT_EQ(st.message.find("area_a"), std::string::npos);
+
+  // 件数が少ないうちは判定しない
+  bad.count = 5;
+  d.anchor_mismatch["area_b"] = bad;
+  EXPECT_EQ(makeMapStatus(d, arb).level, DiagStatus::OK);
+}
+
+TEST(Diagnostics, CountersIncludeLidar) {
+  gll::Diagnostics d;
+  d.lidar_count = 100;
+  d.lidar_accepted = 90;
+  d.lidar_reject_reasons["LOW_OVERLAP"] = 4;
+  const DiagStatus st = makeCounterStatus(d);
+  EXPECT_EQ(valueOf(st, "lidar"), "100");
+  EXPECT_EQ(valueOf(st, "lidar_accepted"), "90");
+  EXPECT_EQ(valueOf(st, "lidar_reject_LOW_OVERLAP"), "4");
+}

@@ -595,6 +595,11 @@ std::optional<LidarMatchInfo> Localizer::lastLidarMatch() const {
   return last_match_;
 }
 
+std::shared_ptr<const MatchTarget> Localizer::currentMapTarget() const {
+  std::lock_guard<std::mutex> lk(mtx_);
+  return maps_ ? maps_->currentTarget() : nullptr;
+}
+
 std::optional<FilterState> Localizer::latestState() const {
   std::lock_guard<std::mutex> lk(mtx_);
   if (!filter_initialized_) return std::nullopt;

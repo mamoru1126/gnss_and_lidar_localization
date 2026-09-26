@@ -59,6 +59,15 @@ class GicpTarget : public MatchTarget {
     return zs[k];
   }
 
+  std::vector<Vec3f> samplePoints(std::size_t max_points) const override {
+    std::vector<Vec3f> out;
+    if (!cloud || cloud->size() == 0 || max_points == 0) return out;
+    const std::size_t stride = std::max<std::size_t>(1, (cloud->size() + max_points - 1) / max_points);
+    out.reserve(cloud->size() / stride + 1);
+    for (std::size_t i = 0; i < cloud->size(); i += stride) out.push_back(cloud->points[i].head<3>().cast<float>());
+    return out;
+  }
+
  private:
   mutable std::once_flag voxel_once_;
   mutable std::shared_ptr<SgVoxelMap> voxelmap_;

@@ -115,6 +115,8 @@ class Localizer {
 
   Diagnostics diagnostics() const;
   std::optional<LidarMatchInfo> lastLidarMatch() const;
+  /// 今の照合のターゲット（可視化用。地図が無い、または準備中なら nullptr）。
+  std::shared_ptr<const MatchTarget> currentMapTarget() const;
 
   /// テスト用: 最新のフィルタ状態。
   std::optional<FilterState> latestState() const;

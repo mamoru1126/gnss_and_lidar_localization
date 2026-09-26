@@ -84,6 +84,9 @@ struct ArbiterConfig {
   double lidar_cov_inflation_under_fix = 4.0;
   double consistency_xy = 0.15;               ///< [m]
   double consistency_yaw = deg2rad(1.0);      ///< [rad]
+  double anchor_mismatch_warn_xy = 0.10;      ///< アンカーずれの平均がこれを超えたら診断で WARN [m]
+  double anchor_mismatch_warn_yaw = deg2rad(0.5);  ///< [rad]
+  int anchor_mismatch_min_count = 20;         ///< WARN を判定するのに必要な件数
 };
 
 struct RecoveryConfig {

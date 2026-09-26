@@ -26,6 +26,7 @@ class FakeLoader : public ITileLoader {
 class FakeTarget : public MatchTarget {
  public:
   std::optional<double> groundHeight(double, double, double, double) const override { return 0.0; }
+  std::vector<Vec3f> samplePoints(std::size_t) const override { return {}; }
 };
 
 /// ターゲットにタイル ID だけを記録するマッチャ。

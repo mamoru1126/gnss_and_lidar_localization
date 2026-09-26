@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>gll_core</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>ROS-independent core of the GNSS / LiDAR localization (Invariant EKF on SE(2)).</description>
   <maintainer email="sunottty1126@gmail.com">sunomamo1126</maintainer>
   <license>MIT</license>
@@ -10,6 +10,8 @@
   <buildtool_depend>cmake</buildtool_depend>
   <depend>eigen</depend>
   <depend>geographiclib</depend>
+  <depend>yaml-cpp</depend>
+  <!-- small_gicp（v1.0.1）はソースからビルドしてインストールしておく（docker/Dockerfile、README） -->
   <test_depend>gtest</test_depend>
 
   <export>
