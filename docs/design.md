@@ -1,13 +1,14 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md)
-- 状態: ドラフト（v0.5）
+- 状態: ドラフト（v0.6）
 
 | 版 | 変更内容 |
 |---|---|
 | v0.1 | 初版 |
 | v0.2 | 確定したハードウェア前提（u-blox F9P シングルアンテナ、6 軸 IMU、最高速度 6 km/h）を反映。スキャンマッチングを small_gicp に変更。推定器の代替候補として Invariant EKF を追記 |
 | v0.3 | 推定器を **Invariant EKF（SE(2)、左不変誤差）に変更**。GNSS 入力を独自ドライバの `ublox_gps/NavPVT` に確定。地図の統合は外部ツールで行い、本システムは統合済みの地図を入力とする前提に変更 |
+| v0.6 | GNSS アンテナのレバーアームを 3 次元（アンテナ高さ $`l_z`$ ≤ 1 m）にし、roll / pitch で水平面に射影して使うよう変更。roll / pitch の誤差を GNSS の観測共分散に加算 |
 | v0.5 | GNSS 入力を **`sensor_msgs/NavSatFix`** に変更。RTK-FIX の表現・共分散・高さ・時刻について、ドライバとの取り決めを定義。進行方位の観測は、速度トピックがある場合の任意機能に変更 |
 | v0.4 | **RTK-FIX の GNSS を常に信用する方針**を確定。GNSS / LiDAR の優先度、食い違いの判定、再アンカー、再位置推定の節（3.13）を追加 |
 
@@ -127,6 +128,7 @@ flowchart LR
   - IMU の角速度を鉛直軸まわりのヨーレートに射影する（傾斜補正）。
   - ODOM の速度を水平成分に射影する（坂道で v·cos(pitch)）。
   - スキャンマッチングの 6 自由度初期値に使う。
+  - GNSS アンテナのレバーアームを水平面に射影する（アンテナ高さの分の水平ずれを補正する。3.6 節）。
 - 急な坂が多い、または z / roll / pitch も出力が必要になった場合は、Phase 4 で SE₂(3) の Invariant EKF に拡張する。
 
 ### 3.3 状態と誤差の定義
@@ -260,22 +262,31 @@ v0.5 で、GNSS の入力を標準の `sensor_msgs/NavSatFix` に変更した（
 **位置観測**:
 
 - 緯度経度を、サイトで固定した 1 つの UTM ゾーンの $`\mathbf{y} = (E, N)`$ に変換する。ゾーンは設定値で固定し、ゾーン境界をまたいでも切り替えない。
-- アンテナのレバーアームを $`\mathbf{l} = (l_x, l_y)`$（base_link 座標系）とする。
-- 観測モデルは $`\mathbf{y} = \mathbf{p} + \mathbf{R}(\theta)\mathbf{l} + \mathbf{n}`$ で、これは $`\mathbf{y} = X\,(\mathbf{l}, 1)`$ という**左不変観測**の形になる。そのため、残差を機体座標系で取ると観測行列が定数になる。
+- アンテナのレバーアームを 3 次元で $`\mathbf{l} = (l_x, l_y, l_z)`$（base_link 座標系、`gnss_lever_arm`）とする。**アンテナ高さ $`l_z`$ は未定だが 1 m 以内**の想定（v0.6）。
+- **傾きによるアンテナの水平方向のずれ**: 車両が傾くと、高い位置にあるアンテナは水平方向にずれる。$`l_z`$ = 1 m なら、傾き 1° で約 1.7 cm、5° の坂で約 8.7 cm ずれ、RTK の精度（数 cm）から見て無視できない。そこで、姿勢推定器（3.9 節）の roll $`\phi`$ / pitch $`\vartheta`$（観測時刻の値）で、レバーアームを水平面に射影してから使う。
 
 ```math
-\mathbf{r} = \mathbf{R}(\hat\theta)^\top\big(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\mathbf{l}\big),\qquad
-\mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\mathbf{l} & \mathbf{0} & \mathbf{0} \end{bmatrix} = \begin{bmatrix} 1 & 0 & -l_y & 0 & 0 \\ 0 & 1 & \ \ l_x & 0 & 0 \end{bmatrix}
+\tilde{\mathbf{l}} = \big[\mathbf{R}_y(\vartheta)\,\mathbf{R}_x(\phi)\,\mathbf{l}\big]_{xy} \;\approx\; \begin{bmatrix} l_x + \vartheta\,l_z \\ l_y - \phi\,l_z \end{bmatrix}
+```
+
+  （$`\tilde{\mathbf{l}}`$ は、yaw だけ回した水平な座標系で見たアンテナの位置。実装では近似ではなく左辺の厳密な式で計算する）
+
+- 観測モデルは $`\mathbf{y} = \mathbf{p} + \mathbf{R}(\theta)\tilde{\mathbf{l}} + \mathbf{n}`$ で、これは $`\mathbf{y} = X\,(\tilde{\mathbf{l}}, 1)`$ という**左不変観測**の形になる。そのため、残差を機体座標系で取ると観測行列が定数になる（$`\tilde{\mathbf{l}}`$ は姿勢推定器から与えられる既知の量として扱う）。
+
+```math
+\mathbf{r} = \mathbf{R}(\hat\theta)^\top\big(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\tilde{\mathbf{l}}\big),\qquad
+\mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\tilde{\mathbf{l}} & \mathbf{0} & \mathbf{0} \end{bmatrix} = \begin{bmatrix} 1 & 0 & -\tilde l_y & 0 & 0 \\ 0 & 1 & \ \ \tilde l_x & 0 & 0 \end{bmatrix}
 ```
 
 ```math
-\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta),\qquad \Sigma_{\mathrm{gnss}} = \max\!\big(\Sigma_{EN},\ \sigma_{\min}^2\mathbf{I}_2\big)
+\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta) + l_z^2\,\mathrm{diag}\big(\sigma_\vartheta^2,\ \sigma_\phi^2\big),\qquad \Sigma_{\mathrm{gnss}} = \max\!\big(\Sigma_{EN},\ \sigma_{\min}^2\mathbf{I}_2\big)
 ```
 
+- 第 2 項は、roll / pitch の推定誤差（標準偏差 $`\sigma_\phi, \sigma_\vartheta`$、既定 `attitude_stddev` = 0.5°）がアンテナの水平位置の誤差になる分である。$`l_z`$ = 1 m、0.5° なら約 0.9 cm。残差と同じ機体座標系で表されているので、回転せずにそのまま加える。
 - $`\Sigma_{EN}`$ は `position_covariance` の東・北の 2×2 ブロック。$`\max`$ は対角要素ごとに下限を取る意味。
 - $`\sigma_{\min}`$ = `gnss_min_stddev`（既定 0.02 m）。受信機が報告する精度は楽観的なことが多いので下限を設ける。
 - UTM 座標は、グリッドの東・北方向と ENU の東・北方向の違い（子午線収差 γ、数度以内）で共分散を回転させるのが厳密である。ただし等方的な共分散（E と N の分散が同じ）なら影響しないので、無視する。
-- 導出: $`X\,\mathrm{Exp}(\xi)\cdot\mathbf{l} \approx \hat X\cdot(\mathbf{l} + \rho + \varphi\mathbf{J}\mathbf{l})`$ より、$`\mathbf{R}(\hat\theta)^\top(\mathbf{y}-\hat{\mathbf{y}}) \approx \rho + \varphi\mathbf{J}\mathbf{l} + \text{noise}`$。
+- 導出: $`X\,\mathrm{Exp}(\xi)\cdot\tilde{\mathbf{l}} \approx \hat X\cdot(\tilde{\mathbf{l}} + \rho + \varphi\mathbf{J}\tilde{\mathbf{l}})`$ より、$`\mathbf{R}(\hat\theta)^\top(\mathbf{y}-\hat{\mathbf{y}}) \approx \rho + \varphi\mathbf{J}\tilde{\mathbf{l}} + \text{noise}`$。
 - ESEKF では $`\mathbf{H}`$ が $`\hat\theta`$ に依存していた。Invariant EKF では yaw の推定誤差が大きくても、観測行列そのものは誤らない。
 
 **ヨーの観測**（F9P はシングルアンテナのため、ヘディングを直接は得られない）:
@@ -337,7 +348,7 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 | 量 | GNSS 区間 | 地図区間 |
 |---|---|---|
 | roll / pitch | 姿勢推定器 `AttitudeEstimator`（下記） | 同左。スキャンマッチングが収束したら、その roll / pitch で補正する（相補的にブレンド） |
-| z | GNSS の楕円体高 → アンカーの高さ基準で地図の z に変換 | 直前のスキャンマッチング結果の z（次の結果までは保持） |
+| z | GNSS の楕円体高からアンテナ高さ分を引く（$`h - [\mathbf{R}_y(\vartheta)\mathbf{R}_x(\phi)\mathbf{l}]_z`$）→ アンカーの高さ基準で地図の z に変換 | 直前のスキャンマッチング結果の z（次の結果までは保持） |
 
 **姿勢推定器 `AttitudeEstimator`**（IMU が姿勢を出力しないため自前で実装）:
 
@@ -911,6 +922,8 @@ class Localizer {
 | | `gnss_stamp_offset` | 0.0 s | `header.stamp` が受信時刻の場合の遅延補正 |
 | | `gnss_accept_unknown_covariance` / `gnss_default_stddev` | false / 0.03 m | 共分散が UNKNOWN のときの扱い |
 | | `use_gnss_velocity` | false | 進行方位の観測を使うか |
+| | `gnss_lever_arm` | [l_x, l_y, l_z]（未定。l_z ≤ 1 m） | base_link から見たアンテナ位置 [m]。TF から取得してもよい |
+| 姿勢推定 | `attitude_stddev` | 0.5 deg | roll / pitch の推定誤差の想定値（GNSS 観測共分散への加算に使う） |
 | 初期化 | `init_heading_min_distance` | 1.0 m | 粗い yaw を決めるための走行距離 |
 | | `init_yaw_stddev` | 15 deg | フィルタ始動時の yaw の σ |
 | | `ready_yaw_stddev` / `ready_pos_stddev` | 2 deg / 0.1 m | 初期化完了の条件 |
@@ -975,3 +988,4 @@ class Localizer {
 8. **地図グループの範囲**: 東西の広がりが数 km を超えるグループがあるか（縮尺係数の変化を無視できるか）。
 9. **計算機**: CPU のコア数と、ほかに動かす処理の負荷（GICP のスレッド数の配分）。
 10. **下流との約束事**: `DEGRADED` / `LOST` のときに経路追従側がどう振る舞うか。
+11. **GNSS アンテナの取り付け位置**: base_link から見たアンテナ位置（特に高さ $`l_z`$。1 m 以内の想定）を決める。

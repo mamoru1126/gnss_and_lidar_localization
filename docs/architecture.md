@@ -381,7 +381,8 @@ classDiagram
     +double t
     +Vector2d y_utm
     +Matrix2d cov_world
-    +Vector2d lever_arm
+    +Vector2d lever_arm_h
+    +Matrix2d lever_cov_body
   }
   class HeadingMeasurement {
     +double t
@@ -542,6 +543,7 @@ classDiagram
 補足:
 
 - `MismatchStatsMap` は `std::map<std::string, MismatchStats>`、`OffsetNorm` は（並進 [m], yaw [rad]）の組の別名。
+- `GnssPositionMeasurement` の `lever_arm_h` は、観測時刻の roll / pitch で水平面に射影したレバーアーム $`\tilde{\mathbf{l}}`$、`lever_cov_body` は roll / pitch の誤差による追加の共分散（設計書 3.6 節）。
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
 - `linearize` は `std::visit` で観測の型ごとに分岐する。Invariant EKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
 - `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
@@ -563,6 +565,7 @@ classDiagram
     +roll() double
     +pitch() double
     +verticalRate(Vector3d gyro) double
+    +attitudeAt(double t) Attitude
   }
   class MotionInputBuilder {
     -deque~OdomSample~ odom_buf_
@@ -572,11 +575,12 @@ classDiagram
   }
   class GnssMeasurementBuilder {
     -UtmProjector utm_
-    -Vector2d lever_arm_
+    -Vector3d lever_arm_
+    -double attitude_stddev_
     -int rtk_fix_status_
     -double fix_since_
     +classify(GnssSample) GnssFixType
-    +buildPosition(GnssSample) GnssPositionResult
+    +buildPosition(GnssSample, AttitudeEstimator) GnssPositionResult
     +buildHeading(GnssVelocitySample, double yaw_rate, bool rtk_fix_active) optional~HeadingMeasurement~
   }
   class GnssPositionResult {
@@ -597,6 +601,7 @@ classDiagram
 
   GnssMeasurementBuilder --> UtmProjector
   GnssMeasurementBuilder ..> GnssPositionResult
+  GnssMeasurementBuilder ..> AttitudeEstimator : 観測時刻の roll / pitch
   MotionInputBuilder ..> AttitudeEstimator
 ```
 

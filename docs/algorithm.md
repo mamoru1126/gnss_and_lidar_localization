@@ -206,7 +206,7 @@ EKF では、線形化に使う推定値そのものが間違っていること�
 
 | 観測 | 残差 $`\mathbf{r}`$ | $`\mathbf{H}`$（5 列） | $`\mathbf{R}`$ |
 |---|---|---|---|
-| GNSS 位置 | $`\mathbf{R}(\hat\theta)^\top(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\mathbf{l})`$ | $`[\,\mathbf{I}_2\ \ \mathbf{J}\mathbf{l}\ \ \mathbf{0}\ \ \mathbf{0}\,]`$ | $`\mathbf{R}(\hat\theta)^\top\Sigma_{EN}\mathbf{R}(\hat\theta)`$ |
+| GNSS 位置 | $`\mathbf{R}(\hat\theta)^\top(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\tilde{\mathbf{l}})`$ | $`[\,\mathbf{I}_2\ \ \mathbf{J}\tilde{\mathbf{l}}\ \ \mathbf{0}\ \ \mathbf{0}\,]`$ | $`\mathbf{R}(\hat\theta)^\top\Sigma_{EN}\mathbf{R}(\hat\theta) + l_z^2\,\mathrm{diag}(\sigma_\vartheta^2, \sigma_\phi^2)`$ |
 | 進行方位（任意） | $`\mathrm{wrap}(z - \hat\theta)`$ | $`[\,0\ 0\ 1\ 0\ 0\,]`$ | $`\sigma_\psi^2`$ |
 | LiDAR 姿勢 | $`\mathrm{Log}(\hat X^{-1}Z)`$ | $`[\,\mathbf{I}_3\ \ \mathbf{0}\,]`$ | $`\Sigma_{\mathrm{reg}} + \mathbf{T}^\top\Sigma_{\mathrm{anchor}}\mathbf{T} + \Sigma_{\mathrm{floor}}`$ |
 | ZARU（停止中） | $`\bar\omega_m - \hat b_\omega`$ | $`[\,0\ 0\ 0\ 1\ 0\,]`$ | $`\sigma_{\mathrm{zaru}}^2`$ |
@@ -344,7 +344,7 @@ on RTK-FIX GNSS y0 (採用条件を満たす):
 on RTK-FIX GNSS y:
     if phase == WAIT_MOTION and |y - anchor_y| >= init_heading_min_distance (1 m) and 前進中:
         θ0 = atan2(y - anchor_y)                       // 粗い yaw（グリッド角）
-        p0 = y - R(θ0) l                                // レバーアーム補正
+        p0 = y - R(θ0) l̃                               // レバーアーム補正（傾きで射影済み）
         P0 = diag(σ_gnss², σ_gnss², init_yaw_stddev²(15°), σ_b0², σ_s0²)
         b0 = 静止時に姿勢推定器が求めたバイアス（鉛直成分）; s0 = 1
         start filter; phase = CONVERGING
@@ -430,16 +430,21 @@ update(state, meas, policy):
 ### 10.2 GNSS 位置
 
 ```text
-linearize(state, GnssPosition{y_utm, Σ_EN, l}):
+linearize(state, GnssPosition{y_utm, Σ_EN, l̃, Σ_lever}):
+    // l̃ と Σ_lever は GnssMeasurementBuilder が観測時刻の roll / pitch から作っておく:
+    //   l̃       = [R_y(pitch) R_x(roll) l]_xy          （l = (l_x, l_y, l_z)、l_z ≤ 1 m）
+    //   Σ_lever = l_z² diag(σ_pitch², σ_roll²)          （機体座標系）
     R̂ = R(θ̂)
-    r = R̂ᵀ (y_utm - p̂ - R̂ l)
-    H = [ 1 0 -l_y 0 0 ;
-          0 1  l_x 0 0 ]
+    r = R̂ᵀ (y_utm - p̂ - R̂ l̃)
+    H = [ 1 0 -l̃_y 0 0 ;
+          0 1  l̃_x 0 0 ]
     Σ = max_diag(Σ_EN, σ_min² I)
-    R = R̂ᵀ Σ R̂
+    R = R̂ᵀ Σ R̂ + Σ_lever
 ```
 
 採用条件（RTK-FIX の status、水平 σ ≤ 5 cm、FIX 後 1 s）は、観測を作る前に `GnssMeasurementBuilder` が判定する。
+
+アンテナ高さ $`l_z`$（1 m 以内の想定）があるため、車両が傾くとアンテナが水平方向にずれる（$`l_z`$ = 1 m で、傾き 1° あたり約 1.7 cm、5° の坂で約 8.7 cm）。そのため、レバーアームは roll / pitch で水平面に射影した $`\tilde{\mathbf{l}}`$ を使い、roll / pitch の推定誤差の分を観測共分散に加える。
 
 ### 10.3 LiDAR 姿勢
 
