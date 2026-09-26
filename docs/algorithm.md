@@ -17,15 +17,15 @@
 
 | 記号 | 意味 |
 |---|---|
-| $`X = (\mathbf{R}, \mathbf{p}) \in SE(2)`$ | 車両の姿勢（UTM 座標系での向きと位置）。$`\mathbf{R} = \mathbf{R}(\theta)`$ |
-| $`\hat{(\cdot)}`$ | 推定値 |
-| $`\xi = (\rho, \varphi) \in \mathbb{R}^3`$ | 姿勢の誤差（$`\rho`$: 並進 2 成分、$`\varphi`$: 回転） |
-| $`b_\omega,\ s`$ | ジャイロの鉛直軸バイアス、ODOM 速度のスケール係数 |
-| $`\delta\mathbf{x} = (\xi, \delta b, \delta s) \in \mathbb{R}^5`$ | 誤差状態。共分散は $`\mathbf{P} \in \mathbb{R}^{5\times5}`$ |
-| $`v_o,\ \omega_m`$ | 傾斜補正済みの ODOM 前進速度と、ジャイロのヨーレート（入力） |
-| $`\mathbf{J} = \begin{bmatrix} 0 & -1 \\ 1 & 0 \end{bmatrix}`$ | 90° 回転（2D の外積に相当） |
-| $`\mathbf{l}`$ | GNSS アンテナのレバーアーム（base_link 座標系） |
-| $`\gamma,\ k`$ | UTM の子午線収差と点縮尺係数 |
+| $X = (\mathbf{R}, \mathbf{p}) \in SE(2)$ | 車両の姿勢（UTM 座標系での向きと位置）。$\mathbf{R} = \mathbf{R}(\theta)$ |
+| $\hat{(\cdot)}$ | 推定値 |
+| $\boldsymbol\xi = (\boldsymbol\rho, \varphi) \in \mathbb{R}^3$ | 姿勢の誤差（$\boldsymbol\rho$: 並進 2 成分、$\varphi$: 回転） |
+| $b_\omega,\ s$ | ジャイロの鉛直軸バイアス、ODOM 速度のスケール係数 |
+| $\delta\mathbf{x} = (\boldsymbol\xi, \delta b, \delta s) \in \mathbb{R}^5$ | 誤差状態。共分散は $\mathbf{P} \in \mathbb{R}^{5\times5}$ |
+| $v_o,\ \omega_m$ | 傾斜補正済みの ODOM 前進速度と、ジャイロのヨーレート（入力） |
+| $\mathbf{J} = \begin{bmatrix} 0 & -1 \\ 1 & 0 \end{bmatrix}$ | 90° 回転（2D の外積に相当） |
+| $\mathbf{l}$ | GNSS アンテナのレバーアーム（base_link 座標系） |
+| $\gamma,\ k$ | UTM の子午線収差と点縮尺係数 |
 
 ---
 
@@ -46,24 +46,24 @@
 
 通常の EKF や ESEKF（v0.2 までの案）は、誤差を次のように「成分ごとの差」で定義する。
 
-```math
-\mathbf{p} = \hat{\mathbf{p}} + \delta\mathbf{p},\qquad \theta = \hat\theta + \delta\theta
-```
+$$
+\mathbf{p} = \hat{\mathbf{p}} + \delta\mathbf{p}\ \ \text{（世界座標系）},\qquad \theta = \hat\theta + \delta\theta
+$$
 
-ここで $`\delta\mathbf{p}`$ は世界座標系での差である。このとき、直進中の位置誤差の伝播は次のようになる。
+このとき、直進中の位置誤差の伝播は次のようになる。
 
-```math
+$$
 \delta\mathbf{p}_{k+1} = \delta\mathbf{p}_k + v\,\Delta t \begin{bmatrix} -\sin\hat\theta \\ \cos\hat\theta \end{bmatrix} \delta\theta_k
-```
+$$
 
-**yaw の誤差が位置の誤差に移る方向が、推定値 $`\hat\theta`$ で決まっている**点に注目してほしい。本当は「真の進行方向に直交する方向」に誤差が出るのに、フィルタは「推定した進行方向に直交する方向」に出ると思い込んでいる。$`\hat\theta`$ が 60° ずれていれば、この方向も 60° ずれる。
+**yaw の誤差が位置の誤差に移る方向が、推定値 $\hat\theta$ で決まっている**点に注目してほしい。本当は「真の進行方向に直交する方向」に誤差が出るのに、フィルタは「推定した進行方向に直交する方向」に出ると思い込んでいる。$\hat\theta$ が 60° ずれていれば、この方向も 60° ずれる。
 
-GNSS の観測行列も同様で、$`\partial h / \partial\theta = \mathbf{J}\mathbf{R}(\hat\theta)\mathbf{l}`$ が推定値に依存する。
+GNSS の観測行列も同様で、$\partial h / \partial\theta = \mathbf{J}\mathbf{R}(\hat\theta)\mathbf{l}$ が推定値に依存する。
 
 ### 1.3 その結果起きること
 
 1. **収束が遅れる**: 相関の向きが間違っているので、GNSS の位置残差から yaw を直す量と向きが不正確になる。
-2. **共分散が楽観的になる（不整合）**: 線形化点が毎回変わることで、フィルタは実際には得ていない情報を得たと勘違いし、$`\mathbf{P}`$ が小さくなりすぎる。すると新しい観測を受け付けにくくなり、Mahalanobis ゲートでの誤った棄却にもつながる。
+2. **共分散が楽観的になる（不整合）**: 線形化点が毎回変わることで、フィルタは実際には得ていない情報を得たと勘違いし、$\mathbf{P}$ が小さくなりすぎる。すると新しい観測を受け付けにくくなり、Mahalanobis ゲートでの誤った棄却にもつながる。
 
 これは EKF の一般的な問題として知られている（SLAM や INS での「偽の可観測性」「不整合」）。yaw の誤差が小さいうちは、線形化点がほぼ正しいので目立たない。
 
@@ -77,45 +77,45 @@ IEKF は、姿勢を「成分の寄せ集め」ではなく、**1 つの群の�
 
 平面の姿勢は 3×3 の行列で表せる。
 
-```math
+$$
 X = \begin{bmatrix} \mathbf{R}(\theta) & \mathbf{p} \\ \mathbf{0}^\top & 1 \end{bmatrix} \in SE(2)
-```
+$$
 
-- **合成** $`X_1 X_2`$: 「$`X_1`$ の姿勢から、その機体座標系で $`X_2`$ だけ動く」
-- **逆** $`X^{-1} = (\mathbf{R}^\top, -\mathbf{R}^\top\mathbf{p})`$
-- **点への作用** $`X \cdot \mathbf{q} = \mathbf{R}\mathbf{q} + \mathbf{p}`$（機体座標系の点を世界座標系に移す）
+- **合成** $X_1 X_2$: 「$X_1$ の姿勢から、その機体座標系で $X_2$ だけ動く」
+- **逆** $X^{-1} = (\mathbf{R}^\top, -\mathbf{R}^\top\mathbf{p})$
+- **点への作用** $X \cdot \mathbf{q} = \mathbf{R}\mathbf{q} + \mathbf{p}$（機体座標系の点を世界座標系に移す）
 
 ### 2.2 接空間と Exp / Log
 
-姿勢の「小さな変化」は 3 次元ベクトル $`\xi = (\rho_x, \rho_y, \varphi)`$ で表す（機体座標系での前後・左右の移動と回転）。これを群に写すのが $`\mathrm{Exp}`$ である。
+姿勢の「小さな変化」は 3 次元ベクトル $\boldsymbol\xi = (\rho_x, \rho_y, \varphi)$ で表す（機体座標系での前後・左右の移動と回転）。これを群に写すのが $\mathrm{Exp}$ である。
 
-```math
-\mathrm{Exp}(\rho, \varphi) = \big(\mathbf{R}(\varphi),\ \mathbf{V}(\varphi)\rho\big),\qquad
+$$
+\mathrm{Exp}(\boldsymbol\rho, \varphi) = \big(\mathbf{R}(\varphi),\ \mathbf{V}(\varphi)\boldsymbol\rho\big),\qquad
 \mathbf{V}(\varphi) = \frac{\sin\varphi}{\varphi}\mathbf{I} + \frac{1-\cos\varphi}{\varphi}\mathbf{J}
-```
+$$
 
-$`\mathbf{V}`$ は「回りながら進む」ときに、並進が円弧に沿うことを表す。$`\varphi \to 0`$ で $`\mathbf{V} \to \mathbf{I}`$ になる。$`\mathrm{Log}`$ はその逆写像である。
+$\mathbf{V}$ は「回りながら進む」ときに、並進が円弧に沿うことを表す。$\varphi \to 0$ で $\mathbf{V} \to \mathbf{I}$ になる。$\mathrm{Log}$ はその逆写像である。
 
-**直感**: $`\mathrm{Exp}(\xi)`$ は、「一定の速度 $`\xi`$ で単位時間だけ走ったときの移動」である。そのため、IMU と ODOM の予測は $`\hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\mathbf{u}\Delta t)`$ と書け、並進と回転の結合を厳密に扱える。
+**直感**: $\mathrm{Exp}(\boldsymbol\xi)$ は、「一定の速度 $\boldsymbol\xi$ で単位時間だけ走ったときの移動」である。そのため、IMU と ODOM の予測は $\hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\mathbf{u}\Delta t)$ と書け、並進と回転の結合を厳密に扱える。
 
 ### 2.3 随伴（Adjoint）
 
 機体座標系で表した小さな変化を、別の姿勢から見た表現に変換する行列である。
 
-```math
+$$
 \mathrm{Ad}_{(\mathbf{R},\mathbf{t})} = \begin{bmatrix} \mathbf{R} & -\mathbf{J}\mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix},\qquad
-X\,\mathrm{Exp}(\xi)\,X^{-1} = \mathrm{Exp}(\mathrm{Ad}_X\xi)
-```
+X\,\mathrm{Exp}(\boldsymbol\xi)\,X^{-1} = \mathrm{Exp}(\mathrm{Ad}_X\boldsymbol\xi)
+$$
 
 ### 2.4 誤差を群の上で定義する
 
 誤差を「成分の差」ではなく、「推定値から真値へ、どれだけ動けば一致するか」で定義する。
 
-```math
-X = \hat X\,\mathrm{Exp}(\xi)
-```
+$$
+X = \hat X\,\mathrm{Exp}(\boldsymbol\xi)\qquad\text{（右から掛ける = 機体座標系での誤差）}
+$$
 
-右から掛けているので、誤差は機体座標系で表される。$`\rho`$ は「推定した機体から見て、真の位置が前後・左右にどれだけずれているか」を表す。世界座標系での差ではない。
+$\boldsymbol\rho$ は「推定した機体から見て、真の位置が前後・左右にどれだけずれているか」を表す。世界座標系での差ではない。
 
 ---
 
@@ -127,48 +127,47 @@ X = \hat X\,\mathrm{Exp}(\xi)
 
 | 名前 | 定義 | 誤差の座標系 | 向いている観測 |
 |---|---|---|---|
-| **左不変誤差** | $`\eta_L = X^{-1}\hat X`$ | 機体座標系 | 世界座標系で表される観測 $`Y = X\mathbf{b}`$（GNSS の位置、地図に対する姿勢） |
-| 右不変誤差 | $`\eta_R = \hat X X^{-1}`$ | 世界座標系 | 機体座標系で表される観測 $`Y = X^{-1}\mathbf{b}`$（既知のランドマークを機体から見た位置など） |
+| **左不変誤差** | $\eta_L = X^{-1}\hat X$ | 機体座標系 | 世界座標系で表される観測 $Y = X\mathbf{b}$（GNSS の位置、地図に対する姿勢） |
+| 右不変誤差 | $\eta_R = \hat X X^{-1}$ | 世界座標系 | 機体座標系で表される観測 $Y = X^{-1}\mathbf{b}$（既知のランドマークを機体から見た位置など） |
 
-「左不変」という名前は、全体を左から同じ $`g`$ で動かしても誤差が変わらない（$`(gX)^{-1}(g\hat X) = X^{-1}\hat X`$）ことに由来する。本書の $`\xi`$ は $`\eta_L = \mathrm{Exp}(-\xi)`$ で、左不変誤差の符号を反転したものにあたる。
+「左不変」という名前は、全体を左から同じ $g$ で動かしても誤差が変わらない（$(gX)^{-1}(g\hat X) = X^{-1}\hat X$）ことに由来する。本書の $\boldsymbol\xi$ は $\eta_L = \mathrm{Exp}(-\boldsymbol\xi)$ で、左不変誤差の符号を反転したものにあたる。
 
 本システムの観測（GNSS 位置、LiDAR の地図に対する姿勢、進行方位）はすべて世界座標系で表されるので、**左不変誤差**を使う。
 
 ### 3.2 性質 1: 誤差の伝播が推定値に依存しない
 
-運動が「機体座標系の速度で動く」形 $`\dot X = X\,\mathbf{u}^\wedge`$（$`\mathbf{u}`$ = (前進速度, 横速度, ヨーレート)）であれば、左不変誤差の時間変化は次のようになる（Barrau & Bonnabel, 2017）。
+運動が「機体座標系の速度で動く」形 $\dot X = X\,\mathbf{u}^\wedge$（$\mathbf{u}$ = (前進速度, 横速度, ヨーレート)）であれば、左不変誤差の時間変化は次のようになる（Barrau & Bonnabel, 2017）。
 
-```math
-\dot{\xi} = -\mathrm{ad}_{\mathbf{u}}\,\xi
-```
+$$
+\dot{\boldsymbol\xi} = -\mathrm{ad}_{\mathbf{u}}\,\boldsymbol\xi \quad(+\ \text{入力ノイズ・バイアスの項})
+$$
 
-- これに入力ノイズとバイアスの項が加わる。
-- 右辺には**推定値 $`\hat X`$ が現れない**。入力 $`\mathbf{u}`$ だけで決まる。
+- 右辺には**推定値 $\hat X$ が現れない**。入力 $\mathbf{u}$ だけで決まる。
 - さらに、ノイズが無ければこの式は近似ではなく**厳密に**成り立つ（log-linear 性）。誤差が大きくても、誤差の伝播そのものは正しく計算される。
 
 これは運動モデルが「群アフィン」と呼ばれる条件を満たすときに成り立つ性質で、車両のデッドレコニングはこの条件を満たす。
 
-**具体例（直進）**: 1 ステップで $`d`$ だけ直進すると、
+**具体例（直進）**: 1 ステップで $d$ だけ直進すると、
 
-```math
+$$
 \rho_{y,k+1} = \rho_{y,k} + d\,\varphi_k
-```
+$$
 
-となる。「yaw が $`\varphi`$ ずれていれば、$`d`$ 進むと機体の横方向に $`d\varphi`$ ずれる」という関係が、推定値の yaw が何度であっても同じ形で成り立つ。1.2 節の EKF の式との違いがここにある。
+となる。「yaw が $\varphi$ ずれていれば、$d$ 進むと機体の横方向に $d\varphi$ ずれる」という関係が、推定値の yaw が何度であっても同じ形で成り立つ。1.2 節の EKF の式との違いがここにある。
 
 ### 3.3 性質 2: 観測行列が推定値に依存しない
 
-世界座標系の観測 $`\mathbf{y} = X\cdot\mathbf{b}`$（GNSS なら $`\mathbf{b} = \mathbf{l}`$）について、残差を**機体座標系に戻して**取る。
+世界座標系の観測 $\mathbf{y} = X\cdot\mathbf{b}$（GNSS なら $\mathbf{b} = \mathbf{l}$）について、残差を**機体座標系に戻して**取る。
 
-```math
-\mathbf{r} = \hat X^{-1}\cdot\mathbf{y} - \mathbf{b} = \mathrm{Exp}(\xi)\cdot\mathbf{b} - \mathbf{b} + \text{noise} \approx \rho + \varphi\,\mathbf{J}\mathbf{b} + \text{noise}
-```
+$$
+\mathbf{r} = \hat X^{-1}\cdot\mathbf{y} - \mathbf{b} = \mathrm{Exp}(\boldsymbol\xi)\cdot\mathbf{b} - \mathbf{b} + \text{noise} \approx \boldsymbol\rho + \varphi\,\mathbf{J}\mathbf{b} + \text{noise}
+$$
 
-```math
-\Rightarrow\quad \mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\mathbf{b} \end{bmatrix}
-```
+$$
+\Rightarrow\quad \mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\mathbf{b} \end{bmatrix}\quad\text{（定数）}
+$$
 
-残差は誤差 $`\xi`$ だけの関数になり、観測行列は定数で、推定値が入らない。代わりに、観測ノイズの共分散の方が $`\mathbf{R}(\hat\theta)^\top\Sigma\,\mathbf{R}(\hat\theta)`$ と推定値に依存するが、GNSS のように等方的なノイズならこれも変わらない。
+残差は誤差 $\boldsymbol\xi$ だけの関数になり、観測行列に推定値が入らない。代わりに、観測ノイズの共分散の方が $\mathbf{R}(\hat\theta)^\top\boldsymbol\Sigma\,\mathbf{R}(\hat\theta)$ と推定値に依存するが、GNSS のように等方的なノイズならこれも変わらない。
 
 ### 3.4 まとめ: なぜ yaw の誤差が大きくても崩れにくいか
 
@@ -179,7 +178,7 @@ EKF では、線形化に使う推定値そのものが間違っていること�
 
 ### 3.5 バイアスを含めると（imperfect IEKF）
 
-実際の状態には、ジャイロバイアス $`b_\omega`$ と ODOM スケール $`s`$ も含まれる。これらは群の外のベクトルとして $`\delta b = b - \hat b`$ のように普通の差で扱う。このとき、バイアスの列の遷移行列には入力が入る（例: $`\partial\rho/\partial s = (v\Delta t, 0)`$）が、姿勢の推定値は依然として入らない。厳密な不変性は崩れるが（imperfect IEKF と呼ばれる）、姿勢の部分の利点はそのまま残る。これは INS への IEKF 適用で一般的な構成である（Hartley et al., 2020）。
+実際の状態には、ジャイロバイアス $b_\omega$ と ODOM スケール $s$ も含まれる。これらは群の外のベクトルとして $\delta b = b - \hat b$ のように普通の差で扱う。このとき、バイアスの列の遷移行列には入力が入る（例: $\partial\boldsymbol\rho/\partial s = (v\Delta t, 0)$）が、姿勢の推定値は依然として入らない。厳密な不変性は崩れるが（imperfect IEKF と呼ばれる）、姿勢の部分の利点はそのまま残る。これは INS への IEKF 適用で一般的な構成である（Hartley et al., 2020）。
 
 ---
 
@@ -189,29 +188,29 @@ EKF では、線形化に使う推定値そのものが間違っていること�
 
 **予測**:
 
-```math
+$$
 \hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\hat s v_o\Delta t,\ 0,\ (\omega_m - \hat b_\omega)\Delta t)
-```
+$$
 
-```math
+$$
 \mathbf{F} = \begin{bmatrix}
 \mathbf{R}_\Delta^\top & \mathbf{R}_\Delta^\top\mathbf{J}\mathbf{t}_\Delta & \mathbf{0} & (v_o\Delta t,\ 0)^\top \\
 \mathbf{0}^\top & 1 & -\Delta t & 0 \\
 \mathbf{0}^\top & 0 & 1 & 0 \\
 \mathbf{0}^\top & 0 & 0 & 1
-\end{bmatrix},\qquad (\mathbf{R}_\Delta, \mathbf{t}_\Delta) = \mathrm{Exp}(\Delta\rho, \Delta\varphi)
-```
+\end{bmatrix},\qquad (\mathbf{R}_\Delta, \mathbf{t}_\Delta) = \mathrm{Exp}(\text{1 ステップの移動})
+$$
 
 **観測**（すべて残差は機体座標系）:
 
-| 観測 | 残差 $`\mathbf{r}`$ | $`\mathbf{H}`$（5 列） | $`\mathbf{R}`$ |
+| 観測 | 残差 $\mathbf{r}$ | $\mathbf{H}$（5 列） | $\mathbf{R}$ |
 |---|---|---|---|
-| GNSS 位置 | $`\mathbf{R}(\hat\theta)^\top(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\mathbf{l})`$ | $`[\,\mathbf{I}_2\ \ \mathbf{J}\mathbf{l}\ \ \mathbf{0}\ \ \mathbf{0}\,]`$ | $`\mathbf{R}(\hat\theta)^\top\Sigma_{EN}\mathbf{R}(\hat\theta)`$ |
-| 進行方位（任意） | $`\mathrm{wrap}(z - \hat\theta)`$ | $`[\,0\ 0\ 1\ 0\ 0\,]`$ | $`\sigma_\psi^2`$ |
-| LiDAR 姿勢 | $`\mathrm{Log}(\hat X^{-1}Z)`$ | $`[\,\mathbf{I}_3\ \ \mathbf{0}\,]`$ | $`\Sigma_{\mathrm{reg}} + \mathbf{T}^\top\Sigma_{\mathrm{anchor}}\mathbf{T} + \Sigma_{\mathrm{floor}}`$ |
-| ZARU（停止中） | $`\bar\omega_m - \hat b_\omega`$ | $`[\,0\ 0\ 0\ 1\ 0\,]`$ | $`\sigma_{\mathrm{zaru}}^2`$ |
+| GNSS 位置 | $\mathbf{R}(\hat\theta)^\top(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\mathbf{l})$ | $[\,\mathbf{I}_2\ \ \mathbf{J}\mathbf{l}\ \ \mathbf{0}\ \ \mathbf{0}\,]$ | $\mathbf{R}(\hat\theta)^\top\boldsymbol\Sigma_{EN}\mathbf{R}(\hat\theta)$ |
+| 進行方位（任意） | $\mathrm{wrap}(z - \hat\theta)$ | $[\,0\ 0\ 1\ 0\ 0\,]$ | $\sigma_\psi^2$ |
+| LiDAR 姿勢 | $\mathrm{Log}(\hat X^{-1}Z)$ | $[\,\mathbf{I}_3\ \ \mathbf{0}\,]$ | $\boldsymbol\Sigma_{\mathrm{reg}} + \mathbf{T}^\top\boldsymbol\Sigma_{\mathrm{anchor}}\mathbf{T} + \boldsymbol\Sigma_{\mathrm{floor}}$ |
+| ZARU（停止中） | $\bar\omega_m - \hat b_\omega$ | $[\,0\ 0\ 0\ 1\ 0\,]$ | $\sigma_{\mathrm{zaru}}^2$ |
 
-**注入**: $`\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\xi)`$（右から掛ける）
+**注入**: $\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$（右から掛ける）
 
 ---
 
@@ -219,13 +218,13 @@ EKF では、線形化に使う推定値そのものが間違っていること�
 
 | 項目 | ESEKF（v0.2 まで） | IEKF（採用） |
 |---|---|---|
-| 位置の誤差 | 世界座標系の差 $`\delta\mathbf{p}`$ | 機体座標系の $`\rho`$（回転と結合） |
-| yaw の誤差 | $`\delta\theta`$ | $`\varphi`$（2D では同じもの） |
-| 予測 | 成分ごとの数値積分（中点法） | $`\hat X\,\mathrm{Exp}(\mathbf{u}\Delta t)`$（群の上で厳密に積算） |
-| 遷移行列 | $`\hat\theta`$ に依存 | 入力だけに依存 |
-| GNSS の観測行列 | $`\hat\theta`$ に依存 | 定数 |
-| 注入 | 加算 | $`\hat X\,\mathrm{Exp}(\delta\xi)`$ |
-| 出力の共分散 | そのまま | $`\mathbf{T}\mathbf{P}_{\xi\xi}\mathbf{T}^\top`$ で世界座標系へ変換 |
+| 位置の誤差 | 世界座標系の差 $\delta\mathbf{p}$ | 機体座標系の $\boldsymbol\rho$（回転と結合） |
+| yaw の誤差 | $\delta\theta$ | $\varphi$（2D では同じもの） |
+| 予測 | 成分ごとの数値積分（中点法） | $\hat X\,\mathrm{Exp}(\mathbf{u}\Delta t)$（群の上で厳密に積算） |
+| 遷移行列 | $\hat\theta$ に依存 | 入力だけに依存 |
+| GNSS の観測行列 | $\hat\theta$ に依存 | 定数 |
+| 注入 | 加算 | $\hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$ |
+| 出力の共分散 | そのまま | $\mathbf{T}\mathbf{P}_{\xi\xi}\mathbf{T}^\top$ で世界座標系へ変換 |
 | 計算量 | 同等 | 同等 |
 | 実装の追加 | なし | SE(2) の Exp / Log / Ad（数十行） |
 
@@ -242,7 +241,7 @@ EKF では、線形化に使う推定値そのものが間違っていること�
 | 運動 | 1.5 m/s（約 5.4 km/h）、ヨーレートは ±0.25 rad/s の正弦波（20 s 周期）で左右に旋回 |
 | 予測 | IMU 100 Hz。ODOM ノイズ 0.05 m/s、ジャイロノイズ 0.01 rad/s、ジャイロバイアス 0.003 rad/s（真値）、ODOM スケール 1.02（真値） |
 | 観測 | GNSS 位置のみ、10 Hz、σ = 2 cm、レバーアーム (0.3, 0.2) m。進行方位の観測・LiDAR は使わない |
-| 初期値 | 位置は最初の GNSS から。yaw は真値に N(0, σ₀²) の誤差を加え、フィルタにも $`P_{\varphi\varphi} = \sigma_0^2`$ を与える（σ₀ = 10°, 30°, 60°） |
+| 初期値 | 位置は最初の GNSS から。yaw は真値に N(0, σ₀²) の誤差を加え、フィルタにも $P_{\varphi\varphi} = \sigma_0^2$ を与える（σ₀ = 10°, 30°, 60°） |
 | 試行 | 各条件 100 回の Monte Carlo |
 | 評価 | yaw 誤差の RMS。姿勢 3 自由度の平均 NEES（Normalized Estimation Error Squared。共分散が実際の誤差と整合していれば 3 付近になり、大きいほど共分散が楽観的） |
 
@@ -375,9 +374,9 @@ on IMU (gyro ω, acc a), 直近の ODOM 速度 v とその微分 v̇:
 
 傾斜補正した入力:
 
-```math
-\omega_m = [\mathbf{R}_{wb}(\phi, \vartheta)\,\omega]_z,\qquad v_o = v_{\mathrm{odom}}\cos\vartheta
-```
+$$
+\omega_m = [\mathbf{R}_{wb}(\phi, \vartheta)\,\boldsymbol\omega]_z,\qquad v_o = v_{\mathrm{odom}}\cos\vartheta
+$$
 
 ### 9.2 IEKF の予測
 
@@ -399,7 +398,7 @@ predict(state, v_o, ω_m, Δt):
 ```
 
 - ODOM の速度は、IMU の時刻に線形補間する（外挿は最大 0.1 s）。
-- `s` の推定を無効にする設定では、$`P`$ の $`s`$ の行と列を 0 に固定し、更新でも $`\delta s = 0`$ とする。
+- `s` の推定を無効にする設定では、$P$ の $s$ の行と列を 0 に固定し、更新でも $\delta s = 0$ とする。
 
 ---
 
@@ -451,12 +450,12 @@ linearize(state, Pose{Z (UTM の SE2), Σ_reg_body, Σ_anchor_world}):
     R = Σ_reg_body + Tᵀ Σ_anchor_world T + Σ_floor
 ```
 
-small_gicp の共分散は、もともと機体座標系側の摂動に対するものである。そのため、(x, y, yaw) の成分を取り出すだけで $`\Sigma_{\mathrm{reg,body}}`$ として使える（左不変誤差と定義がそろっている）。
+small_gicp の共分散は、もともと機体座標系側の摂動に対するものである。そのため、(x, y, yaw) の成分を取り出すだけで $\boldsymbol\Sigma_{\mathrm{reg,body}}$ として使える（左不変誤差と定義がそろっている）。
 
 ### 10.4 進行方位（任意）と ZARU
 
-- 進行方位: $`z = \mathrm{atan2}(v_N, v_E) + \gamma`$。条件は RTK-FIX 中、$`|v| > 0.5`$ m/s、$`|\omega| < 5`$ deg/s、前進中。
-- ZARU: 停止中（$`|v_o|`$ と $`|\omega_m|`$ が閾値未満の状態が 1 s 続く）に、1 s 平均の $`\bar\omega_m`$ で $`b_\omega`$ を観測する。
+- 進行方位: $z = \mathrm{atan2}(v_N, v_E) + \gamma$。条件は RTK-FIX 中、$|v| > 0.5$ m/s、$|\omega| < 5$ deg/s、前進中。
+- ZARU: 停止中（$|v_o|$ と $|\omega_m|$ が閾値未満の状態が 1 s 続く）に、1 s 平均の $\bar\omega_m$ で $b_\omega$ を観測する。
 
 ---
 
@@ -562,12 +561,12 @@ status = StatusMonitor.evaluate(...)                     // 設計書 3.12 節�
 
 | 項目 | 注意点 |
 |---|---|
-| 小さい角度 | $`\mathbf{V}(\varphi)`$ と $`\mathrm{Log}`$ は、$`\lvert\varphi\rvert < 10^{-6}`$ でテイラー展開に切り替える（0 除算の回避） |
-| 角度の正規化 | yaw の残差と出力は $`[-\pi, \pi)`$ に正規化する。$`\mathbf{R}`$ は行列で持つので、状態そのものには正規化が不要 |
+| 小さい角度 | $\mathbf{V}(\varphi)$ と $\mathrm{Log}$ は、$\lvert\varphi\rvert < 10^{-6}$ でテイラー展開に切り替える（0 除算の回避） |
+| 角度の正規化 | yaw の残差と出力は $[-\pi, \pi)$ に正規化する。$\mathbf{R}$ は行列で持つので、状態そのものには正規化が不要 |
 | 共分散の数値安定性 | Joseph 形式で更新し、毎回対称化する。対角成分に下限（1e-12）を設ける |
 | 精度 | UTM 座標と状態は `double`。点群だけ地図座標系の `float`（設計書 4.3 節） |
 | 時刻 | すべてデータのタイムスタンプで扱う。履歴に入らない古い観測は破棄し、件数を診断に出す |
-| 単体テスト | Exp / Log の往復、Ad の恒等式、$`\mathbf{F}`$ と $`\mathbf{H}`$ を数値微分と比較する。$`\mathbf{H}`$ は 1e-6 程度で一致する。$`\mathbf{F}`$ のバイアス列は右ヤコビアンの近似の分（$`\tfrac12 s v\Delta t^2`$ 程度）だけずれるのが正しい |
+| 単体テスト | Exp / Log の往復、Ad の恒等式、$\mathbf{F}$ と $\mathbf{H}$ を数値微分と比較する。$\mathbf{H}$ は 1e-6 程度で一致する。$\mathbf{F}$ のバイアス列は右ヤコビアンの近似の分（$\tfrac12 s v\Delta t^2$ 程度）だけずれるのが正しい |
 | 回帰テスト | `tools/sim/compare_iekf_ekf.py` の結果（6 章の表）を基準値にして、C++ 実装でも同じ傾向が出ることを確認する |
 
 ---
