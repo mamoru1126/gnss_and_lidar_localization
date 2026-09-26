@@ -109,12 +109,12 @@ flowchart LR
 
 **Invariant EKF（IEKF）を選ぶ理由**:
 
-- 本構成は **GNSS がシングルアンテナ**で、起動直後や長いデッドレコニングの後は yaw の誤差が大きくなりうる。通常の EKF / ESEKF は、位置と yaw を別々の誤差として扱う。そのため、遷移行列や GNSS の観測行列が推定中の yaw（$\hat\theta$）に依存し、yaw の誤差が大きいと線形化が崩れて、収束の遅れや共分散の過小評価（不整合）が起きやすい。
-- IEKF は、姿勢 $X = (\mathbf{R}(\theta), \mathbf{p}) \in SE(2)$ の誤差を**群の上で**定義する。本設計の組み合わせ（機体座標系の速度入力による運動と、世界座標系で表される観測）では、次の性質が成り立つ（3.4〜3.7 節）。
+- 本構成は **GNSS がシングルアンテナ**で、起動直後や長いデッドレコニングの後は yaw の誤差が大きくなりうる。通常の EKF / ESEKF は、位置と yaw を別々の誤差として扱う。そのため、遷移行列や GNSS の観測行列が推定中の yaw（$`\hat\theta`$）に依存し、yaw の誤差が大きいと線形化が崩れて、収束の遅れや共分散の過小評価（不整合）が起きやすい。
+- IEKF は、姿勢 $`X = (\mathbf{R}(\theta), \mathbf{p}) \in SE(2)`$ の誤差を**群の上で**定義する。本設計の組み合わせ（機体座標系の速度入力による運動と、世界座標系で表される観測）では、次の性質が成り立つ（3.4〜3.7 節）。
   - **遷移行列は入力だけに依存し、推定中の姿勢には依存しない**。
   - **GNSS 位置観測の観測行列は定数になる**。
 - その結果、yaw の誤差が大きい状態からでも収束が安定し、共分散の整合性も保ちやすい。計算量は EKF と同じである。
-- 注意点: ジャイロバイアス $b_\omega$ と ODOM スケール $s$ を状態に加えると、厳密な不変性は崩れる（imperfect IEKF）。ただし姿勢の部分の利点はそのまま残る。これは実用上の標準的な構成である。
+- 注意点: ジャイロバイアス $`b_\omega`$ と ODOM スケール $`s`$ を状態に加えると、厳密な不変性は崩れる（imperfect IEKF）。ただし姿勢の部分の利点はそのまま残る。これは実用上の標準的な構成である。
 - 3D 化（Phase 4）では、SE₂(3)（姿勢・速度・位置）上の IEKF に IMU バイアスを加えた構成に拡張する。
 - 推定器は `IStateEstimator` インターフェースの背後に置く。比較評価用に ESEKF 版も差し替えられるようにする（10 章 Phase 1 の評価項目）。
 
@@ -133,77 +133,77 @@ flowchart LR
 
 **推定状態**:
 
-$$
+```math
 \hat{X} = \begin{bmatrix} \mathbf{R}(\hat\theta) & \hat{\mathbf{p}} \\ \mathbf{0}^\top & 1 \end{bmatrix} \in SE(2),\qquad \hat b_\omega,\ \hat s
-$$
+```
 
 | 記号 | 意味 | 単位 |
 |---|---|---|
-| $\hat{\mathbf{p}} = (\hat p_x, \hat p_y)$ | base_link 原点の UTM 座標（Easting, Northing） | m |
-| $\hat\theta$ | UTM グリッド座標系での yaw（x 軸 = East から反時計回り） | rad |
-| $\hat b_\omega$ | ジャイロの鉛直軸バイアス | rad/s |
-| $\hat s$ | ODOM 速度のスケール係数（名目値 1.0） | - |
+| $`\hat{\mathbf{p}} = (\hat p_x, \hat p_y)`$ | base_link 原点の UTM 座標（Easting, Northing） | m |
+| $`\hat\theta`$ | UTM グリッド座標系での yaw（x 軸 = East から反時計回り） | rad |
+| $`\hat b_\omega`$ | ジャイロの鉛直軸バイアス | rad/s |
+| $`\hat s`$ | ODOM 速度のスケール係数（名目値 1.0） | - |
 
 **誤差の定義**（左不変誤差。誤差は機体座標系側で定義する）:
 
-$$
-X = \hat{X}\,\mathrm{Exp}(\boldsymbol{\xi}),\quad \boldsymbol{\xi} = \begin{bmatrix} \rho_x & \rho_y & \varphi \end{bmatrix}^\top,\qquad b_\omega = \hat b_\omega + \delta b,\quad s = \hat s + \delta s
-$$
+```math
+X = \hat{X}\,\mathrm{Exp}(\xi),\quad \xi = \begin{bmatrix} \rho_x & \rho_y & \varphi \end{bmatrix}^\top,\qquad b_\omega = \hat b_\omega + \delta b,\quad s = \hat s + \delta s
+```
 
-$$
+```math
 \delta\mathbf{x} = \begin{bmatrix} \rho_x & \rho_y & \varphi & \delta b & \delta s \end{bmatrix}^\top,\qquad \mathbf{P} = \mathrm{Cov}(\delta\mathbf{x}) \in \mathbb{R}^{5\times5}
-$$
+```
 
-**SE(2) の基本演算**（$\mathbf{J} = \begin{bmatrix} 0 & -1 \\ 1 & 0 \end{bmatrix}$）:
+**SE(2) の基本演算**（$`\mathbf{J} = \begin{bmatrix} 0 & -1 \\ 1 & 0 \end{bmatrix}`$）:
 
-$$
-\mathrm{Exp}(\boldsymbol\rho, \varphi) = \big(\mathbf{R}(\varphi),\ \mathbf{V}(\varphi)\boldsymbol\rho\big),\quad
+```math
+\mathrm{Exp}(\rho, \varphi) = \big(\mathbf{R}(\varphi),\ \mathbf{V}(\varphi)\rho\big),\quad
 \mathbf{V}(\varphi) = \frac{\sin\varphi}{\varphi}\mathbf{I} + \frac{1-\cos\varphi}{\varphi}\mathbf{J}
-$$
+```
 
-$$
+```math
 \mathrm{Ad}_{(\mathbf{R},\mathbf{t})} = \begin{bmatrix} \mathbf{R} & -\mathbf{J}\mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}
-$$
+```
 
-$\mathrm{Log}$ は $\mathrm{Exp}$ の逆写像で、$\varphi \to 0$ ではテイラー展開で評価する。これらは `gll/common/se2.hpp` に自前で実装する（数十行程度。単体テストで数値微分と照合する）。外部ライブラリ（manif 等）には依存しない。
+$`\mathrm{Log}`$ は $`\mathrm{Exp}`$ の逆写像で、$`\varphi \to 0`$ ではテイラー展開で評価する。これらは `gll/common/se2.hpp` に自前で実装する（数十行程度。単体テストで数値微分と照合する）。外部ライブラリ（manif 等）には依存しない。
 
-$s$ の推定は、設定で無効にできるようにする（推定する量が増えると、GNSS と LiDAR が両方無い区間での振る舞いが不安定になりうるため）。
+$`s`$ の推定は、設定で無効にできるようにする（推定する量が増えると、GNSS と LiDAR が両方無い区間での振る舞いが不安定になりうるため）。
 
 ### 3.4 予測（IMU・ODOM 駆動）
 
 入力:
 
-- $\omega_m$: 傾斜補正済みのヨーレート（IMU、3.9 節）
-- $v_o$: 傾斜補正済みの前進速度（ODOM）
+- $`\omega_m`$: 傾斜補正済みのヨーレート（IMU、3.9 節）
+- $`v_o`$: 傾斜補正済みの前進速度（ODOM）
 
 予測は IMU のタイムスタンプで駆動する（100〜200 Hz）。ODOM の速度は、最新 2 サンプルの線形補間（外挿は最大 `odom_hold_max` 秒まで）で IMU の時刻にそろえる。IMU が途切れた場合は、ODOM のヨーレートで代替する（診断で WARN を出す）。
 
 **推定状態の伝播**（機体座標系の移動量を群の上で積算する。数値積分の誤差が出ない）:
 
-$$
-\Delta\varphi = (\omega_m - \hat b_\omega)\Delta t,\quad \Delta\boldsymbol\rho = \begin{bmatrix} \hat s\,v_o\,\Delta t \\ 0 \end{bmatrix},\quad
-\hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\Delta\boldsymbol\rho, \Delta\varphi),\quad \hat b_{\omega,k+1} = \hat b_{\omega,k},\ \hat s_{k+1} = \hat s_k
-$$
+```math
+\Delta\varphi = (\omega_m - \hat b_\omega)\Delta t,\quad \Delta\rho = \begin{bmatrix} \hat s\,v_o\,\Delta t \\ 0 \end{bmatrix},\quad
+\hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\Delta\rho, \Delta\varphi),\quad \hat b_{\omega,k+1} = \hat b_{\omega,k},\ \hat s_{k+1} = \hat s_k
+```
 
-**誤差の遷移行列**: $\mathrm{Exp}(\Delta\boldsymbol\rho, \Delta\varphi) = (\mathbf{R}_\Delta, \mathbf{t}_\Delta)$ とおくと
+**誤差の遷移行列**: $`\mathrm{Exp}(\Delta\rho, \Delta\varphi) = (\mathbf{R}_\Delta, \mathbf{t}_\Delta)`$ とおくと
 
-$$
+```math
 \mathbf{F} = \begin{bmatrix}
 \mathbf{R}_\Delta^\top & \mathbf{R}_\Delta^\top \mathbf{J}\,\mathbf{t}_\Delta & \mathbf{0} & \begin{bmatrix} v_o\Delta t \\ 0 \end{bmatrix} \\
 \mathbf{0}^\top & 1 & -\Delta t & 0 \\
 \mathbf{0}^\top & 0 & 1 & 0 \\
 \mathbf{0}^\top & 0 & 0 & 1
 \end{bmatrix}
-$$
+```
 
-（左上の 3×3 は $\mathrm{Ad}_{\mathrm{Exp}(\Delta\boldsymbol\rho,\Delta\varphi)^{-1}}$。バイアスの列では、右ヤコビアン $\mathbf{J}_r(\Delta) \approx \mathbf{I}$ と近似している。IMU の周期が短いので $|\Delta\varphi| \ll 1$ となり、この近似は十分成り立つ）
+（左上の 3×3 は $`\mathrm{Ad}_{\mathrm{Exp}(\Delta\rho,\Delta\varphi)^{-1}}`$。バイアスの列では、右ヤコビアン $`\mathbf{J}_r(\Delta) \approx \mathbf{I}`$ と近似している。IMU の周期が短いので $`|\Delta\varphi| \ll 1`$ となり、この近似は十分成り立つ）
 
-- **$\mathbf{F}$ には推定中の姿勢 $\hat\theta, \hat{\mathbf{p}}$ が現れない**（入力 $v_o, \omega_m$ とバイアス推定値だけで決まる）。これが ESEKF との本質的な違いである。
-- 例: 直進中（$\mathbf{t}_\Delta = (d, 0)$）は、yaw の誤差 $\varphi$ が機体の横方向の誤差 $\rho_y$ に $d\varphi$ だけ移る。これは直感とも一致する。
+- **$`\mathbf{F}`$ には推定中の姿勢 $`\hat\theta, \hat{\mathbf{p}}`$ が現れない**（入力 $`v_o, \omega_m`$ とバイアス推定値だけで決まる）。これが ESEKF との本質的な違いである。
+- 例: 直進中（$`\mathbf{t}_\Delta = (d, 0)`$）は、yaw の誤差 $`\varphi`$ が機体の横方向の誤差 $`\rho_y`$ に $`d\varphi`$ だけ移る。これは直感とも一致する。
 
-**プロセスノイズ**（入力ノイズ $\sigma_v, \sigma_\omega$ と、ランダムウォーク $\sigma_b, \sigma_s$）:
+**プロセスノイズ**（入力ノイズ $`\sigma_v, \sigma_\omega`$ と、ランダムウォーク $`\sigma_b, \sigma_s`$）:
 
-$$
+```math
 \mathbf{G} = \begin{bmatrix}
 \hat s\,\Delta t & 0 \\
 0 & 0 \\
@@ -213,28 +213,28 @@ $$
 \end{bmatrix},\quad
 \mathbf{Q} = \mathbf{G}\,\mathrm{diag}(\sigma_v^2, \sigma_\omega^2)\,\mathbf{G}^\top + \mathrm{diag}(0,0,0,\sigma_b^2\Delta t, \sigma_s^2\Delta t),\qquad
 \mathbf{P} \leftarrow \mathbf{F}\mathbf{P}\mathbf{F}^\top + \mathbf{Q}
-$$
+```
 
-横すべりを許容したい場合は、$\rho_y$ に横方向の速度ノイズ $\sigma_{v,lat}$ を加える（既定 0.02 m/s。非ホロノミック拘束の不確かさに相当する）。
+横すべりを許容したい場合は、$`\rho_y`$ に横方向の速度ノイズ $`\sigma_{v,lat}`$ を加える（既定 0.02 m/s。非ホロノミック拘束の不確かさに相当する）。
 
-**停止中**（|v_o| と |ω| が閾値未満の状態が一定時間続いたとき）: ODOM の速度が 0 なので位置は動かない。ゼロ角速度の擬似観測（ZARU）$z = \bar\omega_m$（停止中の平均）、$h = \hat b_\omega$、$\mathbf{H} = [0\ 0\ 0\ 1\ 0]$ で $b_\omega$ を推定し、停止中の yaw のドリフトを抑える。
+**停止中**（|v_o| と |ω| が閾値未満の状態が一定時間続いたとき）: ODOM の速度が 0 なので位置は動かない。ゼロ角速度の擬似観測（ZARU）$`z = \bar\omega_m`$（停止中の平均）、$`h = \hat b_\omega`$、$`\mathbf{H} = [0\ 0\ 0\ 1\ 0]`$ で $`b_\omega`$ を推定し、停止中の yaw のドリフトを抑える。
 
 ### 3.5 観測更新（共通手順）
 
-すべての観測で、**残差を機体座標系（誤差 $\boldsymbol\xi$ と同じ座標系）で表す**のが IEKF の要点である。
+すべての観測で、**残差を機体座標系（誤差 $`\xi`$ と同じ座標系）で表す**のが IEKF の要点である。
 
-1. 観測時刻 $t_z$ の状態を履歴バッファから取り出す（3.8 節）。
-2. 観測ごとの式（3.6、3.7 節）で残差 $\mathbf{r}$、観測行列 $\mathbf{H}$、観測共分散 $\mathbf{R}$ を求める。
-3. $\mathbf{S} = \mathbf{H}\mathbf{P}\mathbf{H}^\top + \mathbf{R}$ から Mahalanobis 距離 $d^2 = \mathbf{r}^\top \mathbf{S}^{-1}\mathbf{r}$ を求める。$d^2 > \chi^2_{\mathrm{dof}}(1-\alpha)$ なら棄却する（既定 α = 0.001 → 1 自由度: 10.8、2 自由度: 13.8、3 自由度: 16.3）。
+1. 観測時刻 $`t_z`$ の状態を履歴バッファから取り出す（3.8 節）。
+2. 観測ごとの式（3.6、3.7 節）で残差 $`\mathbf{r}`$、観測行列 $`\mathbf{H}`$、観測共分散 $`\mathbf{R}`$ を求める。
+3. $`\mathbf{S} = \mathbf{H}\mathbf{P}\mathbf{H}^\top + \mathbf{R}`$ から Mahalanobis 距離 $`d^2 = \mathbf{r}^\top \mathbf{S}^{-1}\mathbf{r}`$ を求める。$`d^2 > \chi^2_{\mathrm{dof}}(1-\alpha)`$ なら棄却する（既定 α = 0.001 → 1 自由度: 10.8、2 自由度: 13.8、3 自由度: 16.3）。
    - **例外**: RTK-FIX の GNSS は棄却しない。GNSS FIX 中の LiDAR は、Mahalanobis 距離ではなく固定閾値で食い違いを判定する。棄却が続いたときの再アンカーと再位置推定も含め、3.13 節に従う。
-4. $\mathbf{K} = \mathbf{P}\mathbf{H}^\top\mathbf{S}^{-1}$、$\delta\mathbf{x} = \mathbf{K}\mathbf{r} = (\delta\boldsymbol\xi, \delta b, \delta s)$
-5. 注入: $\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$、$\hat b_\omega \leftarrow \hat b_\omega + \delta b$、$\hat s \leftarrow \hat s + \delta s$
-6. 共分散（Joseph 形式）: $\mathbf{P} \leftarrow (\mathbf{I}-\mathbf{K}\mathbf{H})\mathbf{P}(\mathbf{I}-\mathbf{K}\mathbf{H})^\top + \mathbf{K}\mathbf{R}\mathbf{K}^\top$
-7. リセット: 厳密には $\mathbf{P} \leftarrow \mathbf{J}_r(\delta\boldsymbol\xi)\,\mathbf{P}\,\mathbf{J}_r(\delta\boldsymbol\xi)^\top$ だが、$\delta\boldsymbol\xi$ は小さいので単位行列で近似する（関数は分けておき、必要なら後で有効化する）。
-8. $t_z$ 以降の入力を再適用して、現在時刻まで伝播し直す。
-9. 更新前後の出力姿勢の差（世界座標系の $\Delta x, \Delta y, \Delta\theta$）を出力整形層に通知する（3.10 節）。
+4. $`\mathbf{K} = \mathbf{P}\mathbf{H}^\top\mathbf{S}^{-1}`$、$`\delta\mathbf{x} = \mathbf{K}\mathbf{r} = (\delta\xi, \delta b, \delta s)`$
+5. 注入: $`\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\xi)`$、$`\hat b_\omega \leftarrow \hat b_\omega + \delta b`$、$`\hat s \leftarrow \hat s + \delta s`$
+6. 共分散（Joseph 形式）: $`\mathbf{P} \leftarrow (\mathbf{I}-\mathbf{K}\mathbf{H})\mathbf{P}(\mathbf{I}-\mathbf{K}\mathbf{H})^\top + \mathbf{K}\mathbf{R}\mathbf{K}^\top`$
+7. リセット: 厳密には $`\mathbf{P} \leftarrow \mathbf{J}_r(\delta\xi)\,\mathbf{P}\,\mathbf{J}_r(\delta\xi)^\top`$ だが、$`\delta\xi`$ は小さいので単位行列で近似する（関数は分けておき、必要なら後で有効化する）。
+8. $`t_z`$ 以降の入力を再適用して、現在時刻まで伝播し直す。
+9. 更新前後の出力姿勢の差（世界座標系の $`\Delta x, \Delta y, \Delta\theta`$）を出力整形層に通知する（3.10 節）。
 
-**出力の共分散**（世界座標系の x, y, yaw）: $\boldsymbol\Sigma_w = \mathbf{T}\,\mathbf{P}_{1:3,1:3}\,\mathbf{T}^\top$、$\mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)$
+**出力の共分散**（世界座標系の x, y, yaw）: $`\Sigma_w = \mathbf{T}\,\mathbf{P}_{1:3,1:3}\,\mathbf{T}^\top`$、$`\mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)`$
 
 ### 3.6 GNSS 観測（u-blox F9P, `sensor_msgs/NavSatFix`）
 
@@ -253,63 +253,63 @@ v0.5 で、GNSS の入力を標準の `sensor_msgs/NavSatFix` に変更した（
 **採用条件**（すべて満たすときだけ RTK-FIX として更新に使う）:
 
 - `status.status == gnss_rtk_fix_status`（既定 2）
-- `position_covariance_type` が UNKNOWN 以外で、水平の標準偏差 $\sqrt{\max(\Sigma_{EE}, \Sigma_{NN})}$ が `gnss_max_stddev`（既定 0.05 m）以下。取り決めがずれていて RTK-FLOAT が status 2 で届いても、FLOAT は通常 σ が数 cm〜数十 cm なので、ここで落ちる（二重の安全策）
+- `position_covariance_type` が UNKNOWN 以外で、水平の標準偏差 $`\sqrt{\max(\Sigma_{EE}, \Sigma_{NN})}`$ が `gnss_max_stddev`（既定 0.05 m）以下。取り決めがずれていて RTK-FLOAT が status 2 で届いても、FLOAT は通常 σ が数 cm〜数十 cm なので、ここで落ちる（二重の安全策）
 - FIX に遷移してから `gnss_fix_settle_time`（既定 1.0 s）が経過している（FIX 直後の誤 FIX 対策）
 - `position_covariance_type == UNKNOWN` の場合は精度を確認できないので、既定では採用しない。`gnss_accept_unknown_covariance: true` にすると、`gnss_default_stddev` を使って採用する（その場合は WARN を出す）
 
 **位置観測**:
 
-- 緯度経度を、サイトで固定した 1 つの UTM ゾーンの $\mathbf{y} = (E, N)$ に変換する。ゾーンは設定値で固定し、ゾーン境界をまたいでも切り替えない。
-- アンテナのレバーアームを $\mathbf{l} = (l_x, l_y)$（base_link 座標系）とする。
-- 観測モデルは $\mathbf{y} = \mathbf{p} + \mathbf{R}(\theta)\mathbf{l} + \mathbf{n}$ で、これは $\mathbf{y} = X\,(\mathbf{l}, 1)$ という**左不変観測**の形になる。そのため、残差を機体座標系で取ると観測行列が定数になる。
+- 緯度経度を、サイトで固定した 1 つの UTM ゾーンの $`\mathbf{y} = (E, N)`$ に変換する。ゾーンは設定値で固定し、ゾーン境界をまたいでも切り替えない。
+- アンテナのレバーアームを $`\mathbf{l} = (l_x, l_y)`$（base_link 座標系）とする。
+- 観測モデルは $`\mathbf{y} = \mathbf{p} + \mathbf{R}(\theta)\mathbf{l} + \mathbf{n}`$ で、これは $`\mathbf{y} = X\,(\mathbf{l}, 1)`$ という**左不変観測**の形になる。そのため、残差を機体座標系で取ると観測行列が定数になる。
 
-$$
+```math
 \mathbf{r} = \mathbf{R}(\hat\theta)^\top\big(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\mathbf{l}\big),\qquad
 \mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\mathbf{l} & \mathbf{0} & \mathbf{0} \end{bmatrix} = \begin{bmatrix} 1 & 0 & -l_y & 0 & 0 \\ 0 & 1 & \ \ l_x & 0 & 0 \end{bmatrix}
-$$
+```
 
-$$
-\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\boldsymbol\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta),\qquad \boldsymbol\Sigma_{\mathrm{gnss}} = \max\!\big(\boldsymbol\Sigma_{EN},\ \sigma_{\min}^2\mathbf{I}_2\big)
-$$
+```math
+\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta),\qquad \Sigma_{\mathrm{gnss}} = \max\!\big(\Sigma_{EN},\ \sigma_{\min}^2\mathbf{I}_2\big)
+```
 
-- $\boldsymbol\Sigma_{EN}$ は `position_covariance` の東・北の 2×2 ブロック。$\max$ は対角要素ごとに下限を取る意味。
-- $\sigma_{\min}$ = `gnss_min_stddev`（既定 0.02 m）。受信機が報告する精度は楽観的なことが多いので下限を設ける。
+- $`\Sigma_{EN}`$ は `position_covariance` の東・北の 2×2 ブロック。$`\max`$ は対角要素ごとに下限を取る意味。
+- $`\sigma_{\min}`$ = `gnss_min_stddev`（既定 0.02 m）。受信機が報告する精度は楽観的なことが多いので下限を設ける。
 - UTM 座標は、グリッドの東・北方向と ENU の東・北方向の違い（子午線収差 γ、数度以内）で共分散を回転させるのが厳密である。ただし等方的な共分散（E と N の分散が同じ）なら影響しないので、無視する。
-- 導出: $X\,\mathrm{Exp}(\boldsymbol\xi)\cdot\mathbf{l} \approx \hat X\cdot(\mathbf{l} + \boldsymbol\rho + \varphi\mathbf{J}\mathbf{l})$ より、$\mathbf{R}(\hat\theta)^\top(\mathbf{y}-\hat{\mathbf{y}}) \approx \boldsymbol\rho + \varphi\mathbf{J}\mathbf{l} + \text{noise}$。
-- ESEKF では $\mathbf{H}$ が $\hat\theta$ に依存していた。IEKF では yaw の推定誤差が大きくても、観測行列そのものは誤らない。
+- 導出: $`X\,\mathrm{Exp}(\xi)\cdot\mathbf{l} \approx \hat X\cdot(\mathbf{l} + \rho + \varphi\mathbf{J}\mathbf{l})`$ より、$`\mathbf{R}(\hat\theta)^\top(\mathbf{y}-\hat{\mathbf{y}}) \approx \rho + \varphi\mathbf{J}\mathbf{l} + \text{noise}`$。
+- ESEKF では $`\mathbf{H}`$ が $`\hat\theta`$ に依存していた。IEKF では yaw の推定誤差が大きくても、観測行列そのものは誤らない。
 
 **ヨーの観測**（F9P はシングルアンテナのため、ヘディングを直接は得られない）:
 
-- **位置観測の系列（主）**: 走行中は、$\mathbf{F}$ の結合項（yaw 誤差 → 横方向誤差）を通して、位置観測からヨーが推定される。停止中は観測されない（ZARU でドリフトだけを抑える）。`NavSatFix` だけを使う既定の構成では、これが唯一の GNSS 由来のヨーの情報源になる。IEKF はこの形の推定に強いので、実用上は十分と見込む（Phase 1 のシミュレーションで確認する）。
+- **位置観測の系列（主）**: 走行中は、$`\mathbf{F}`$ の結合項（yaw 誤差 → 横方向誤差）を通して、位置観測からヨーが推定される。停止中は観測されない（ZARU でドリフトだけを抑える）。`NavSatFix` だけを使う既定の構成では、これが唯一の GNSS 由来のヨーの情報源になる。IEKF はこの形の推定に強いので、実用上は十分と見込む（Phase 1 のシミュレーションで確認する）。
 - **進行方位の観測（任意、既定は無効）**: ドライバが速度トピック（上の取り決め）を出す場合だけ、`use_gnss_velocity: true` で有効にする。
-  - 条件: RTK-FIX 中で、水平速度 $|\mathbf{v}| >$ `cog_min_speed`（既定 0.5 m/s）、|ヨーレート| < `cog_max_yaw_rate`（既定 5 deg/s。レバーアームによる速度成分の影響を避けるため）、かつ前進中。
-  - $z = \mathrm{atan2}(v_N, v_E) + \gamma$（ENU の角度をグリッドの角度に変換。$\gamma$ は子午線収差）
-  - $r = \mathrm{wrap}(z - \hat\theta)$、$\mathbf{H} = [0\ 0\ 1\ 0\ 0]$
-  - 分散: $\sigma_\psi \approx \sigma_v / |\mathbf{v}|$。最高速の 1.7 m/s でも、$\sigma_v$ = 0.05 m/s なら約 1.7° で、**補助的な観測**にとどまる。
+  - 条件: RTK-FIX 中で、水平速度 $`|\mathbf{v}| >`$ `cog_min_speed`（既定 0.5 m/s）、|ヨーレート| < `cog_max_yaw_rate`（既定 5 deg/s。レバーアームによる速度成分の影響を避けるため）、かつ前進中。
+  - $`z = \mathrm{atan2}(v_N, v_E) + \gamma`$（ENU の角度をグリッドの角度に変換。$`\gamma`$ は子午線収差）
+  - $`r = \mathrm{wrap}(z - \hat\theta)`$、$`\mathbf{H} = [0\ 0\ 1\ 0\ 0]`$
+  - 分散: $`\sigma_\psi \approx \sigma_v / |\mathbf{v}|`$。最高速の 1.7 m/s でも、$`\sigma_v`$ = 0.05 m/s なら約 1.7° で、**補助的な観測**にとどまる。
   - 後退中は使わない。
 
 ### 3.7 LiDAR 観測
 
-スキャンマッチング（6 章）の結果として、地図グループ $g$ の座標系での base_link の 6 自由度姿勢 $\mathbf{T}^{g}_{\mathrm{base}}$ と、その共分散が得られる。共分散は機体座標系側の摂動に対するもので、small_gicp の定義による。
+スキャンマッチング（6 章）の結果として、地図グループ $`g`$ の座標系での base_link の 6 自由度姿勢 $`\mathbf{T}^{g}_{\mathrm{base}}`$ と、その共分散が得られる。共分散は機体座標系側の摂動に対するもので、small_gicp の定義による。
 
-1. 地図 → UTM 変換 $\mathbf{T}^{\mathrm{utm}}_{g}$（4.2 節）で UTM に変換する。
-2. x, y, yaw を取り出して、SE(2) の観測 $Z = (\mathbf{R}(\psi_z), \mathbf{p}_z)$ とする。
+1. 地図 → UTM 変換 $`\mathbf{T}^{\mathrm{utm}}_{g}`$（4.2 節）で UTM に変換する。
+2. x, y, yaw を取り出して、SE(2) の観測 $`Z = (\mathbf{R}(\psi_z), \mathbf{p}_z)`$ とする。
 
-$$
+```math
 \mathbf{r} = \mathrm{Log}\big(\hat X^{-1} Z\big) \in \mathbb{R}^3,\qquad \mathbf{H} = \begin{bmatrix} \mathbf{I}_3 & \mathbf{0}_{3\times2} \end{bmatrix}
-$$
+```
 
-（$\mathrm{Log}$ のヤコビアンは $\mathbf{I}$ で近似する）
+（$`\mathrm{Log}`$ のヤコビアンは $`\mathbf{I}`$ で近似する）
 
 観測共分散（すべて機体座標系で表す）:
 
-$$
-\mathbf{R} = \boldsymbol\Sigma_{\mathrm{reg}} + \mathbf{T}^\top\boldsymbol\Sigma_{\mathrm{anchor}}\mathbf{T} + \boldsymbol\Sigma_{\mathrm{floor}},\qquad \mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)
-$$
+```math
+\mathbf{R} = \Sigma_{\mathrm{reg}} + \mathbf{T}^\top\Sigma_{\mathrm{anchor}}\mathbf{T} + \Sigma_{\mathrm{floor}},\qquad \mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)
+```
 
-- $\boldsymbol\Sigma_{\mathrm{reg}}$: スキャンマッチングの共分散（6.2 節）から、(x, y, yaw) の成分を取り出したもの。small_gicp の共分散はもともと機体座標系側の摂動で表されているので、**座標変換をせずにそのまま使える**。これも左不変誤差を選んだ利点である（roll / pitch が小さいことを前提に、SE(3) → SE(2) の射影として近似する）。
-- $\boldsymbol\Sigma_{\mathrm{anchor}}$: アンカーの不確かさ（世界座標系で与える）。
-- $\boldsymbol\Sigma_{\mathrm{floor}}$: 下限値。
+- $`\Sigma_{\mathrm{reg}}`$: スキャンマッチングの共分散（6.2 節）から、(x, y, yaw) の成分を取り出したもの。small_gicp の共分散はもともと機体座標系側の摂動で表されているので、**座標変換をせずにそのまま使える**。これも左不変誤差を選んだ利点である（roll / pitch が小さいことを前提に、SE(3) → SE(2) の射影として近似する）。
+- $`\Sigma_{\mathrm{anchor}}`$: アンカーの不確かさ（世界座標系で与える）。
+- $`\Sigma_{\mathrm{floor}}`$: 下限値。
 
 **注意**: アンカー誤差は時間的に相関するバイアスで、白色雑音ではない。上の式はそれを保守的に近似しているだけである。GNSS と LiDAR が両方有効な区間で、両者の差からアンカー誤差をオンライン推定する拡張（状態に地図グループごとのオフセットを追加する）は Phase 4 の検討事項とする。
 
@@ -323,8 +323,8 @@ $$
 
 LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 ms）」だけ遅れて届き、GNSS にも受信機の遅延がある。そこで、次の**状態履歴バッファ**で遅延観測を扱う。
 
-- 予測ステップごとに $(t, \mathbf{x}, \mathbf{P}, \mathbf{u})$ をリングバッファ（既定 2.0 s）に保存する。
-- 時刻 $t_z$ の観測が届いたら、$t_z$ の直前のエントリから $t_z$ まで伝播し、そこで更新する。その後、保存しておいた入力 $\mathbf{u}$ で現在時刻まで再伝播する。
+- 予測ステップごとに $`(t, \mathbf{x}, \mathbf{P}, \mathbf{u})`$ をリングバッファ（既定 2.0 s）に保存する。
+- 時刻 $`t_z`$ の観測が届いたら、$`t_z`$ の直前のエントリから $`t_z`$ まで伝播し、そこで更新する。その後、保存しておいた入力 $`\mathbf{u}`$ で現在時刻まで再伝播する。
 - 状態が 5 次元と小さいため、2 秒分（IMU 200 Hz で 400 ステップ）を再伝播しても 1 ms 未満で済む見込み。
 - バッファより古い観測は破棄し、カウンタを診断に出す。
 
@@ -343,17 +343,17 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 - 方式: Mahony 型の相補フィルタ。ジャイロ 3 軸で姿勢を積分し、加速度計から推定した重力方向で roll / pitch を補正する。ヨーはこの推定器では扱わない（IEKF 側で扱う）。
 - 運動加速度の補償: 加速度計の値から、車両の運動による加速度を差し引いてから重力方向を求める。機体座標系で次のように近似する（低速なので十分）。
-  $$
+  ```math
   \mathbf{a}_{\mathrm{lin}} \approx \begin{bmatrix} \dot v_o & v_o\,\omega_z & 0 \end{bmatrix}^\top,\qquad \mathbf{g}_b \approx \mathbf{a}_m - \mathbf{a}_{\mathrm{lin}}
-  $$
-  （$\dot v_o$ は ODOM 速度の差分を平滑化したもの。$v_o\omega_z$ は向心加速度）
-- 補正ゲインの調整: $\big|\|\mathbf{g}_b\| - g\big|$ が大きいとき（段差や衝撃）は補正ゲインを下げる。
-- ジャイロバイアス: 起動時に静止状態で `imu_static_init_time`（既定 3 s）の平均から 3 軸のバイアスを求める。以後は停止を検出するたびに更新する（鉛直軸のバイアスは IEKF の $b_\omega$ でも推定する）。
+  ```
+  （$`\dot v_o`$ は ODOM 速度の差分を平滑化したもの。$`v_o\omega_z`$ は向心加速度）
+- 補正ゲインの調整: $`\big|\|\mathbf{g}_b\| - g\big|`$ が大きいとき（段差や衝撃）は補正ゲインを下げる。
+- ジャイロバイアス: 起動時に静止状態で `imu_static_init_time`（既定 3 s）の平均から 3 軸のバイアスを求める。以後は停止を検出するたびに更新する（鉛直軸のバイアスは IEKF の $`b_\omega`$ でも推定する）。
 
 傾斜補正:
 
-- ヨーレート: $\omega_m = [\mathbf{R}_{wb}(\phi, \vartheta)\,\boldsymbol{\omega}_{imu}]_z$
-- 前進速度: $v_o = v_{odom}\cos\vartheta$（$\phi$: roll、$\vartheta$: pitch）
+- ヨーレート: $`\omega_m = [\mathbf{R}_{wb}(\phi, \vartheta)\,\omega_{imu}]_z`$
+- 前進速度: $`v_o = v_{odom}\cos\vartheta`$（$`\phi`$: roll、$`\vartheta`$: pitch）
 
 ### 3.10 出力の連続性（FR-4）
 
@@ -361,11 +361,11 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 1. **ゲートと共分散**（3.5 節、3.13 節）: 外れ値は取り込まない。共分散が妥当なら、1 回の補正量はもともと小さい。再アンカーのように推定値を大きく寄せ直す場合も、推定値の変化は次の出力整形層で吸収する。
 2. **出力整形層（補正オフセット吸収方式）**:
-   - 観測更新で推定姿勢が世界座標系で $(\Delta x, \Delta y, \Delta\theta)$ だけ動いたら（3.5 節の手順 9）、出力側のオフセット $\mathbf{o}$ からその分を引く。
-   - 出力は $\mathbf{y} = \mathbf{x}_{(x,y,\theta)} + \mathbf{o}$ とする。
-   - $\mathbf{o}$ は毎周期、最大 `max_correction_rate_xy`（既定 0.1 m/s）と `max_correction_rate_yaw`（既定 2 deg/s）の速さで 0 に近づける。
+   - 観測更新で推定姿勢が世界座標系で $`(\Delta x, \Delta y, \Delta\theta)`$ だけ動いたら（3.5 節の手順 9）、出力側のオフセット $`\mathbf{o}`$ からその分を引く。
+   - 出力は $`\mathbf{y} = \mathbf{x}_{(x,y,\theta)} + \mathbf{o}`$ とする。
+   - $`\mathbf{o}`$ は毎周期、最大 `max_correction_rate_xy`（既定 0.1 m/s）と `max_correction_rate_yaw`（既定 2 deg/s）の速さで 0 に近づける。
    - これにより、出力の変化は「デッドレコニングによる滑らかな移動 + レート制限された補正」だけになる。
-   - $\|\mathbf{o}\|$ が `offset_error_threshold`（既定 1.0 m / 5 deg）を超えた場合は、黙って飛ばさずに状態を `DEGRADED` にして下流に通知する。
+   - $`\|\mathbf{o}\|`$ が `offset_error_threshold`（既定 1.0 m / 5 deg）を超えた場合は、黙って飛ばさずに状態を `DEGRADED` にして下流に通知する。
    - フィルタの生の推定値もデバッグ用に別トピックで出す。
    - 補正を遅らせることは、真の誤差の修正を遅らせることと表裏一体である。そのため、レートは車速や経路追従の特性に合わせて調整する（パラメータを大きくすれば素通しになる）。
 3. **地図アンカーの事前較正**: GNSS と LiDAR の両方が有効な区間（地図の縁）での両者の差を小さくしておくことが、切り替え時の滑らかさに最も効く。GNSS ログとスキャンマッチング結果の差を最小二乗で推定するアンカー較正ツールを用意する（10 章 Phase 3）。
@@ -374,7 +374,7 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 | 開始地点 | 手順 |
 |---|---|
-| GNSS 区間 | ① RTK-FIX を待つ → 位置を初期化する。② 走行して `init_heading_min_distance`（既定 1 m）進んだら、GNSS の変位の向きから粗い yaw を決め、$\sigma_\varphi$ = `init_yaw_stddev`（既定 15°）でフィルタを始動する。③ 以後は IEKF が位置観測と進行方位の観測で yaw を詰める。$\sigma_\varphi$ < `ready_yaw_stddev`（既定 2°）かつ位置の σ < `ready_pos_stddev`（既定 0.1 m）になったら初期化完了とする。外部から初期姿勢が与えられた場合はそれを優先する。シングルアンテナのため、停止したままでは yaw を決められない。IEKF は yaw の誤差が大きくても線形化が崩れにくいので、粗い yaw から始めても安定して収束する |
+| GNSS 区間 | ① RTK-FIX を待つ → 位置を初期化する。② 走行して `init_heading_min_distance`（既定 1 m）進んだら、GNSS の変位の向きから粗い yaw を決め、$`\sigma_\varphi`$ = `init_yaw_stddev`（既定 15°）でフィルタを始動する。③ 以後は IEKF が位置観測と進行方位の観測で yaw を詰める。$`\sigma_\varphi`$ < `ready_yaw_stddev`（既定 2°）かつ位置の σ < `ready_pos_stddev`（既定 0.1 m）になったら初期化完了とする。外部から初期姿勢が与えられた場合はそれを優先する。シングルアンテナのため、停止したままでは yaw を決められない。IEKF は yaw の誤差が大きくても線形化が崩れにくいので、粗い yaw から始めても安定して収束する |
 | 地図区間 | 外部から初期姿勢を与えるか、前回終了時の姿勢を保存しておいて使う → その周辺で、yaw を N 通り（既定 12 通り）× 位置格子 の初期値からスキャンマッチングを試し、最良の結果で初期化する。GICP は収束する範囲が狭いので、粗い VGICP（ボクセル 2.0 m）で候補を絞ってから GICP で詰める 2 段階にする |
 | 共通 | 初期化が完了するまでは、出力を `INITIALIZING` として下流に使わせない |
 
@@ -419,17 +419,18 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 #### 3.13.2 食い違いの判定（GNSS FIX 中の LiDAR）
 
-GNSS FIX 中は、推定値はほぼ GNSS で決まっている。そこで、LiDAR の観測 $Z$ と推定値との差を「GNSS と LiDAR の食い違い」とみなす。
+GNSS FIX 中は、推定値はほぼ GNSS で決まっている。そこで、LiDAR の観測 $`Z`$ と推定値との差を「GNSS と LiDAR の食い違い」とみなす。
 
-$$
-\mathbf{e} = \mathrm{Log}\big(\hat X^{-1} Z\big) = (e_x, e_y, e_\psi)\quad\text{（機体座標系）}
-$$
+```math
+\mathbf{e} = \mathrm{Log}\big(\hat X^{-1} Z\big) = (e_x, e_y, e_\psi)
+```
 
-- $\|(e_x, e_y)\| \le$ `consistency_xy`（既定 0.15 m）かつ $|e_\psi| \le$ `consistency_yaw`（既定 1.0°）なら**整合**とする → 共分散を膨らませて融合する。
+- $`\mathbf{e}`$ は機体座標系で表される。
+- $`\|(e_x, e_y)\| \le`$ `consistency_xy`（既定 0.15 m）かつ $`|e_\psi| \le`$ `consistency_yaw`（既定 1.0°）なら**整合**とする → 共分散を膨らませて融合する。
 - それ以外は**食い違い**とする → LiDAR を棄却する。
-- 判定は Mahalanobis 距離ではなく、固定の閾値で行う。GNSS FIX 中は $\mathbf{P}$ が小さく、Mahalanobis 距離では数 cm の差でも棄却されてしまうため。
+- 判定は Mahalanobis 距離ではなく、固定の閾値で行う。GNSS FIX 中は $`\mathbf{P}`$ が小さく、Mahalanobis 距離では数 cm の差でも棄却されてしまうため。
 
-**アンカーずれの記録**: 食い違いの有無にかかわらず、GNSS FIX 中の $\mathbf{e}$ を地図グループごとに蓄積する（移動平均、標準偏差、件数）。
+**アンカーずれの記録**: 食い違いの有無にかかわらず、GNSS FIX 中の $`\mathbf{e}`$ を地図グループごとに蓄積する（移動平均、標準偏差、件数）。
 
 - 世界座標系に直した平均が `anchor_mismatch_warn`（既定 0.10 m / 0.5°）を超えたら、診断で WARN「地図グループ X のアンカー較正が必要」を出す。
 - 蓄積したデータはログに書き出し、`gll_anchor_calibrator` の入力にする。
@@ -441,9 +442,9 @@ $$
 
 **再アンカー**（推定値を観測側に寄せ直す手順）:
 
-1. 候補の観測列 $\{Z_i\}$ を、StateHistory の相対運動（オドメトリの変位）を使って最新時刻にそろえる。
+1. 候補の観測列 $`\{Z_i\}`$ を、StateHistory の相対運動（オドメトリの変位）を使って最新時刻にそろえる。
 2. そろえた観測どうしのばらつきが `reanchor_consistency`（既定 0.10 m / 1.0°）以内なら、「観測どうしは互いに一致している（外れているのは推定値の方）」と判断する。
-3. 共分散を膨らませる: $\mathbf{P}_{\xi\xi} \leftarrow \mathbf{P}_{\xi\xi} + \mathrm{diag}(e_x^2, e_y^2, e_\psi^2) + \boldsymbol\Sigma_{\mathrm{reanchor}}$（$\mathbf{e}$ は最新の観測と推定値の差）
+3. 共分散を膨らませる: $`\mathbf{P}_{\xi\xi} \leftarrow \mathbf{P}_{\xi\xi} + \mathrm{diag}(e_x^2, e_y^2, e_\psi^2) + \Sigma_{\mathrm{reanchor}}`$（$`\mathbf{e}`$ は最新の観測と推定値の差）
 4. 最新の観測で通常の更新を行う。推定値は観測側へ強く寄る。
 5. 棄却のカウンタをリセットする。イベント `REANCHOR(source, |e|)` を診断に出す。
 6. 推定値の変化は出力整形層が吸収する（出力は飛ばない）。オフセットが `offset_error_threshold` を超えている間は `DEGRADED` にする。
@@ -516,28 +517,28 @@ stateDiagram-v2
 
 各地図グループについて、次の値を設定ファイルで与える。
 
-- アンカー点の地図座標 $\mathbf{a}^{g}$
+- アンカー点の地図座標 $`\mathbf{a}^{g}`$
 - アンカー点の緯度・経度・楕円体高
-- 地図の x 軸の方位 $\psi$（**真北から時計回り**）
+- 地図の x 軸の方位 $`\psi`$（**真北から時計回り**）
 
 変換の手順:
 
-1. 緯度経度 → UTM で $(E_a, N_a)$、子午線収差 $\gamma$、点縮尺係数 $k$ を得る（GeographicLib）。
-2. グリッド方位 $\alpha = \psi - \gamma$（$\gamma$ はグリッド北の真北からの時計回り角）。
-3. UTM の x 軸（East）基準の回転角 $\varphi = \pi/2 - \alpha$。
+1. 緯度経度 → UTM で $`(E_a, N_a)`$、子午線収差 $`\gamma`$、点縮尺係数 $`k`$ を得る（GeographicLib）。
+2. グリッド方位 $`\alpha = \psi - \gamma`$（$`\gamma`$ はグリッド北の真北からの時計回り角）。
+3. UTM の x 軸（East）基準の回転角 $`\varphi = \pi/2 - \alpha`$。
 4. 水平成分:
-   $$
+   ```math
    \begin{bmatrix} E \\ N \end{bmatrix} = \begin{bmatrix} E_a \\ N_a \end{bmatrix} + k\,\mathbf{R}(\varphi)\left(\mathbf{p}^{g}_{xy} - \mathbf{a}^{g}_{xy}\right)
-   $$
-   鉛直成分: $h = h_a + (p^g_z - a^g_z)$
+   ```
+   鉛直成分: $`h = h_a + (p^g_z - a^g_z)`$
 
-**縮尺係数 $k$ を入れる理由**: UTM のグリッド距離は実距離と最大で約 0.04〜0.1% ずれる（中央子午線付近で 0.9996）。1 km 離れると 0.4〜1 m のずれになる。SLAM で作った地図は実距離なので、グループ全体を 1 つの $k$ で縮尺補正する。地図グループの東西の広がりが数 km に及ぶ場合は $k$ の変化も無視できなくなるので、グループの分割を検討する（11 章の未決事項）。
+**縮尺係数 $`k`$ を入れる理由**: UTM のグリッド距離は実距離と最大で約 0.04〜0.1% ずれる（中央子午線付近で 0.9996）。1 km 離れると 0.4〜1 m のずれになる。SLAM で作った地図は実距離なので、グループ全体を 1 つの $`k`$ で縮尺補正する。地図グループの東西の広がりが数 km に及ぶ場合は $`k`$ の変化も無視できなくなるので、グループの分割を検討する（11 章の未決事項）。
 
 この変換は剛体変換ではなく**相似変換**になる。変換はコア内で `MapAnchor` クラスとしてまとめ、スキャンマッチングの初期値計算（UTM → 地図）と結果の変換（地図 → UTM）の両方に同じものを使う。
 
 ### 4.3 数値精度
 
-UTM 座標は $10^5$〜$10^6$ m のオーダーになる。`float32` では有効桁が足りず、0.1〜0.5 m 程度に丸められる。そこで次のように扱う。
+UTM 座標は $`10^5`$〜$`10^6`$ m のオーダーになる。`float32` では有効桁が足りず、0.1〜0.5 m 程度に丸められる。そこで次のように扱う。
 
 - 点群とタイルは**地図グループの座標系（原点付近）で `float32` のまま保持**する。スキャンマッチングも地図座標系で実行する。
 - UTM 座標を扱う状態・観測・出力はすべて `double` にする（`geometry_msgs` も float64）。
@@ -716,11 +717,11 @@ sequenceDiagram
 
 **共分散**:
 
-- 収束点でのヘッセ行列 $\mathbf{H}$（6×6）から、$\boldsymbol{\Sigma} \approx \hat\sigma^2 \mathbf{H}^{-1}$ を求める。
-- $\hat\sigma^2$ は正規化した残差から推定するか、固定のスケール `gicp_cov_scale` を使う。
-- small_gicp の $\mathbf{H}$ は**機体座標系側の摂動**に対するもので、成分の並びは回転 → 並進である（実装時にバージョンごとの定義を確認する）。これを随伴変換で地図座標系の (x, y, yaw) に変換してから使う。
-- GICP の共分散は実際より小さく見積もられやすいので、3.7 節の $\boldsymbol{\Sigma}_{\mathrm{floor}}$ でクリップする。
-- 退化した環境（長い廊下やトンネル）では $\mathbf{H}$ の固有値が小さい方向に分散が大きくなり、その方向の補正は自動的に弱まる。
+- 収束点でのヘッセ行列 $`\mathbf{H}`$（6×6）から、$`\Sigma \approx \hat\sigma^2 \mathbf{H}^{-1}`$ を求める。
+- $`\hat\sigma^2`$ は正規化した残差から推定するか、固定のスケール `gicp_cov_scale` を使う。
+- small_gicp の $`\mathbf{H}`$ は**機体座標系側の摂動**に対するもので、成分の並びは回転 → 並進である（実装時にバージョンごとの定義を確認する）。これを随伴変換で地図座標系の (x, y, yaw) に変換してから使う。
+- GICP の共分散は実際より小さく見積もられやすいので、3.7 節の $`\Sigma_{\mathrm{floor}}`$ でクリップする。
+- 退化した環境（長い廊下やトンネル）では $`\mathbf{H}`$ の固有値が小さい方向に分散が大きくなり、その方向の補正は自動的に弱まる。
 
 **失敗判定**: 3.7 節の採用条件に加え、初期値からの移動量が `gicp_max_jump`（既定 1.0 m / 5 deg）を超えた場合も棄却する。
 
