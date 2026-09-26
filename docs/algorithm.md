@@ -1,7 +1,7 @@
 # アルゴリズム説明書: Invariant EKF による GNSS / LiDAR / IMU / ODOM 融合
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.8） / [ソフトウェア構成](./architecture.md)
-- 状態: ドラフト（v0.1）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.9） / [ソフトウェア構成](./architecture.md)
+- 状態: ドラフト（v0.2。設計書 v0.9 のデッドレコニング距離の監視と、GNSS の安定待ちのやり直しを反映）
 - 検証スクリプト: [`tools/sim/compare_invariant_ekf_vs_esekf.py`](../tools/sim/compare_invariant_ekf_vs_esekf.py)
 - 図解ページ: [`docs/explainer/index.html`](./explainer/index.html)（ブラウザで開くと図と数式が表示される）
 
@@ -287,7 +287,7 @@ flowchart TB
     I1["IMU 受信"] --> I2["姿勢推定器で roll / pitch 更新"]
     I2 --> I3["傾斜補正: ω_m, v_o"]
     I3 --> I4["Invariant EKF 予測<br/>X ← X Exp(u Δt), P ← F P Fᵀ + Q"]
-    I4 --> I5["履歴に保存"]
+    I4 --> I5["履歴に保存<br/>走行距離を積算"]
     I5 --> I6{"停止中？"}
     I6 -- はい --> I7["ZARU 更新"]
   end
@@ -315,7 +315,7 @@ flowchart TB
 
   subgraph OUT["出力（50 Hz）"]
     O1["最新状態"] --> O2["出力整形（補正オフセット吸収）"]
-    O2 --> O3["状態監視"]
+    O2 --> O3["状態監視<br/>デッドレコニング距離の判定"]
     O3 --> O4["publish"]
   end
 ```
@@ -443,7 +443,7 @@ linearize(state, GnssPosition{y_utm, Σ_EN, l̃, Σ_lever}):
     R = R̂ᵀ Σ R̂ + Σ_lever
 ```
 
-採用条件（RTK-FIX の status、水平 σ ≤ 5 cm、FIX 後 1 s）は、観測を作る前に `GnssMeasurementBuilder` が判定する。
+採用条件（RTK-FIX の status、水平 σ ≤ 5 cm、FIX 後 1 s）は、観測を作る前に `GnssMeasurementBuilder` が判定する。FIX でないメッセージが来たときに加えて、メッセージが 3 s（`settle_reset_gap`）以上途切れたときも、安定待ちをやり直す（設計書 3.6 節）。
 
 アンテナ高さ $`l_z`$（1 m 以内の想定）があるため、車両が傾くとアンテナが水平方向にずれる（$`l_z`$ = 1 m で、傾き 1° あたり約 1.7 cm、5° の坂で約 8.7 cm）。そのため、レバーアームは roll / pitch で水平面に射影した $`\tilde{\mathbf{l}}`$ を使い、roll / pitch の推定誤差の分を観測共分散に加える。
 
@@ -563,6 +563,26 @@ smoother.apply(raw_pose, raw_cov, dt):                  // raw_cov = Σ_w（フ�
 
 status = StatusMonitor.evaluate(...)                     // 設計書 3.12 節と 3.13.5 節
 ```
+
+デッドレコニング距離の監視（設計書 3.12 節）:
+
+```text
+// 予測のたびに（9.2 節の predict の後）
+d_DR += sqrt((s · v_o)² + v_lat²) · Δt                  // 停止中は v_o = v_lat = 0 なので増えない
+
+// 位置の観測を採用したとき（GNSS 位置・LiDAR 姿勢。どちらも再アンカーを含む）
+// フィルタを初期化したとき・外部から初期姿勢を与えたとき
+d_DR = 0                                                // 進行方位の観測と ZARU では 0 に戻さない
+
+// 出力周期ごとに
+dr_exceeded = ready and d_DR > dr_error_distance          // 既定 30 m（仮）。初期化の完了前は判定しない
+diag.level  = ERROR if dr_exceeded else level(status)     // DEGRADED / INITIALIZING = WARN、LOST = ERROR
+if dr_exceeded:
+    diag.message = status + ": dead reckoning for " + d_DR + " m without GNSS / LiDAR position (limit "
+                   + dr_error_distance + " m)"
+```
+
+共分散による `DEGRADED` / `LOST` の判定はモデルが正しいことを前提にしているのに対し、デッドレコニング距離はモデルに依存しない。運用上の前提（点群地図と GNSS 区間の間には必要十分な距離が設定される）が崩れたことを直接検知するための安全策である。
 
 出力の変化は「デッドレコニングによる滑らかな移動」と「レート制限された補正」だけになる。そのため、観測更新や再アンカーでフィルタの推定値が不連続に動いても、出力は飛ばない（FR-4）。
 

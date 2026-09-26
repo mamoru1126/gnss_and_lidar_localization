@@ -1,7 +1,7 @@
 # 検証計画: i2Nav-Robot データセットを使った検証
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.8。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md)
-- 状態: ドラフト（v0.1）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.9。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md)
+- 状態: ドラフト（v0.2。デッドレコニング距離の監視の確認と、`dr_error_distance` を決めるための測定を V1-2 に追加）
 
 本書は、公開データセット **i2Nav-Robot**（武漢大学 i2Nav グループ）を使って、本システムの自己位置推定をどう検証するかをまとめたものである。データセットの情報は、同データセットの GitHub リポジトリ（2026-01-16 のコミット `2ffdca6`）の README、`calibration/calibration.yaml`、`sequence_detail/i2nav_robot.json` で確認した内容に基づく。
 
@@ -202,6 +202,7 @@ Docker の `dev` ステージのコンテナ（`rosbags` 入り。設計書 7.8 
 | `offset_x, offset_y, offset_yaw` | 出力整形のオフセット |
 | `status, recovery_state, active_map_group` | 状態 |
 | `roll, pitch, gyro_bias, odom_scale` | 補助推定とバイアス |
+| `dr_distance` | 最後に位置の観測を採用してから走った距離 [m]（設計書 3.12 節。v0.9 で追加） |
 
 観測ごとのイベント（採用・棄却・再アンカー、Mahalanobis 距離、GICP の品質指標と処理時間）は、別の CSV（`debug_events_path`）に 1 行 1 イベントで出す。
 
@@ -214,7 +215,7 @@ Docker の `dev` ステージのコンテナ（`rosbags` 入り。設計書 7.8 
 | ID | 段階 | シーケンス | 内容 | 主な確認点 |
 |---|---|---|---|---|
 | V1-1 | Phase 1 | street00 | GNSS（OEM719）+ IMU + ODOM | 水平位置・yaw の精度、初期化時間、アンテナ高さ（0.365 m）の傾き補正の効果（補正あり/なしで比較） |
-| V1-2 | Phase 1 | street00 | GNSS を 10 / 30 / 60 s 間引く（障害注入） | デッドレコニング中の誤差の伸び、共分散の整合性、GNSS 復帰時の再アンカーと出力の滑らかさ |
+| V1-2 | Phase 1 | street00 | GNSS を 10 / 30 / 60 s 間引く（障害注入） | デッドレコニング中の誤差の伸び、共分散の整合性、GNSS 復帰時の再アンカーと出力の滑らかさ。`dr_distance` が `dr_error_distance` を超えた時点で diagnostics が ERROR になり、GNSS の復帰で解除されること。**走った距離に対するデッドレコニング誤差の伸び**（横・縦）を測り、`dr_error_distance` を決める材料にする（下記） |
 | V1-3 | Phase 1 | street00 | F9P（単独測位）を GNSS 入力にする | RTK-FIX 以外が採用されないこと（全棄却になること） |
 | V1-4 | Phase 1 | street00 | FIX と判定された GNSS に 0.3〜1 m のずれを注入 | 誤った FIX を信用する方針のもとで、出力が飛ばず、`DEGRADED` が通知されること |
 | V2-1 | Phase 2 | parking02（地図は parking01） | LiDAR + IMU + ODOM | 地図区間での精度、GICP の採用率、タイル読み込みの遅延、処理時間 |
@@ -225,12 +226,21 @@ Docker の `dev` ステージのコンテナ（`rosbags` 入り。設計書 7.8 
 
 障害注入（間引き・ずれ・停止）は、変換後の bag を加工するスクリプト（`tools/i2nav/inject_faults.py`、Claude が作成）で行う。元の bag は変更しない。
 
+**`dr_error_distance` の決め方**（V1-2 の追加の解析。`tools/i2nav/evaluate.py` に入れる）:
+
+1. 間引いた区間ごとに、CSV の `dr_distance` を横軸、真値との誤差（横・縦・yaw）を縦軸にして並べる。間引く位置と長さを変えて、区間を数十個作る。
+2. 距離ごとの誤差の 95% 値を求め、経路追従が許せる横方向の誤差（利用者が決める。例: 0.3 m）に達する距離を読む。
+3. その距離に余裕を持たせた値を `dr_error_distance` にする。直線と旋回を含む区間で差が大きい場合は、厳しい方に合わせる。
+4. 同じ区間で、共分散から出した 3σ と実際の誤差を比べ、`DEGRADED`（`dr_max_stddev`）の判定と距離の判定のどちらが先に出るかも確認する。
+
 ### 6.2 このデータセット用のパラメータ（初期値）
 
 | パラメータ | 既定値 | i2Nav-Robot 用 | 理由 |
 |---|---|---|---|
 | `gnss_lever_arm` | 未定 | (0.0, 0.07, 0.365) | 1.4 節 |
 | `gnss_fix_settle_time` | 1.0 s | 1.0 s（1〜2 エポック） | 1 Hz のため |
+| `gnss_settle_reset_gap` | 3.0 s | 3.0 s（3 エポック） | 1 Hz の通常の間隔（1 s）では安定待ちをやり直さない。間引き（V1-2）の後は、最初の FIX から安定待ちをやり直す |
+| `dr_error_distance` | 30 m（仮） | 30 m（まずはこのまま） | V1-2 の解析で決める。間引いている間に 30 m 以上走る区間では、30 m を超えたところで ERROR になるはず（何秒で超えるかは車速による） |
 | `reanchor_confirm_gnss` | 3 | 3（約 3 秒） | 1 Hz のため時間は長くなる。短すぎると単発の外れ値を拾うので、まずはこのまま |
 | `aid_timeout` | 1.0 s | 2.0 s | 1 Hz だと 1 s では GNSS が「有効でない」と判定されうる |
 | `use_gnss_velocity` | false | false | 速度トピックがない |
@@ -250,6 +260,7 @@ Docker の `dev` ステージのコンテナ（`rosbags` 入り。設計書 7.8 
 | 出力の補正ステップ | 1 周期あたり < 0.02 m |
 | 共分散の整合性 | 誤差が 3σ 以内に入る割合 > 95% |
 | 状態 | 通常走行で `LOST` にならない |
+| デッドレコニングの監視 | `dr_distance` が `dr_error_distance` を超えてから 1 出力周期以内に ERROR、GNSS を採用したら解除。GNSS がある通常走行では ERROR にならない |
 | 処理時間 | GICP < 60 ms（p99） |
 
 ---

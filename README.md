@@ -13,7 +13,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 
 | Phase | 内容 | 状態 |
 |---|---|---|
-| 1 | Docker・CI、コア（SE(2)・Invariant EKF・遅延観測・GNSS・姿勢推定・出力整形・状態監視・GNSS の再アンカー）、ROS 2 IF（IMU・ODOM・GNSS） | 実装済み |
+| 1 | Docker・CI、コア（SE(2)・Invariant EKF・遅延観測・GNSS・姿勢推定・出力整形・状態監視・デッドレコニング距離の監視・GNSS の再アンカー）、ROS 2 IF（IMU・ODOM・GNSS・diagnostics） | 実装済み |
 | 2 | 地図タイル管理、small_gicp による LiDAR 観測、地図区間での初期化、LiDAR の再アンカーと再位置推定 | 未着手 |
 | 3 | 地図グループの切り替え、アンカー較正ツール、実データでの調整 | 未着手 |
 
@@ -68,12 +68,22 @@ ros2 launch gll_ros2 localizer.launch.py \
 | 購読 | `~/input/initial_pose` | `geometry_msgs/PoseWithCovarianceStamped` |
 | 配信 | `~/output/pose` | `geometry_msgs/PoseWithCovarianceStamped`（frame `map` = UTM） |
 | 配信 | `~/output/odometry` | `nav_msgs/Odometry` |
-| 配信 | `~/output/status` | `diagnostic_msgs/DiagnosticStatus`（`GNSS_AIDED` / `DEGRADED` / `LOST` など） |
+| 配信 | `~/output/status` | `diagnostic_msgs/DiagnosticStatus`（`GNSS_AIDED` / `DEGRADED` / `LOST` など。デッドレコニング距離の超過は ERROR） |
 | 配信 | `~/debug/raw_pose` | `geometry_msgs/PoseWithCovarianceStamped`（出力整形前） |
-| 配信 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` |
+| 配信 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray`（1 Hz。`gll_localizer` と `gll_localizer: counters`） |
 | TF | `map` → `base_link` | |
 
 パラメータは [ros2/gll_ros2/config/localizer.yaml](ros2/gll_ros2/config/localizer.yaml) を参照。
+
+### デッドレコニングの監視
+
+点群地図と GNSS 区間の間には必要十分な距離が設定される、という運用上の前提で動かす（[要件定義](docs/requirements.md) 3 章）。GNSS の RTK-FIX も LiDAR の照合も採用できないまま `monitor.dr_error_distance`（既定 30 m。仮の値）を超えて走ると、`~/output/status` と `/diagnostics` の `gll_localizer` が ERROR になり、次のメッセージが出る（位置の観測を採用すると解除される。停止中は距離が増えない）。
+
+```
+DEAD_RECKONING: dead reckoning for 31.2 m without GNSS / LiDAR position (limit 30.0 m)
+```
+
+詳細は[設計書](docs/design.md) 3.12 節。
 
 ## ライセンス
 
