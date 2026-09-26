@@ -75,71 +75,51 @@ flowchart TB
 
 ### 2.2 コア内部のコンポーネントとインターフェース
 
+箱はパッケージ（中にクラス名）、六角形 `«interface»` はテストや差し替えのために抽象化した境界、点線はインターフェースの実装を表す。クラス単位の関係は 3 章のクラス図を参照。
+
 ```mermaid
-flowchart LR
-  subgraph facade["Localizer（ファサード）"]
-    LOC["Localizer"]
-  end
+flowchart TB
+  LOC["Localizer<br/>ファサード・排他制御"]
 
-  subgraph measurement["measurement（センサデータ → 観測）"]
-    ATT["AttitudeEstimator<br/>roll / pitch（Mahony）"]
-    MIB["MotionInputBuilder<br/>IMU + ODOM → MotionInput"]
-    GMB["GnssMeasurementBuilder<br/>採用判定・UTM 変換"]
-    LMB["LidarMeasurementBuilder<br/>地図座標 → UTM"]
-    STOP["StopDetector<br/>停止検出 → ZARU"]
-  end
+  MEAS["measurement<br/>AttitudeEstimator<br/>MotionInputBuilder<br/>GnssMeasurementBuilder<br/>LidarMeasurementBuilder<br/>StopDetector"]
+  EST["estimation<br/>StateHistory / MahalanobisGate<br/>SourceArbiter / RecoveryManager<br/>OutputSmoother / StatusMonitor<br/>Initializer"]
+  MATCH["matching<br/>ScanMatchingWorker（スレッド）<br/>ScanPreprocessor"]
+  MAPC["map<br/>MapTileManager（スレッド）<br/>MapGroup / TileIndex / MapAnchor"]
+  COMMON["common<br/>SE2 / UtmProjector<br/>型定義・設定"]
 
-  subgraph estimation["estimation（推定）"]
-    ISE{{"«interface»<br/>IStateEstimator"}}
-    IEKF["InvEkfSe2"]
-    ESEKF["EsEkf2D（比較用）"]
-    HIST["StateHistory<br/>遅延観測の再適用"]
-    GATE["MahalanobisGate"]
-    SMO["OutputSmoother"]
-    MON["StatusMonitor"]
-    INIT["Initializer<br/>GNSS / 地図"]
-    ARB["SourceArbiter<br/>優先度・食い違い判定"]
-    REC["RecoveryManager<br/>再アンカー・再位置推定"]
-  end
+  ISE{{"«interface»<br/>IStateEstimator"}}
+  ISM{{"«interface»<br/>IScanMatcher"}}
+  ITL{{"«interface»<br/>ITileLoader"}}
+  ILG{{"«interface»<br/>ILogger"}}
 
-  subgraph matching["matching（スキャンマッチング）"]
-    ISM{{"«interface»<br/>IScanMatcher"}}
-    GICP["GicpMatcher<br/>small_gicp"]
-    PRE["ScanPreprocessor<br/>クロップ・回転デスキュー・ダウンサンプル"]
-    WRK["ScanMatchingWorker<br/>（スレッド）"]
-  end
+  IEKF["InvEkfSe2"]
+  ESEKF["EsEkf2D（比較用）"]
+  GICP["GicpMatcher（small_gicp）"]
+  BTL["BinaryTileLoader"]
+  RLOG["RosLogger（gll_ros2）"]
 
-  subgraph map["map（地図管理）"]
-    MTM["MapTileManager<br/>（スレッド）"]
-    ANC["MapAnchor"]
-    GRP["MapGroup / TileIndex"]
-    ITL{{"«interface»<br/>ITileLoader"}}
-    BTL["BinaryTileLoader"]
-  end
+  LOC --> MEAS
+  LOC --> EST
+  LOC --> MATCH
+  LOC --> MAPC
+  LOC --> ILG
 
-  subgraph common["common"]
-    SE2["SE2"]
-    GEO["UtmProjector<br/>GeographicLib"]
-    ILG{{"«interface»<br/>ILogger"}}
-    TYP["型定義・設定"]
-  end
+  EST --> ISE
+  ISE -.-> IEKF
+  ISE -.-> ESEKF
+  MATCH --> ISM
+  ISM -.-> GICP
+  MAPC --> ITL
+  ITL -.-> BTL
+  ILG -.-> RLOG
 
-  LOC --> ATT & MIB & GMB & STOP
-  LOC --> HIST --> ISE
-  ISE -.-> IEKF & ESEKF
-  LOC --> GATE & SMO & MON & INIT
-  LOC --> ARB & REC
-  REC --> HIST
-  REC -- 再位置推定の依頼 --> WRK
-  LOC --> WRK --> PRE
-  WRK --> ISM -.-> GICP
-  WRK --> LMB --> ANC
-  LOC --> MTM --> GRP
-  MTM --> ITL -.-> BTL
-  MTM -- ターゲット構築 --> ISM
-  GMB --> GEO
-  ANC --> GEO
-  IEKF --> SE2
+  EST -- 再位置推定の依頼 --> MATCH
+  MAPC -- ターゲット構築 --> ISM
+  MATCH -- 地図ターゲット取得 --> MAPC
+
+  MEAS --> COMMON
+  EST --> COMMON
+  MAPC --> COMMON
 ```
 
 ### 2.3 コンポーネントの責務
@@ -163,7 +143,6 @@ flowchart LR
 
 ```mermaid
 classDiagram
-  direction LR
 
   class ImuSample {
     +double t
@@ -192,7 +171,7 @@ classDiagram
   class LidarScan {
     +double t
     +vector~Vector3f~ points
-    +optional~vector~float~~ point_times
+    +PointTimes point_times
   }
   class GnssFixType {
     <<enumeration>>
@@ -237,7 +216,7 @@ classDiagram
     +Log() Vector3d
     +Ad() Matrix3d
     +inverse() SE2
-    +operator*(SE2) SE2
+    +compose(SE2 other) SE2
     +act(Vector2d p) Vector2d
     +yaw() double
   }
@@ -275,11 +254,12 @@ classDiagram
   UtmProjector ..> UtmPoint
 ```
 
+`PointTimes` は `std::vector<float>` の別名（点ごとの時刻。LiDAR ドライバが出さない場合は空）。
+
 ### 3.2 facade（Localizer）
 
 ```mermaid
 classDiagram
-  direction TB
 
   class Localizer {
     -LocalizerConfig cfg_
@@ -354,10 +334,30 @@ classDiagram
 
 ### 3.3 estimation（推定）
 
+#### 3.3.1 推定器と観測
+
 ```mermaid
 classDiagram
-  direction TB
-
+  class IStateEstimator {
+    <<interface>>
+    +predict(FilterState, MotionInput, double dt) FilterState*
+    +linearize(FilterState, Measurement) Linearization*
+    +correct(FilterState, Linearization) UpdateResult*
+    +worldCovariance(FilterState) Matrix3d*
+  }
+  class InvEkfSe2 {
+    -EstimatorConfig cfg_
+    +predict(...) FilterState
+    +linearize(...) Linearization
+    +correct(...) UpdateResult
+    +worldCovariance(...) Matrix3d
+  }
+  class EsEkf2D {
+    +predict(...) FilterState
+    +linearize(...) Linearization
+    +correct(...) UpdateResult
+    +worldCovariance(...) Matrix3d
+  }
   class FilterState {
     +double t
     +SE2 X
@@ -412,37 +412,35 @@ classDiagram
     +Vector3d residual_body
     +Vector3d world_delta
   }
+  IStateEstimator <|.. InvEkfSe2
+  IStateEstimator <|.. EsEkf2D
+  IStateEstimator ..> FilterState
+  IStateEstimator ..> MotionInput
+  IStateEstimator ..> Measurement
+  IStateEstimator ..> Linearization
+  Measurement ..> GnssPositionMeasurement
+  Measurement ..> HeadingMeasurement
+  Measurement ..> PoseMeasurement
+  Measurement ..> ZeroRateMeasurement
+```
 
+#### 3.3.2 履歴・ゲート・優先度・復帰
+
+```mermaid
+classDiagram
   class IStateEstimator {
     <<interface>>
-    +predict(FilterState, MotionInput, double dt) FilterState*
-    +linearize(FilterState, Measurement) Linearization*
-    +correct(FilterState, Linearization) UpdateResult*
-    +worldCovariance(FilterState) Matrix3d*
   }
-  class InvEkfSe2 {
-    -EstimatorConfig cfg_
-    +predict(...) FilterState
-    +linearize(...) Linearization
-    +correct(...) UpdateResult
-    +worldCovariance(...) Matrix3d
-  }
-  class EsEkf2D {
-    +predict(...) FilterState
-    +linearize(...) Linearization
-    +correct(...) UpdateResult
-    +worldCovariance(...) Matrix3d
-  }
-
+  class FilterState
   class StateHistory {
     -deque~Entry~ buf_
     -double length_
     +push(FilterState, MotionInput)
     +latest() FilterState
-    +stateAt(double t, IStateEstimator) optional~FilterState~
-    +applyDelayed(Measurement, IStateEstimator, MahalanobisGate, GatePolicy) UpdateResult
-    +applyReanchor(Measurement, Matrix3d inflation, IStateEstimator) UpdateResult
-    +relativeMotion(double t_from, double t_to) SE2
+    +stateAt(t, estimator) optional~FilterState~
+    +applyDelayed(m, estimator, gate, policy) UpdateResult
+    +applyReanchor(m, inflation, estimator) UpdateResult
+    +relativeMotion(t_from, t_to) SE2
     +reset(FilterState)
   }
   class MahalanobisGate {
@@ -450,26 +448,6 @@ classDiagram
     -int max_consecutive_rejects_
     +check(Linearization, Matrix P) GateResult
   }
-  class OutputSmoother {
-    -Vector3d offset_
-    -double max_rate_xy_
-    -double max_rate_yaw_
-    +onCorrection(Vector3d world_delta)
-    +apply(Pose2D raw, double dt) Pose2D
-    +offsetNorm() pair~double,double~
-  }
-  class StatusMonitor {
-    +onAccepted(MeasurementKind, double t)
-    +onRejected(MeasurementKind, double t)
-    +evaluate(double t, Matrix3d cov, OutputSmoother) LocalizationStatus
-  }
-  class Initializer {
-    -InitPhase phase_
-    +onGnss(GnssPositionMeasurement) optional~FilterState~
-    +onExternalPose(Pose2D, Matrix3d) FilterState
-    +isReady(FilterState) bool
-  }
-
   class GatePolicy {
     <<enumeration>>
     REJECT_ON_FAIL
@@ -479,11 +457,11 @@ classDiagram
   class SourceArbiter {
     -ArbiterConfig cfg_
     -double last_gnss_fix_t_
-    -map~string, MismatchStats~ mismatch_
+    -MismatchStatsMap mismatch_
     +onGnssAccepted(double t)
     +isGnssFixActive(double t) bool
-    +gatePolicy(Measurement, double t) GatePolicy
-    +classifyLidar(PoseMeasurement, FilterState) LidarDecision
+    +gatePolicy(m, t) GatePolicy
+    +classifyLidar(m, state) LidarDecision
     +mismatchStats(string group) MismatchStats
   }
   class LidarDecision {
@@ -505,8 +483,8 @@ classDiagram
     -int lidar_reject_count_
     -int relocalize_attempts_
     +onAccepted(Measurement)
-    +onRejected(Measurement, UpdateResult, StateHistory) RecoveryAction
-    +onRelocalizeResult(optional~PoseMeasurement~) RecoveryAction
+    +onRejected(m, result, history) RecoveryAction
+    +onRelocalizeResult(result) RecoveryAction
     +onExternalPose()
     +state() RecoveryState
   }
@@ -524,41 +502,56 @@ classDiagram
     +Matrix3d inflation
     +optional~RelocalizeRequest~ relocalize
   }
-
   SourceArbiter ..> GatePolicy
   SourceArbiter ..> LidarDecision
   SourceArbiter *-- MismatchStats
   RecoveryManager ..> RecoveryState
   RecoveryManager ..> RecoveryAction
   RecoveryManager ..> StateHistory : relativeMotion
-  IStateEstimator <|.. InvEkfSe2
-  IStateEstimator <|.. EsEkf2D
   IStateEstimator ..> FilterState
-  IStateEstimator ..> MotionInput
-  IStateEstimator ..> Measurement
-  IStateEstimator ..> Linearization
-  Measurement ..> GnssPositionMeasurement
-  Measurement ..> HeadingMeasurement
-  Measurement ..> PoseMeasurement
-  Measurement ..> ZeroRateMeasurement
   StateHistory ..> IStateEstimator
   StateHistory ..> MahalanobisGate
   StateHistory *-- FilterState
 ```
 
+#### 3.3.3 出力整形・状態監視・初期化
+
+```mermaid
+classDiagram
+  class OutputSmoother {
+    -Vector3d offset_
+    -double max_rate_xy_
+    -double max_rate_yaw_
+    +onCorrection(Vector3d world_delta)
+    +apply(Pose2D raw, double dt) Pose2D
+    +offsetNorm() OffsetNorm
+  }
+  class StatusMonitor {
+    +onAccepted(MeasurementKind, double t)
+    +onRejected(MeasurementKind, double t)
+    +evaluate(double t, Matrix3d cov, OutputSmoother) LocalizationStatus
+  }
+  class Initializer {
+    -InitPhase phase_
+    +onGnss(GnssPositionMeasurement) optional~FilterState~
+    +onExternalPose(Pose2D, Matrix3d) FilterState
+    +isReady(FilterState) bool
+  }
+```
+
 補足:
 
+- `MismatchStatsMap` は `std::map<std::string, MismatchStats>`、`OffsetNorm` は（並進 [m], yaw [rad]）の組の別名。
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
 - `linearize` は `std::visit` で観測の型ごとに分岐する。IEKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
 - `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
 - `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、`StateHistory::relativeMotion` で最新時刻にそろえて互いに一致するかを判定し、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
-- `correct` は注入（$\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。
+- `correct` は注入（$`\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\xi)`$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。
 
 ### 3.4 measurement（センサデータ → 入力・観測）
 
 ```mermaid
 classDiagram
-  direction LR
 
   class AttitudeEstimator {
     -Quaterniond q_
@@ -611,7 +604,6 @@ classDiagram
 
 ```mermaid
 classDiagram
-  direction TB
 
   class IScanMatcher {
     <<interface>>
@@ -658,8 +650,8 @@ classDiagram
     -IScanMatcher* matcher_
     -ScanPreprocessor preprocessor_
     -MapTileManager* map_manager_
-    -function~Pose3D(double)~ predict_pose_
-    -function~void(PoseMeasurement)~ on_result_
+    -PosePredictor predict_pose_
+    -ResultCallback on_result_
     +start()
     +stop()
     +submit(LidarScan)
@@ -677,6 +669,7 @@ classDiagram
 
 補足:
 
+- `PosePredictor` は `std::function<Pose3D(double)>`、`ResultCallback` は `std::function<void(PoseMeasurement)>` の別名（図の表記を単純にするための型エイリアス）。
 - `ScanMatchingWorker` は最新のスキャンだけを保持する（`LatestSlot`。処理中に届いた古いスキャンは捨てる）。
 - 初期値は `predict_pose_`（`Localizer` が `StateHistory` からスキャン時刻の予測姿勢を返すコールバック）で取得する。結果は `on_result_` で `Localizer` に戻し、遅延観測として適用する。
 - `GicpMatcher` の中に small_gicp の型を閉じ込める。ほかのクラスは `RegistrationTarget` / `PreprocessedScan` を通してだけ扱う。
@@ -686,7 +679,6 @@ classDiagram
 
 ```mermaid
 classDiagram
-  direction TB
 
   class MapAnchor {
     -Vector3d map_point_
@@ -736,7 +728,7 @@ classDiagram
     -UniformGridIndex utm_index_
     -ITileLoader* loader_
     -IScanMatcher* matcher_
-    -map~TileId, TileData~ cache_
+    -TileCache cache_
     -atomic_shared_ptr~RegistrationTarget~ front_
     -thread thread_
     +start()
@@ -759,6 +751,7 @@ classDiagram
 
 補足:
 
+- `TileCache` は `std::map<TileId, TileData>` の別名。
 - `updatePose` は呼び出し側のスレッドで要求中心と必要なタイル集合を計算し、変化があればワーカーに通知するだけにする（すぐに戻る）。
 - ワーカーはタイルを読み込み、`IScanMatcher::buildTarget` で新しいターゲットを作る。完成したら `front_` をアトミックに差し替える（ダブルバッファ）。
 - 位置合わせ中のスレッドは `shared_ptr` でターゲットを保持しているので、差し替えの影響を受けない。
@@ -767,10 +760,9 @@ classDiagram
 
 ```mermaid
 classDiagram
-  direction LR
 
   class LocalizerNode {
-    <<rclcpp::Node>>
+    <<ROS2 Node>>
     -unique_ptr~Localizer~ localizer_
     -Subscription imu_sub_
     -Subscription odom_sub_
