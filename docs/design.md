@@ -1,20 +1,21 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md)
-- 状態: ドラフト（v0.4）
+- 状態: ドラフト（v0.5）
 
 | 版 | 変更内容 |
 |---|---|
 | v0.1 | 初版 |
 | v0.2 | 確定したハードウェア前提（u-blox F9P シングルアンテナ、6 軸 IMU、最高速度 6 km/h）を反映。スキャンマッチングを small_gicp に変更。推定器の代替候補として Invariant EKF を追記 |
 | v0.3 | 推定器を **Invariant EKF（SE(2)、左不変誤差）に変更**。GNSS 入力を独自ドライバの `ublox_gps/NavPVT` に確定。地図の統合は外部ツールで行い、本システムは統合済みの地図を入力とする前提に変更 |
+| v0.5 | GNSS 入力を **`sensor_msgs/NavSatFix`** に変更。RTK-FIX の表現・共分散・高さ・時刻について、ドライバとの取り決めを定義。進行方位の観測は、速度トピックがある場合の任意機能に変更 |
 | v0.4 | **RTK-FIX の GNSS を常に信用する方針**を確定。GNSS / LiDAR の優先度、食い違いの判定、再アンカー、再位置推定の節（3.13）を追加 |
 
 ### 前提ハードウェア・運用条件（v0.2〜v0.3 で確定）
 
 | 項目 | 内容 | 設計への主な影響 |
 |---|---|---|
-| GNSS | u-blox ZED-F9P、**シングルアンテナ** | GNSS から直接ヨーは得られない。初期ヨーは走行中の軌跡から決め、走行中は GNSS 速度の進行方位（course over ground）で補う（3.6 節）。RTK-FIX の判定は UBX-NAV-PVT の `carrSoln` を使う。ドライバは独自実装で、メッセージ型は `ublox_gps/NavPVT` |
+| GNSS | u-blox ZED-F9P、**シングルアンテナ** | GNSS から直接ヨーは得られない。初期ヨーも走行中のヨーも、GNSS の位置の系列から IEKF の中で推定する（3.6 節）。ドライバは独自実装で、メッセージ型は **`sensor_msgs/NavSatFix`**（v0.5）。RTK-FIX の表現などはドライバとの取り決めで定める |
 | 点群地図 | **統合は外部ツールで行う**。本システムには、地図グループごとに統合済みの点群が入力される | 地図の統合・作成は本システムの範囲外（5.1 節） |
 | IMU | **加速度と角速度のみ**（姿勢は出力しない） | roll / pitch を自前で推定する姿勢推定器が必要（3.9 節）。ジャイロバイアスは停止中に推定する |
 | 車速 | **最高 6 km/h（約 1.7 m/s）** | タイルの先読みは余裕がある。スキャン中の並進による歪みは小さい（0.1 s で 0.17 m 以下）が、旋回時の回転による歪みは残る（6.1 節）。出力整形のレートは車速に合わせて低めに設定する |
@@ -235,14 +236,26 @@ $$
 
 **出力の共分散**（世界座標系の x, y, yaw）: $\boldsymbol\Sigma_w = \mathbf{T}\,\mathbf{P}_{1:3,1:3}\,\mathbf{T}^\top$、$\mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)$
 
-### 3.6 GNSS 観測（u-blox F9P, UBX-NAV-PVT）
+### 3.6 GNSS 観測（u-blox F9P, `sensor_msgs/NavSatFix`）
 
-**採用条件**（すべて満たすときだけ更新に使う）:
+v0.5 で、GNSS の入力を標準の `sensor_msgs/NavSatFix` に変更した（ROS 1 にも同じ型があるので、移植も容易になる）。ただし `NavSatFix` には、RTK の FIX / FLOAT を区別する標準の値と、速度・進行方位が無い。そこで、**ドライバとの間で次の取り決め**を置く。
 
-- `flags` の carrier solution が fixed（`carrSoln == 2`）で、`gnssFixOK` が立っている（`fixType` は 3D fix 以上）。IF 層で `GnssFixType::RTK_FIX` に変換する。
-- `hAcc` が `gnss_max_stddev`（既定 0.05 m）以下。
-- FIX に遷移してから `gnss_fix_settle_time`（既定 1.0 s）が経過している（FIX 直後の誤 FIX 対策）。
-- FLOAT / DGPS / SINGLE は既定では使わない（設定で、大きな共分散を付けて使えるようにする余地を残す）。
+**ドライバとの取り決め**（独自ドライバ側で実装してもらう）:
+
+| 項目 | 取り決め |
+|---|---|
+| RTK-FIX の表現 | UBX-NAV-PVT の `carrSoln == 2`（fixed）かつ `gnssFixOK` のときだけ、`status.status = STATUS_GBAS_FIX (2)` にする。RTK-FLOAT、DGPS、単独測位は `STATUS_FIX (0)` または `STATUS_SBAS_FIX (1)` にする。コア側で使う値はパラメータ `gnss_rtk_fix_status`（既定 2）で変えられる |
+| 共分散 | `position_covariance`（ENU、[m²]）に `hAcc²`（E, N）と `vAcc²`（U）を対角で入れ、`position_covariance_type = COVARIANCE_TYPE_DIAGONAL_KNOWN (2)` にする |
+| 高さ | `altitude` は WGS84 の楕円体高にする（ROS の標準の定義どおり。平均海面高ではない） |
+| 時刻 | `header.stamp` は、できれば測位時刻（GNSS 時刻をシステム時刻に換算したもの）にする。受信時刻を入れる場合は、パラメータ `gnss_stamp_offset`（既定 0 s。負の値で過去側に補正）で遅延を補正する |
+| 速度（任意） | 進行方位の観測を使いたい場合だけ、別トピックで `geometry_msgs/TwistWithCovarianceStamped` を出す（`twist.linear.x` = 東向き速度、`y` = 北向き速度 [m/s]、共分散は `sAcc²`） |
+
+**採用条件**（すべて満たすときだけ RTK-FIX として更新に使う）:
+
+- `status.status == gnss_rtk_fix_status`（既定 2）
+- `position_covariance_type` が UNKNOWN 以外で、水平の標準偏差 $\sqrt{\max(\Sigma_{EE}, \Sigma_{NN})}$ が `gnss_max_stddev`（既定 0.05 m）以下。取り決めがずれていて RTK-FLOAT が status 2 で届いても、FLOAT は通常 σ が数 cm〜数十 cm なので、ここで落ちる（二重の安全策）
+- FIX に遷移してから `gnss_fix_settle_time`（既定 1.0 s）が経過している（FIX 直後の誤 FIX 対策）
+- `position_covariance_type == UNKNOWN` の場合は精度を確認できないので、既定では採用しない。`gnss_accept_unknown_covariance: true` にすると、`gnss_default_stddev` を使って採用する（その場合は WARN を出す）
 
 **位置観測**:
 
@@ -256,24 +269,24 @@ $$
 $$
 
 $$
-\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\boldsymbol\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta),\qquad \boldsymbol\Sigma_{\mathrm{gnss}} = \max(\mathrm{hAcc}, \sigma_{\min})^2\,\mathbf{I}_2
+\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\boldsymbol\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta),\qquad \boldsymbol\Sigma_{\mathrm{gnss}} = \max\!\big(\boldsymbol\Sigma_{EN},\ \sigma_{\min}^2\mathbf{I}_2\big)
 $$
 
-- $\sigma_{\min}$ = `gnss_min_stddev`（既定 0.02 m）。`hAcc` は楽観的なことが多いので下限を設ける。
+- $\boldsymbol\Sigma_{EN}$ は `position_covariance` の東・北の 2×2 ブロック。$\max$ は対角要素ごとに下限を取る意味。
+- $\sigma_{\min}$ = `gnss_min_stddev`（既定 0.02 m）。受信機が報告する精度は楽観的なことが多いので下限を設ける。
+- UTM 座標は、グリッドの東・北方向と ENU の東・北方向の違い（子午線収差 γ、数度以内）で共分散を回転させるのが厳密である。ただし等方的な共分散（E と N の分散が同じ）なら影響しないので、無視する。
 - 導出: $X\,\mathrm{Exp}(\boldsymbol\xi)\cdot\mathbf{l} \approx \hat X\cdot(\mathbf{l} + \boldsymbol\rho + \varphi\mathbf{J}\mathbf{l})$ より、$\mathbf{R}(\hat\theta)^\top(\mathbf{y}-\hat{\mathbf{y}}) \approx \boldsymbol\rho + \varphi\mathbf{J}\mathbf{l} + \text{noise}$。
 - ESEKF では $\mathbf{H}$ が $\hat\theta$ に依存していた。IEKF では yaw の推定誤差が大きくても、観測行列そのものは誤らない。
 
 **ヨーの観測**（F9P はシングルアンテナのため、ヘディングを直接は得られない）:
 
-- 位置観測の系列: 走行中は、$\mathbf{F}$ の結合項（yaw 誤差 → 横方向誤差）を通して、位置観測からヨーが推定される。停止中は観測されない（ZARU でドリフトだけを抑える）。
-- 進行方位（course over ground）の観測: NAV-PVT の地上速度 `gSpeed`、進行方位 `headMot`、精度 `sAcc` / `headAcc` を使い、次の条件をすべて満たすときに 1 自由度の観測として追加する。
-  - 条件: RTK-FIX 中で、`gSpeed` > `cog_min_speed`（既定 0.5 m/s）、|ヨーレート| < `cog_max_yaw_rate`（既定 5 deg/s。レバーアームによる速度成分の影響を避けるため）、かつ前進中。
-  - $z = \pi/2 - (\mathrm{headMot} - \gamma)$（真北基準の方位をグリッドの ENU 角に変換。$\gamma$ は子午線収差）
+- **位置観測の系列（主）**: 走行中は、$\mathbf{F}$ の結合項（yaw 誤差 → 横方向誤差）を通して、位置観測からヨーが推定される。停止中は観測されない（ZARU でドリフトだけを抑える）。`NavSatFix` だけを使う既定の構成では、これが唯一の GNSS 由来のヨーの情報源になる。IEKF はこの形の推定に強いので、実用上は十分と見込む（Phase 1 のシミュレーションで確認する）。
+- **進行方位の観測（任意、既定は無効）**: ドライバが速度トピック（上の取り決め）を出す場合だけ、`use_gnss_velocity: true` で有効にする。
+  - 条件: RTK-FIX 中で、水平速度 $|\mathbf{v}| >$ `cog_min_speed`（既定 0.5 m/s）、|ヨーレート| < `cog_max_yaw_rate`（既定 5 deg/s。レバーアームによる速度成分の影響を避けるため）、かつ前進中。
+  - $z = \mathrm{atan2}(v_N, v_E) + \gamma$（ENU の角度をグリッドの角度に変換。$\gamma$ は子午線収差）
   - $r = \mathrm{wrap}(z - \hat\theta)$、$\mathbf{H} = [0\ 0\ 1\ 0\ 0]$
-  - 分散: $\sigma_\psi \approx \max(\mathrm{headAcc},\ \mathrm{sAcc}/\mathrm{gSpeed})$。最高速の 1.7 m/s でも、sAcc = 0.05 m/s なら約 1.7°。**補助的な観測**と位置付ける。
-- 後退中は使わない。
-
-**時刻**: NAV-PVT のメッセージ定義にヘッダ（時刻）が無い場合、IF 層で「受信時刻 − `gnss_latency`（既定 0.05 s。実測して調整する）」を観測時刻とする。`iTOW`（GPS 時刻）とシステム時刻の対応が取れる構成なら、そちらを優先する。
+  - 分散: $\sigma_\psi \approx \sigma_v / |\mathbf{v}|$。最高速の 1.7 m/s でも、$\sigma_v$ = 0.05 m/s なら約 1.7° で、**補助的な観測**にとどまる。
+  - 後退中は使わない。
 
 ### 3.7 LiDAR 観測
 
@@ -391,7 +404,7 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 #### 3.13.1 優先度の方針
 
-**RTK-FIX の GNSS は常に信用する**（v0.4 で確定）。ここでいう RTK-FIX は、3.6 節の採用条件（`carrSoln` = fixed、`hAcc`、FIX 後の安定待ち）を満たしたものを指す。
+**RTK-FIX の GNSS は常に信用する**（v0.4 で確定）。ここでいう RTK-FIX は、3.6 節の採用条件（status が RTK-FIX を表す値、水平精度、FIX 後の安定待ち）を満たしたものを指す。
 
 | 状況 | GNSS（RTK-FIX） | LiDAR |
 |---|---|---|
@@ -836,23 +849,12 @@ class Localizer {
 |---|---|---|
 | `~/input/imu` | `sensor_msgs/Imu` | |
 | `~/input/odom` | `nav_msgs/Odometry` または `geometry_msgs/TwistWithCovarianceStamped` | パラメータで選択 |
-| `~/input/gnss/navpvt` | `ublox_gps/NavPVT`（独自ドライバ） | 位置・精度・`carrSoln`・地上速度・進行方位を 1 つのメッセージから取れる |
+| `~/input/gnss/fix` | `sensor_msgs/NavSatFix` | 独自ドライバ。3.6 節の取り決めに従う |
+| `~/input/gnss/velocity` | `geometry_msgs/TwistWithCovarianceStamped` | 任意（`use_gnss_velocity: true` のときだけ購読） |
 | `~/input/points` | `sensor_msgs/PointCloud2` | |
 | `~/input/initial_pose` | `geometry_msgs/PoseWithCovarianceStamped` | |
 
-**NavPVT の変換**（IF 層の `NavPvtConverter`）: `NavSatStatus` には RTK FIX / FLOAT を区別する標準の値が無いため、NavPVT から直接コアの `GnssSample` を作る。フィールド名と単位は UBX-NAV-PVT の仕様（`ublox_msgs/NavPVT` 準拠）を仮定している。**独自ドライバのため、実装時にメッセージ定義ファイルで確認する**。
-
-| NavPVT のフィールド（仮定） | 単位 | コアの `GnssSample` |
-|---|---|---|
-| `lat`, `lon` | 1e-7 deg | `lat`, `lon` [deg] |
-| `height`（楕円体高） | mm | `h` [m] |
-| `hAcc`, `vAcc` | mm | `cov`（対角、[m²]） |
-| `flags`（`gnssFixOK`、`carrSoln`）、`fixType` | ビット / 列挙 | `fix`（`GnssFixType`） |
-| `gSpeed`, `sAcc` | mm/s | 地上速度と精度 [m/s] |
-| `heading`（headMot）, `headAcc` | 1e-5 deg | 進行方位と精度 [rad] |
-| `velN`, `velE`, `velD` | mm/s | 速度ベクトル（診断用） |
-| `iTOW` | ms | 時刻の対応付けに使う（3.6 節「時刻」） |
-| （ヘッダ） | | あれば `stamp` を使う。無ければ受信時刻 − `gnss_latency` |
+**NavSatFix の変換**（IF 層の `NavSatFixConverter`）: `status.status`、`position_covariance(_type)`、`altitude`、`header.stamp` を 3.6 節の取り決めに従ってコアの `GnssSample` に変換する（RTK-FIX の判定そのものはコアの `GnssMeasurementBuilder` で行う）。速度トピックは `GnssVelocitySample` に変換する。
 
 配信:
 
@@ -904,7 +906,10 @@ class Localizer {
 | | `gicp_max_jump` | 1.0 m / 5 deg | |
 | 姿勢推定 | `imu_static_init_time` | 3 s | 起動時のジャイロバイアス推定 |
 | 予測 | `sigma_v_lat` | 0.02 m/s | 横すべり（非ホロノミック拘束の不確かさ） |
-| GNSS | `gnss_latency` | 0.05 s | NavPVT にヘッダが無い場合の受信遅延。実測して調整する |
+| GNSS | `gnss_rtk_fix_status` | 2（`STATUS_GBAS_FIX`） | RTK-FIX を表す `status.status` の値 |
+| | `gnss_stamp_offset` | 0.0 s | `header.stamp` が受信時刻の場合の遅延補正 |
+| | `gnss_accept_unknown_covariance` / `gnss_default_stddev` | false / 0.03 m | 共分散が UNKNOWN のときの扱い |
+| | `use_gnss_velocity` | false | 進行方位の観測を使うか |
 | 初期化 | `init_heading_min_distance` | 1.0 m | 粗い yaw を決めるための走行距離 |
 | | `init_yaw_stddev` | 15 deg | フィルタ始動時の yaw の σ |
 | | `ready_yaw_stddev` / `ready_pos_stddev` | 2 deg / 0.1 m | 初期化完了の条件 |
@@ -959,7 +964,7 @@ class Localizer {
 
 ## 11. 未決事項・確認事項
 
-1. ~~GNSS 受信機~~ → u-blox F9P、シングルアンテナ、独自ドライバ（`ublox_gps/NavPVT`）（v0.3 で確定）。**残り**: NavPVT のメッセージ定義（ヘッダの有無、フィールド名・単位）、出力レート、受信遅延。
+1. ~~GNSS 受信機~~ → u-blox F9P、シングルアンテナ、独自ドライバ、`sensor_msgs/NavSatFix`（v0.5 で確定）。**残り**: 3.6 節の取り決め（status の値、共分散、楕円体高、stamp の意味）にドライバを合わせられるか。速度トピックを出せるか。出力レート。
 2. **ODOM の形式**: 車輪速のみか、ヨーレートも出すか。メッセージ型は何か。
 3. ~~IMU~~ → 加速度と角速度のみ（v0.2 で確定）。
 4. **LiDAR**: 機種、スキャン時刻の定義、点ごとのタイムスタンプの有無。

@@ -1,7 +1,7 @@
 # ソフトウェア構成: コンポーネント図・クラス図
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.4）
-- 状態: ドラフト（v0.2。設計書 v0.4 の 3.13 節「優先度・食い違いの判定・復帰」を反映）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.5）
+- 状態: ドラフト（v0.3。設計書 v0.5 の GNSS 入力 `sensor_msgs/NavSatFix` を反映）
 
 本書は、設計書 7 章のアーキテクチャを、実装に入れる粒度のコンポーネント図・クラス図に落としたものである。クラス名・メソッド名は実装時の名前の案で、引数や戻り値の細部は実装時に調整する。
 
@@ -30,7 +30,7 @@ flowchart TB
     direction LR
     DRV_IMU["IMU ドライバ"]
     DRV_ODOM["ODOM"]
-    DRV_GNSS["F9P 独自ドライバ<br/>ublox_gps/NavPVT"]
+    DRV_GNSS["F9P 独自ドライバ<br/>sensor_msgs/NavSatFix<br/>（+ 任意で速度）"]
     DRV_LIDAR["LiDAR ドライバ"]
     MAPFILES[("統合済み地図<br/>（外部ツールで作成）")]
     TILES[("タイル + tile_index.yaml<br/>+ maps.yaml")]
@@ -39,7 +39,7 @@ flowchart TB
 
   subgraph ROS2["gll_ros2（IF 層・ROS 2 依存）"]
     NODE["LocalizerNode"]
-    CONV["Converters<br/>Imu / Odom / NavPvt / PointCloud"]
+    CONV["Converters<br/>Imu / Odom / NavSatFix / PointCloud"]
     PARAM["ParameterLoader<br/>→ LocalizerConfig"]
     PUBL["OutputPublisher<br/>pose / odometry / TF / diagnostics"]
     RLOG["RosLogger"]
@@ -180,13 +180,14 @@ classDiagram
     +double lat
     +double lon
     +double h
-    +double h_acc
-    +double v_acc
-    +GnssFixType fix
-    +optional~double~ ground_speed
-    +optional~double~ speed_acc
-    +optional~double~ head_mot
-    +optional~double~ head_acc
+    +Matrix3d cov_enu
+    +bool cov_known
+    +int raw_status
+  }
+  class GnssVelocitySample {
+    +double t
+    +Vector2d vel_en
+    +Matrix2d cov
   }
   class LidarScan {
     +double t
@@ -269,7 +270,6 @@ classDiagram
     +static fromYaml(path) LocalizerConfig
   }
 
-  GnssSample --> GnssFixType
   LocalizationOutput --> Pose2D
   LocalizationOutput --> LocalizationStatus
   UtmProjector ..> UtmPoint
@@ -303,6 +303,7 @@ classDiagram
     +addImu(ImuSample)
     +addOdom(OdomSample)
     +addGnss(GnssSample)
+    +addGnssVelocity(GnssVelocitySample)
     +addLidarScan(LidarScan)
     +setInitialPose(Pose2D, Matrix3d cov)
     +getOutput() optional~LocalizationOutput~
@@ -579,12 +580,15 @@ classDiagram
   class GnssMeasurementBuilder {
     -UtmProjector utm_
     -Vector2d lever_arm_
+    -int rtk_fix_status_
     -double fix_since_
-    +build(GnssSample, double current_yaw_rate) GnssMeasurements
+    +classify(GnssSample) GnssFixType
+    +buildPosition(GnssSample) GnssPositionResult
+    +buildHeading(GnssVelocitySample, double yaw_rate, bool rtk_fix_active) optional~HeadingMeasurement~
   }
-  class GnssMeasurements {
+  class GnssPositionResult {
     +optional~GnssPositionMeasurement~ position
-    +optional~HeadingMeasurement~ heading
+    +GnssFixType fix
     +GnssRejectReason reason
   }
   class LidarMeasurementBuilder {
@@ -599,7 +603,7 @@ classDiagram
   class UtmProjector
 
   GnssMeasurementBuilder --> UtmProjector
-  GnssMeasurementBuilder ..> GnssMeasurements
+  GnssMeasurementBuilder ..> GnssPositionResult
   MotionInputBuilder ..> AttitudeEstimator
 ```
 
@@ -770,16 +774,18 @@ classDiagram
     -unique_ptr~Localizer~ localizer_
     -Subscription imu_sub_
     -Subscription odom_sub_
-    -Subscription navpvt_sub_
+    -Subscription navsatfix_sub_
+    -Subscription gnss_vel_sub_
     -Subscription points_sub_
     -Subscription initial_pose_sub_
     -TimerBase output_timer_
     -OutputPublisher publisher_
-    -NavPvtConverter navpvt_conv_
+    -NavSatFixConverter navsatfix_conv_
     +LocalizerNode(NodeOptions)
     -onImu(Imu)
     -onOdom(Odometry)
-    -onNavPvt(ublox_gps_NavPVT)
+    -onNavSatFix(NavSatFix)
+    -onGnssVelocity(TwistWithCovarianceStamped)
     -onPoints(PointCloud2)
     -onInitialPose(PoseWithCovarianceStamped)
     -onOutputTimer()
@@ -797,9 +803,10 @@ classDiagram
     +warn(msg)
     +error(msg)
   }
-  class NavPvtConverter {
-    -double latency_
-    +convert(ublox_gps_NavPVT, rclcpp_Time recv) GnssSample
+  class NavSatFixConverter {
+    -double stamp_offset_
+    +convert(NavSatFix) GnssSample
+    +convert(TwistWithCovarianceStamped) GnssVelocitySample
   }
   class MsgConverters {
     <<utility>>
@@ -825,7 +832,7 @@ classDiagram
 
   LocalizerNode *-- Localizer
   LocalizerNode *-- OutputPublisher
-  LocalizerNode *-- NavPvtConverter
+  LocalizerNode *-- NavSatFixConverter
   LocalizerNode ..> ParameterLoader
   LocalizerNode ..> ExtrinsicsLoader
   LocalizerNode ..> MsgConverters
@@ -863,8 +870,8 @@ sequenceDiagram
   L->>H: push(state, input)
 
   N->>L: addGnss(GnssSample)
-  L->>G: build(sample, yaw_rate)
-  G-->>L: position / heading（採用条件を満たすものだけ）
+  L->>G: classify(sample) / buildPosition(sample)
+  G-->>L: position（RTK-FIX かつ精度・安定待ちを満たすものだけ）
   L->>AR: onGnssAccepted(t) / gatePolicy(m) → NEVER_REJECT
   L->>H: applyDelayed(measurement, estimator, gate, policy)
   H->>E: stateAt(t_z) → linearize → gate → correct
@@ -953,7 +960,7 @@ sequenceDiagram
 | `core/include/gll/matching/` | `scan_matcher.hpp`（`IScanMatcher`、`RegistrationTarget`、`RegistrationResult`）、`gicp_matcher.hpp`、`scan_preprocessor.hpp`、`scan_matching_worker.hpp` |
 | `core/include/gll/map/` | `map_anchor.hpp`、`map_group.hpp`（`MapGroup`、`TileIndex`、`TileMeta`）、`tile_loader.hpp`（`ITileLoader`、`BinaryTileLoader`、`TileData`）、`map_tile_manager.hpp` |
 | `core/include/gll/` | `localizer.hpp`（`Localizer`） |
-| `ros2/gll_ros2/` | `localizer_node.cpp`、`parameter_loader.cpp`、`extrinsics_loader.cpp`、`ros_logger.hpp`、`navpvt_converter.cpp`、`msg_converters.cpp`、`output_publisher.cpp` |
+| `ros2/gll_ros2/` | `localizer_node.cpp`、`parameter_loader.cpp`、`extrinsics_loader.cpp`、`ros_logger.hpp`、`navsatfix_converter.cpp`、`msg_converters.cpp`、`output_publisher.cpp` |
 | `tools/map_tiler/` | `gll_map_tiler`（統合済み地図 → タイル + 点ごとの共分散） |
 | `tools/anchor_calibrator/` | `gll_anchor_calibrator` |
 
