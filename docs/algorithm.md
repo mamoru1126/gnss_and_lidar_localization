@@ -1,6 +1,6 @@
 # アルゴリズム説明書: Invariant EKF による GNSS / LiDAR / IMU / ODOM 融合
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.5） / [ソフトウェア構成](./architecture.md)
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.8） / [ソフトウェア構成](./architecture.md)
 - 状態: ドラフト（v0.1）
 - 検証スクリプト: [`tools/sim/compare_invariant_ekf_vs_esekf.py`](../tools/sim/compare_invariant_ekf_vs_esekf.py)
 - 図解ページ: [`docs/explainer/index.html`](./explainer/index.html)（ブラウザで開くと図と数式が表示される）
@@ -385,7 +385,7 @@ on IMU (gyro ω, acc a), 直近の ODOM 速度 v とその微分 v̇:
 ```text
 predict(state, v_o, ω_m, Δt):
     Δφ  = (ω_m - b) Δt
-    Δρ  = (s v_o Δt, 0)
+    Δρ  = (s v_o Δt, v_lat Δt)                      // v_lat: ODOM の横速度（通常 0）
     (RΔ, tΔ) = SE2::Exp(Δρ, Δφ)
     X ← X · (RΔ, tΔ)
     F = I₅

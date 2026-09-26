@@ -1,6 +1,6 @@
 # 検証計画: i2Nav-Robot データセットを使った検証
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.7。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md)
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.8。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md)
 - 状態: ドラフト（v0.1）
 
 本書は、公開データセット **i2Nav-Robot**（武漢大学 i2Nav グループ）を使って、本システムの自己位置推定をどう検証するかをまとめたものである。データセットの情報は、同データセットの GitHub リポジトリ（2026-01-16 のコミット `2ffdca6`）の README、`calibration/calibration.yaml`、`sequence_detail/i2nav_robot.json` で確認した内容に基づく。
@@ -73,8 +73,8 @@ ADIS16465 の IMU 中心（FRD）を基準にした値。本システムでは *
 
 | 担当 | 内容 |
 |---|---|
-| Claude（この環境） | 変換・評価・障害注入のスクリプトを書く。コアの単体テストと合成データのシミュレーションを行う。GitHub Actions の CI で ROS 2 ノードをビルドする。受け取ったログを解析し、パラメータの調整や修正を行う |
-| 利用者（手元の PC） | データのダウンロード、ROS 2 bag への変換、点群地図の作成、推定ノードでの bag 再生とログの記録。ログを Claude に渡す |
+| Claude（この環境） | Docker 環境（Dockerfile・compose）と、変換・評価・障害注入のスクリプトを書く。コアの単体テストと合成データのシミュレーションを行う。GitHub Actions の CI で ROS 2 ノードをビルドする。受け取ったログを解析し、パラメータの調整や修正を行う |
+| 利用者（手元の PC） | Docker 環境の構築（`docker compose build`）、データのダウンロード、ROS 2 bag への変換、点群地図の作成、推定ノードでの bag 再生とログの記録。ログを Claude に渡す |
 
 ```mermaid
 flowchart LR
@@ -110,12 +110,12 @@ flowchart LR
 
 ### 3.2 ROS 2 bag への変換（`tools/i2nav/convert_i2nav.py`、Claude が作成）
 
-利用者の PC に `pip install rosbags` を入れて実行する。変換内容:
+Docker の `dev` ステージのコンテナ（`rosbags` 入り。設計書 7.8 節）の中で実行する。変換内容:
 
 | 入力 | 出力（ROS 2） | 処理 |
 |---|---|---|
 | `/adi/adis16465/imu` | `/sensing/imu`（`sensor_msgs/Imu`、frame `base_link`） | FRD → FLU（y, z の符号を反転） |
-| `*_ODO_SPEED.txt`（または `/insprobe/ranger/odometer`） | `/sensing/odom`（`geometry_msgs/TwistWithCovarianceStamped`） | GNSS 週秒 → UNIX 秒、`td_imu_odo` の補正。bag のトピックを使う場合は左右を入れ替えて前進速度を計算する |
+| `*_ODO_SPEED.txt`（または `/insprobe/ranger/odometer`） | `/sensing/odom`（`nav_msgs/Odometry`。twist だけを埋める） | GNSS 週秒 → UNIX 秒、`td_imu_odo` の補正。bag のトピックを使う場合は左右を入れ替えて前進速度を計算する |
 | `/novatel/oem7/fix` | `/sensing/gnss/fix`（`sensor_msgs/NavSatFix`） | RTK-FIX の判定が `status` で区別されていなければ、水平 σ ≤ `fix_std_threshold`（既定 0.03 m）のときだけ `status = 2`、それ以外は 0 に付け直す。`position_covariance` に std² を入れる |
 | `/ublox/f9p/fix` | `/sensing/gnss_spp/fix` | そのまま（単独測位。棄却の確認用） |
 | `/hesai/at128/points` | `/sensing/lidar/points`（`sensor_msgs/PointCloud2`） | そのまま（外部パラメータは TF で与える） |

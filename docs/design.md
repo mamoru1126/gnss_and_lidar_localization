@@ -1,13 +1,14 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md) / [検証計画: i2Nav-Robot](./validation_i2nav.md)
-- 状態: ドラフト（v0.7）
+- 状態: ドラフト（v0.8）
 
 | 版 | 変更内容 |
 |---|---|
 | v0.1 | 初版 |
 | v0.2 | 確定したハードウェア前提（u-blox F9P シングルアンテナ、6 軸 IMU、最高速度 6 km/h）を反映。スキャンマッチングを small_gicp に変更。推定器の代替候補として Invariant EKF を追記 |
 | v0.3 | 推定器を **Invariant EKF（SE(2)、左不変誤差）に変更**。GNSS 入力を独自ドライバの `ublox_gps/NavPVT` に確定。地図の統合は外部ツールで行い、本システムは統合済みの地図を入力とする前提に変更 |
+| v0.8 | ROS 2 Jazzy と Docker 環境を確定し、ROS 1 対応は後回しに。出力 TF を `map` → `base_link`（`map` = UTM）とし、地図グループの座標系を `pcd_<group_id>` に改名。ODOM を `nav_msgs/Odometry`（twist を使用）に確定し、横方向の速度も予測に使えるようにした |
 | v0.7 | 出力の共分散に、出力整形層に残っているオフセットの分（$`\mathbf{o}\mathbf{o}^\top`$）を加えるよう変更（3.10 節） |
 | v0.6 | GNSS アンテナのレバーアームを 3 次元（アンテナ高さ $`l_z`$ ≤ 1 m）にし、roll / pitch で水平面に射影して使うよう変更。roll / pitch の誤差を GNSS の観測共分散に加算 |
 | v0.5 | GNSS 入力を **`sensor_msgs/NavSatFix`** に変更。RTK-FIX の表現・共分散・高さ・時刻について、ドライバとの取り決めを定義。進行方位の観測は、速度トピックがある場合の任意機能に変更 |
@@ -178,13 +179,14 @@ $`s`$ の推定は、設定で無効にできるようにする（推定する�
 
 - $`\omega_m`$: 傾斜補正済みのヨーレート（IMU、3.9 節）
 - $`v_o`$: 傾斜補正済みの前進速度（ODOM）
+- $`v_{\mathrm{lat}}`$: 横方向の速度（ODOM の `twist.linear.y`。通常の車両では 0。v0.8 で追加。スケール係数は前進速度にだけ掛ける）
 
 予測は IMU のタイムスタンプで駆動する（100〜200 Hz）。ODOM の速度は、最新 2 サンプルの線形補間（外挿は最大 `odom_hold_max` 秒まで）で IMU の時刻にそろえる。IMU が途切れた場合は、ODOM のヨーレートで代替する（診断で WARN を出す）。
 
 **推定状態の伝播**（機体座標系の移動量を群の上で積算する。数値積分の誤差が出ない）:
 
 ```math
-\Delta\varphi = (\omega_m - \hat b_\omega)\Delta t,\quad \Delta\rho = \begin{bmatrix} \hat s\,v_o\,\Delta t \\ 0 \end{bmatrix},\quad
+\Delta\varphi = (\omega_m - \hat b_\omega)\Delta t,\quad \Delta\rho = \begin{bmatrix} \hat s\,v_o\,\Delta t \\ v_{\mathrm{lat}}\,\Delta t \end{bmatrix},\quad
 \hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\Delta\rho, \Delta\varphi),\quad \hat b_{\omega,k+1} = \hat b_{\omega,k},\ \hat s_{k+1} = \hat s_k
 ```
 
@@ -530,8 +532,8 @@ stateDiagram-v2
 
 | フレーム | 定義 |
 |---|---|
-| `utm` | 固定した UTM ゾーンの (Easting, Northing, 楕円体高)。**推定器の状態と出力はこの座標系** |
-| `map_<group_id>` | 地図グループごとの点群地図の座標系。点群とタイルはこの座標系で保存する |
+| `map` | 固定した UTM ゾーンの (Easting, Northing, 楕円体高)。**推定器の状態と出力はこの座標系**（v0.8 でフレーム名を `utm` から `map` に変更。座標値は UTM そのもの） |
+| `pcd_<group_id>` | 地図グループごとの点群地図の座標系。点群とタイルはこの座標系で保存する（出力の `map` と区別するため、`map_` ではなく `pcd_` を付ける） |
 | `base_link` | 車両の基準。センサの外部パラメータは base_link 基準で与える |
 | `imu`, `lidar`, `gnss_antenna` | 各センサ。base_link からの静的な変換は IF 層が読み込み、コアにパラメータとして渡す |
 
@@ -564,7 +566,7 @@ UTM 座標は $`10^5`$〜$`10^6`$ m のオーダーになる。`float32` では�
 
 - 点群とタイルは**地図グループの座標系（原点付近）で `float32` のまま保持**する。スキャンマッチングも地図座標系で実行する。
 - UTM 座標を扱う状態・観測・出力はすべて `double` にする（`geometry_msgs` も float64）。
-- RViz での可視化用に、固定原点の `utm_local` フレーム（UTM − 原点オフセット）も TF で出せるようにする。
+- RViz での可視化用に、固定原点の `map_local` フレーム（UTM − 原点オフセット）も TF で出せるようにする（`map` → `map_local` の静的変換）。
 
 ---
 
@@ -817,7 +819,7 @@ namespace gll {
 
 struct ImuSample   { double t; Eigen::Vector3d gyro; Eigen::Vector3d acc;
                      std::optional<Eigen::Quaterniond> orientation; };
-struct OdomSample  { double t; double v; std::optional<double> yaw_rate; };
+struct OdomSample  { double t; double v; double v_lat; std::optional<double> yaw_rate; };  // twist の x, y, angular.z
 enum class GnssFixType { NONE, SINGLE, DGPS, RTK_FLOAT, RTK_FIX };
 struct GnssSample  { double t; double lat, lon, h; Eigen::Matrix3d cov; GnssFixType fix;
                      std::optional<double> heading; std::optional<double> heading_var; };
@@ -872,7 +874,7 @@ class Localizer {
 | トピック（既定） | 型 | 備考 |
 |---|---|---|
 | `~/input/imu` | `sensor_msgs/Imu` | |
-| `~/input/odom` | `nav_msgs/Odometry` または `geometry_msgs/TwistWithCovarianceStamped` | パラメータで選択 |
+| `~/input/odom` | `nav_msgs/Odometry` | v0.8 で確定。**twist だけを使う**（`twist.linear.x` = 前進速度、`twist.linear.y` = 横速度、`twist.angular.z` = ヨーレート。いずれも `child_frame_id` の機体座標系）。pose（オドメトリ自身が積分した位置・姿勢）は使わない |
 | `~/input/gnss/fix` | `sensor_msgs/NavSatFix` | 独自ドライバ。3.6 節の取り決めに従う |
 | `~/input/gnss/velocity` | `geometry_msgs/TwistWithCovarianceStamped` | 任意（`use_gnss_velocity: true` のときだけ購読） |
 | `~/input/points` | `sensor_msgs/PointCloud2` | |
@@ -884,15 +886,18 @@ class Localizer {
 
 | トピック（既定） | 型 | 備考 |
 |---|---|---|
-| `~/output/pose` | `geometry_msgs/PoseWithCovarianceStamped` | frame_id = `utm`、出力整形後 |
+| `~/output/pose` | `geometry_msgs/PoseWithCovarianceStamped` | frame_id = `map`（UTM）、出力整形後 |
 | `~/output/odometry` | `nav_msgs/Odometry` | 速度・ヨーレートを含む |
 | `~/debug/raw_pose` | `geometry_msgs/PoseWithCovarianceStamped` | フィルタの生の推定値 |
 | `~/debug/gicp_pose`, `~/debug/gicp_quality` | | スキャンマッチングの結果・品質指標 |
-| `~/debug/loaded_map` | `sensor_msgs/PointCloud2` | frame_id = `utm_local`（低頻度） |
+| `~/debug/loaded_map` | `sensor_msgs/PointCloud2` | frame_id = `map_local`（低頻度） |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 状態・棄却数・処理時間 |
-| TF | | `utm` → `base_link`（設定で `utm_local` にも出せる） |
+| TF | | **`map` → `base_link`**（odom フレームは使わない。v0.8）。可視化用に `map` → `map_local` の静的変換も出せる。フレーム名はパラメータ（`map_frame`、`base_frame`）で変えられる |
 
-### 7.6 ROS 1 への移植
+### 7.6 ROS 1 への移植（後回し）
+
+v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依存性は保ち、次の方針でいつでも移植できる状態を維持する。
+
 
 - `gll_ros1` は、`gll_ros2` と同じ構成（購読 → 型変換 → `Localizer` → 配信）を roscpp で書き直すだけで済む。
 - 型変換の関数（`fromRosMsg` / `toRosMsg`）はメッセージの定義がほぼ同じなので、ヘッダだけテンプレート化して共有することも検討する。
@@ -910,6 +915,23 @@ class Localizer {
 | GoogleTest | 単体テスト |
 
 ---
+
+### 7.8 開発環境（Docker、v0.8）
+
+開発・ビルド・テスト・データ変換は、すべて Docker のコンテナで行う。
+
+| 項目 | 内容 |
+|---|---|
+| ベースイメージ | `ros:jazzy-ros-base`（Ubuntu 24.04） |
+| apt で入れる依存 | Eigen3、GeographicLib、yaml-cpp、GoogleTest、OpenMP、PCL（ツールと IF 層用）、`ros-jazzy-*` の必要パッケージ（`tf2_ros`、`diagnostic_updater` など） |
+| ソースからビルドする依存 | small_gicp（タグを固定して `git clone` し、CMake でインストール） |
+| ステージ | `dev`（ビルド・テスト・デバッグ用。Python の `rosbags` など検証用ツールも入れる）と `runtime`（実行に必要なものだけ） |
+| 構成ファイル | `docker/Dockerfile`、`docker/compose.yaml`（ワークスペースとデータディレクトリ `$GLL_DATA` をマウント。RViz 用の X11 転送は任意） |
+| VS Code | `.devcontainer/devcontainer.json`（任意。`dev` ステージを使う） |
+| CI | GitHub Actions で同じ Dockerfile の `dev` ステージをビルドし、その中で colcon ビルドと単体テストを実行する |
+
+- コア（`gll_core`）は ROS なしでもビルドできる構成を保つ。CI では、ROS なしでのコア単体のビルドとテストも別ジョブで行い、ROS への依存が紛れ込んでいないことを確かめる。
+- i2Nav-Robot の変換・評価スクリプト（[検証計画](./validation_i2nav.md)）も、`dev` ステージのコンテナ内で実行する。
 
 ## 8. パラメータ初期値（抜粋）
 
@@ -983,7 +1005,7 @@ class Localizer {
 
 | Phase | 内容 |
 |---|---|
-| 1 | コアの骨格（型、設定、ロガー）、SE(2) 演算、Invariant EKF、状態履歴バッファ、GNSS 観測、補助姿勢推定、出力整形、状態監視、GNSS の再アンカー / ROS 2 IF（IMU・ODOM・GNSS） / 単体テスト。**GNSS + デッドレコニングで動く状態**。シミュレーションで yaw の初期誤差に対する収束を ESEKF 版と比較し、Invariant EKF の優位を確認する |
+| 1 | **Docker 環境と CI**、コアの骨格（型、設定、ロガー）、SE(2) 演算、Invariant EKF、状態履歴バッファ、GNSS 観測、補助姿勢推定、出力整形、状態監視、GNSS の再アンカー / ROS 2 IF（IMU・ODOM・GNSS） / 単体テスト。**GNSS + デッドレコニングで動く状態**。シミュレーションで yaw の初期誤差に対する収束を ESEKF 版と比較し、Invariant EKF の優位を確認する |
 | 2 | アンカー変換、タイルツール、地図タイルマネージャ（非同期ロード・ダブルバッファ）、GICP の実装と LiDAR 観測、回転の歪み補正、地図区間での初期化、GNSS FIX 中の LiDAR の食い違い判定と LiDAR の再アンカー、再位置推定 |
 | 3 | 地図グループの切り替え、アンカー較正ツール、診断の充実、実走行データでのパラメータ調整 |
 | 4（拡張） | SE₂(3) 上の 3D Invariant EKF + IMU バイアス（z / roll / pitch の出力）、スキャンのデスキュー、地図アンカーオフセットのオンライン推定、ROS 1 IF |
@@ -993,7 +1015,7 @@ class Localizer {
 ## 11. 未決事項・確認事項
 
 1. ~~GNSS 受信機~~ → u-blox F9P、シングルアンテナ、独自ドライバ、`sensor_msgs/NavSatFix`（v0.5 で確定）。**残り**: 3.6 節の取り決め（status の値、共分散、楕円体高、stamp の意味）にドライバを合わせられるか。速度トピックを出せるか。出力レート。
-2. **ODOM の形式**: 車輪速のみか、ヨーレートも出すか。メッセージ型は何か。
+2. ~~ODOM の形式~~ → `nav_msgs/Odometry`（位置・姿勢・並進速度・旋回速度を含む）。twist だけを使う（v0.8 で確定）。**残り**: 車両が横移動・その場旋回・後退をするか（予測モデルは横速度と後退に対応済み）。
 3. ~~IMU~~ → 加速度と角速度のみ（v0.2 で確定）。
 4. **LiDAR**: 機種、スキャン時刻の定義、点ごとのタイムスタンプの有無。
 5. ~~車速の範囲~~ → 最高 6 km/h（v0.2 で確定）。

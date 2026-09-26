@@ -1,7 +1,7 @@
 # ソフトウェア構成: コンポーネント図・クラス図
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.5）
-- 状態: ドラフト（v0.3。設計書 v0.5 の GNSS 入力 `sensor_msgs/NavSatFix` を反映）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.8）
+- 状態: ドラフト（v0.4。設計書 v0.8 の ROS 2 Jazzy・Docker・`map` → `base_link`・ODOM の確定を反映）
 
 本書は、設計書 7 章のアーキテクチャを、実装に入れる粒度のコンポーネント図・クラス図に落としたものである。クラス名・メソッド名は実装時の名前の案で、引数や戻り値の細部は実装時に調整する。
 
@@ -152,6 +152,7 @@ classDiagram
   class OdomSample {
     +double t
     +double v
+    +double v_lat
     +optional~double~ yaw_rate
   }
   class GnssSample {
@@ -962,6 +963,10 @@ sequenceDiagram
 | `ros2/gll_ros2/` | `localizer_node.cpp`、`parameter_loader.cpp`、`extrinsics_loader.cpp`、`ros_logger.hpp`、`navsatfix_converter.cpp`、`msg_converters.cpp`、`output_publisher.cpp` |
 | `tools/map_tiler/` | `gll_map_tiler`（統合済み地図 → タイル + 点ごとの共分散） |
 | `tools/anchor_calibrator/` | `gll_anchor_calibrator` |
+| `tools/i2nav/` | i2Nav-Robot の変換・事前確認・アンカー決定・真値の位置合わせ・障害注入・評価のスクリプト（[検証計画](./validation_i2nav.md)） |
+| `docker/` | `Dockerfile`（`dev` / `runtime` ステージ）、`compose.yaml`（設計書 7.8 節） |
+| `.devcontainer/` | VS Code 用の設定（任意） |
+| `.github/workflows/` | CI（Docker の `dev` ステージでの colcon ビルドと単体テスト、ROS なしでのコア単体のビルドとテスト） |
 
 ## 6. Phase 1 で実装する範囲
 
