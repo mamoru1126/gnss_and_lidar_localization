@@ -8,15 +8,19 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace gll {
 
 using Vec2 = Eigen::Vector2d;
 using Vec3 = Eigen::Vector3d;
+using Vec3f = Eigen::Vector3f;
 using Vec5 = Eigen::Matrix<double, 5, 1>;
+using Vec6 = Eigen::Matrix<double, 6, 1>;
 using Mat2 = Eigen::Matrix2d;
 using Mat3 = Eigen::Matrix3d;
 using Mat5 = Eigen::Matrix<double, 5, 5>;
+using Mat6 = Eigen::Matrix<double, 6, 6>;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kGravity = 9.80665;
@@ -64,6 +68,15 @@ struct GnssVelocitySample {
   double t = 0.0;
   Vec2 vel_en = Vec2::Zero();  ///< 東・北の速度 [m/s]
   Mat2 cov = Mat2::Identity();
+};
+
+/// LiDAR の 1 スキャン（LiDAR 座標系）。
+/// t はスキャンの代表時刻（この時刻の base_link にデスキューする）。times は点ごとの t からの相対時刻 [s]
+/// （LiDAR ドライバが出さない場合は空。そのときはデスキューしない）。
+struct LidarScan {
+  double t = 0.0;
+  std::vector<Vec3f> points;
+  std::vector<float> times;
 };
 
 struct Pose2D {

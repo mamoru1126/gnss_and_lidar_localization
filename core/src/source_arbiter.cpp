@@ -17,7 +17,7 @@ GatePolicy SourceArbiter::gatePolicy(const Measurement& m) const {
     case MeasurementKind::GNSS_POSITION: return GatePolicy::DEFER_TO_RECOVERY;  // FIX は捨てない
     case MeasurementKind::HEADING: return GatePolicy::REJECT_ON_FAIL;
     case MeasurementKind::ZERO_RATE: return GatePolicy::REJECT_ON_FAIL;
-    case MeasurementKind::POSE: return GatePolicy::REJECT_ON_FAIL;
+    case MeasurementKind::POSE: return GatePolicy::DEFER_TO_RECOVERY;  // 落ちたら LiDAR の再アンカーの候補
   }
   return GatePolicy::REJECT_ON_FAIL;
 }

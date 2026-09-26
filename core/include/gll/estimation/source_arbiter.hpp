@@ -29,8 +29,15 @@ class SourceArbiter {
 
   GatePolicy gatePolicy(const Measurement& m) const;
 
-  /// GNSS FIX 中の LiDAR の扱いを決める（Phase 2 で使う）。FUSE_INFLATED のときは m の共分散を膨らませる。
+  /// GNSS FIX 中の LiDAR の扱いを決める。FUSE_INFLATED のときは m の共分散を膨らませる。
+  /// st は観測時刻の推定値。GNSS FIX 中は、推定値との差を地図グループごとのアンカーずれとして記録する。
   LidarDecision classifyLidar(PoseMeasurement& m, const FilterState& st);
+
+  /// LiDAR の観測に使うゲートの扱い。GNSS FIX 中に整合した LiDAR は固定閾値で判定済みなので SKIP、
+  /// それ以外は Mahalanobis ゲートで判定し、落ちたら再アンカーの候補にする（設計書 3.13.3 節）。
+  static GatePolicy lidarPolicy(LidarDecision d) {
+    return d == LidarDecision::FUSE_INFLATED ? GatePolicy::SKIP : GatePolicy::DEFER_TO_RECOVERY;
+  }
 
   const std::map<std::string, MismatchStats>& mismatchStats() const { return mismatch_; }
 

@@ -10,7 +10,8 @@ namespace gll {
 
 class Initializer {
  public:
-  enum class Phase { WAIT_FIX, WAIT_MOTION, CONVERGING, READY };
+  /// WAIT_MAP_MATCH: 地図の近くで初期姿勢を与えられ、その周りでの位置合わせを待っている（設計書 3.11 節）。
+  enum class Phase { WAIT_FIX, WAIT_MOTION, WAIT_MAP_MATCH, CONVERGING, READY };
 
   explicit Initializer(const InitConfig& cfg = InitConfig()) : cfg_(cfg) {}
 
@@ -29,6 +30,8 @@ class Initializer {
   Phase phase() const { return phase_; }
   bool ready() const { return phase_ == Phase::READY; }
   void reset() { phase_ = Phase::WAIT_FIX; }
+  /// 地図上での初期化を待つ（GNSS による初期化は、この間は行わない）。
+  void waitForMapMatch() { phase_ = Phase::WAIT_MAP_MATCH; }
 
  private:
   InitConfig cfg_;

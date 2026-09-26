@@ -3,6 +3,8 @@
 
 #include "gll/common/types.hpp"
 
+#include <Eigen/Geometry>
+
 namespace gll {
 
 struct EstimatorConfig {
@@ -94,6 +96,75 @@ struct RecoveryConfig {
   double candidate_max_age = 5.0;             ///< 候補を保持する時間 [s]
 };
 
+/// LiDAR の前処理と位置合わせ（設計書 6 章）。
+struct LidarConfig {
+  Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();  ///< LiDAR 座標系 → base_link
+  double min_range = 1.0;            ///< LiDAR からの距離の下限 [m]
+  double max_range = 50.0;           ///< LiDAR からの距離の上限 [m]
+  bool crop_box_enabled = false;     ///< 車体の点を除く箱（base_link 座標系）を使うか
+  Vec3 crop_box_min = Vec3(-1.0, -1.0, -1.0);
+  Vec3 crop_box_max = Vec3(1.0, 1.0, 2.0);
+  bool deskew = true;                ///< 点ごとの時刻があれば、回転と並進の歪みを補正する
+  double source_voxel_size = 0.5;    ///< スキャンの間引き [m]
+  int source_num_neighbors = 10;     ///< スキャンの点ごとの共分散に使う近傍点数
+  int min_source_points = 100;       ///< 間引いた後の点数がこれ未満なら照合しない
+  double max_correspondence_distance = 1.0;  ///< [m]
+  int max_iterations = 20;
+  double translation_eps = 1e-3;     ///< 収束判定 [m]
+  double rotation_eps = 1e-3;        ///< 収束判定 [rad]
+  int num_threads = 2;
+  double min_inlier_ratio = 0.6;     ///< 対応点が見つかった点の割合の下限
+  double overlap_distance = 0.3;     ///< overlap（位置合わせの良さ）を数える距離 [m]
+  double min_overlap = 0.5;          ///< overlap_distance 以内に地図の点がある割合の下限
+  double max_jump_xy = 1.0;          ///< 初期値からの移動量の上限 [m]
+  double max_jump_yaw = deg2rad(5.0);  ///< [rad]
+  double cov_scale = 0.15;           ///< 観測共分散 Σ = cov_scale · N_inlier · H⁻¹（設計書 6.2 節）
+  double min_stddev_xy = 0.02;       ///< 観測共分散の下限 Σ_floor [m]
+  double min_stddev_yaw = deg2rad(0.2);  ///< [rad]
+  double min_interval = 0.0;         ///< 照合の最小間隔 [s]（0 ならすべてのスキャン）
+  double base_link_height = 0.0;     ///< 地面から base_link までの高さ [m]（地図上の初期化で z を決めるのに使う）
+  bool async = true;                 ///< 別スレッドで照合する（テストでは false にして同期で処理する）
+};
+
+/// 地図タイルの管理（設計書 5 章）。
+struct MapManagerConfig {
+  double load_radius = 60.0;         ///< [m]
+  double unload_radius = 90.0;       ///< [m]
+  double lookahead_time = 3.0;       ///< [s]
+  double update_distance = 1.0;      ///< この距離を動いたら、必要なタイルとアクティブグループを見直す [m]
+  double update_interval = 1.0;      ///< 動いていなくても、この間隔で見直す [s]
+  double group_switch_margin = 10.0; ///< アクティブグループの切り替えのヒステリシス [m]
+  int min_target_points = 500;       ///< ターゲットの点数がこれ未満なら照合しない
+  bool async = true;                 ///< 別スレッドでロードする（テストでは false）
+};
+
+/// 地図上での初期化と再位置推定（設計書 3.11 節・3.13.4 節）。
+struct RelocalizeConfig {
+  double init_min_radius = 0.5;      ///< 初期姿勢の周りを探す半径 [m]（初期姿勢の 3σ をこの範囲に収める）
+  double init_max_radius = 5.0;
+  double init_min_yaw = deg2rad(10.0);  ///< yaw の探索幅（±）[rad]
+  double init_max_yaw = kPi;
+  double position_step = 1.0;        ///< 初期値の候補を並べる格子の間隔 [m]
+  double yaw_step = deg2rad(20.0);   ///< [rad]
+  double coarse_voxel_size = 2.0;    ///< 粗い位置合わせ（VGICP）のボクセル [m]
+  double coarse_source_voxel = 1.0;  ///< 粗い位置合わせに使うスキャンの間引き [m]
+  int coarse_max_iterations = 10;
+  int refine_candidates = 5;         ///< GICP で詰める候補の数
+  double distinct_xy = 1.0;          ///< これ以上離れた解は別の解とみなす [m]
+  double distinct_yaw = deg2rad(10.0);
+  double uniqueness_ratio = 1.5;     ///< 最良の解の overlap が、次点のこの倍以上なら一意とみなす
+  double min_overlap = 0.6;          ///< 採用する解の overlap の下限
+  int init_max_attempts = 5;         ///< 地図上での初期化を試す回数（外部から与えた初期姿勢は、その後そのまま使う）
+  double init_map_distance = 10.0;   ///< 初期姿勢がタイルからこの距離以内なら、地図上で初期化する [m]
+  int after_rejects = 20;            ///< 再位置推定を始める LiDAR の連続棄却数
+  double min_radius = 1.0;           ///< 再位置推定の探索半径の下限 [m]
+  double radius_per_dr_distance = 0.05;  ///< 探索半径の下限を、位置の観測なしで走った距離のこの割合まで広げる
+  double max_radius = 3.0;           ///< 再位置推定の探索半径の上限 [m]
+  double max_yaw = deg2rad(30.0);    ///< [rad]
+  int max_attempts = 3;              ///< 再位置推定がこの回数失敗したら LOST
+  double lost_retry_interval = 5.0;  ///< LOST の間に再位置推定を試す間隔 [s]
+};
+
 struct LocalizerConfig {
   EstimatorConfig estimator;
   GnssConfig gnss;
@@ -105,6 +176,9 @@ struct LocalizerConfig {
   MonitorConfig monitor;
   ArbiterConfig arbiter;
   RecoveryConfig recovery;
+  LidarConfig lidar;
+  MapManagerConfig map;
+  RelocalizeConfig relocalize;
 };
 
 }  // namespace gll

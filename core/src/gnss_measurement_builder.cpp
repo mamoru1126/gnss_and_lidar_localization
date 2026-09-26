@@ -24,6 +24,12 @@ Vec2 GnssMeasurementBuilder::projectLeverArm(double roll, double pitch) const {
   return (R * cfg_.lever_arm).head<2>();
 }
 
+double GnssMeasurementBuilder::baseHeight(const GnssSample& s, const AttitudeEstimator& att) const {
+  const Attitude a = att.attitudeAt(s.t);
+  const Mat3 R = (Eigen::AngleAxisd(a.pitch, Vec3::UnitY()) * Eigen::AngleAxisd(a.roll, Vec3::UnitX())).toRotationMatrix();
+  return s.h - (R * cfg_.lever_arm).z();
+}
+
 GnssPositionResult GnssMeasurementBuilder::buildPosition(const GnssSample& s,
                                                         const AttitudeEstimator& att) {
   GnssPositionResult res;
