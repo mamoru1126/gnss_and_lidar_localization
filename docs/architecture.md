@@ -1,7 +1,7 @@
 # ソフトウェア構成: コンポーネント図・クラス図
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.3）
-- 状態: ドラフト（v0.1）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.4）
+- 状態: ドラフト（v0.2。設計書 v0.4 の 3.13 節「優先度・食い違いの判定・復帰」を反映）
 
 本書は、設計書 7 章のアーキテクチャを、実装に入れる粒度のコンポーネント図・クラス図に落としたものである。クラス名・メソッド名は実装時の名前の案で、引数や戻り値の細部は実装時に調整する。
 
@@ -98,6 +98,8 @@ flowchart LR
     SMO["OutputSmoother"]
     MON["StatusMonitor"]
     INIT["Initializer<br/>GNSS / 地図"]
+    ARB["SourceArbiter<br/>優先度・食い違い判定"]
+    REC["RecoveryManager<br/>再アンカー・再位置推定"]
   end
 
   subgraph matching["matching（スキャンマッチング）"]
@@ -126,6 +128,9 @@ flowchart LR
   LOC --> HIST --> ISE
   ISE -.-> IEKF & ESEKF
   LOC --> GATE & SMO & MON & INIT
+  LOC --> ARB & REC
+  REC --> HIST
+  REC -- 再位置推定の依頼 --> WRK
   LOC --> WRK --> PRE
   WRK --> ISM -.-> GICP
   WRK --> LMB --> ANC
@@ -143,7 +148,7 @@ flowchart LR
 |---|---|---|
 | `Localizer` | 外部 API の窓口。センサデータを受け取り、観測を作らせて推定器に渡し、出力を組み立てる。フィルタの状態の排他制御 | 全コンポーネント |
 | `measurement` | センサデータを「推定器の入力（`MotionInput`）」と「観測（`Measurement`）」に変換する。採用判定（RTK-FIX、精度、停止など）もここで行う | common |
-| `estimation` | 推定アルゴリズム（IEKF）、履歴と再伝播、外れ値ゲート、出力整形、状態監視、初期化 | common |
+| `estimation` | 推定アルゴリズム（IEKF）、履歴と再伝播、外れ値ゲート、出力整形、状態監視、初期化。GNSS 優先の判断と LiDAR の食い違い判定（`SourceArbiter`）、再アンカー・再位置推定の状態遷移（`RecoveryManager`） | common |
 | `matching` | LiDAR の前処理と位置合わせ。専用スレッドで非同期に実行する | small_gicp, common |
 | `map` | 地図グループとアンカー、タイルのロードとアンロード、位置合わせのターゲットの構築とダブルバッファ | common, matching（ターゲット構築） |
 | `common` | 型、設定、SE(2) 演算、測地変換、ロガーのインターフェース | Eigen, GeographicLib |
@@ -286,6 +291,8 @@ classDiagram
     -OutputSmoother smoother_
     -StatusMonitor monitor_
     -Initializer initializer_
+    -SourceArbiter arbiter_
+    -RecoveryManager recovery_
     -AttitudeEstimator attitude_
     -MotionInputBuilder motion_builder_
     -GnssMeasurementBuilder gnss_builder_
@@ -303,6 +310,8 @@ classDiagram
     -predictTo(double t)
     -applyMeasurement(Measurement m) UpdateResult
     -onMatchingResult(PoseMeasurement m)
+    -onRelocalizeResult(RegistrationResult r)
+    -handleRejection(Measurement m, UpdateResult r)
   }
 
   class IStateEstimator {
@@ -313,6 +322,8 @@ classDiagram
   class OutputSmoother
   class StatusMonitor
   class Initializer
+  class SourceArbiter
+  class RecoveryManager
   class AttitudeEstimator
   class MotionInputBuilder
   class GnssMeasurementBuilder
@@ -328,6 +339,8 @@ classDiagram
   Localizer *-- OutputSmoother
   Localizer *-- StatusMonitor
   Localizer *-- Initializer
+  Localizer *-- SourceArbiter
+  Localizer *-- RecoveryManager
   Localizer *-- AttitudeEstimator
   Localizer *-- MotionInputBuilder
   Localizer *-- GnssMeasurementBuilder
@@ -393,7 +406,9 @@ classDiagram
   }
   class UpdateResult {
     +bool accepted
+    +bool gate_passed
     +double mahalanobis_d2
+    +Vector3d residual_body
     +Vector3d world_delta
   }
 
@@ -424,7 +439,9 @@ classDiagram
     +push(FilterState, MotionInput)
     +latest() FilterState
     +stateAt(double t, IStateEstimator) optional~FilterState~
-    +applyDelayed(Measurement, IStateEstimator, MahalanobisGate) UpdateResult
+    +applyDelayed(Measurement, IStateEstimator, MahalanobisGate, GatePolicy) UpdateResult
+    +applyReanchor(Measurement, Matrix3d inflation, IStateEstimator) UpdateResult
+    +relativeMotion(double t_from, double t_to) SE2
     +reset(FilterState)
   }
   class MahalanobisGate {
@@ -452,6 +469,67 @@ classDiagram
     +isReady(FilterState) bool
   }
 
+  class GatePolicy {
+    <<enumeration>>
+    REJECT_ON_FAIL
+    NEVER_REJECT
+    SKIP
+  }
+  class SourceArbiter {
+    -ArbiterConfig cfg_
+    -double last_gnss_fix_t_
+    -map~string, MismatchStats~ mismatch_
+    +onGnssAccepted(double t)
+    +isGnssFixActive(double t) bool
+    +gatePolicy(Measurement, double t) GatePolicy
+    +classifyLidar(PoseMeasurement, FilterState) LidarDecision
+    +mismatchStats(string group) MismatchStats
+  }
+  class LidarDecision {
+    <<enumeration>>
+    FUSE_PRIMARY
+    FUSE_INFLATED
+    REJECT_MISMATCH
+  }
+  class MismatchStats {
+    +size_t count
+    +Vector3d mean_world
+    +Vector3d stddev_world
+  }
+  class RecoveryManager {
+    -RecoveryConfig cfg_
+    -RecoveryState state_
+    -deque~Measurement~ gnss_candidates_
+    -deque~Measurement~ lidar_candidates_
+    -int lidar_reject_count_
+    -int relocalize_attempts_
+    +onAccepted(Measurement)
+    +onRejected(Measurement, UpdateResult, StateHistory) RecoveryAction
+    +onRelocalizeResult(optional~PoseMeasurement~) RecoveryAction
+    +onExternalPose()
+    +state() RecoveryState
+  }
+  class RecoveryState {
+    <<enumeration>>
+    TRACKING
+    SUSPECT
+    REANCHOR
+    RELOCALIZE
+    LOST
+  }
+  class RecoveryAction {
+    +Kind kind
+    +optional~Measurement~ reanchor_measurement
+    +Matrix3d inflation
+    +optional~RelocalizeRequest~ relocalize
+  }
+
+  SourceArbiter ..> GatePolicy
+  SourceArbiter ..> LidarDecision
+  SourceArbiter *-- MismatchStats
+  RecoveryManager ..> RecoveryState
+  RecoveryManager ..> RecoveryAction
+  RecoveryManager ..> StateHistory : relativeMotion
   IStateEstimator <|.. InvEkfSe2
   IStateEstimator <|.. EsEkf2D
   IStateEstimator ..> FilterState
@@ -471,6 +549,8 @@ classDiagram
 
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
 - `linearize` は `std::visit` で観測の型ごとに分岐する。IEKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
+- `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
+- `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、`StateHistory::relativeMotion` で最新時刻にそろえて互いに一致するかを判定し、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
 - `correct` は注入（$\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。
 
 ### 3.4 measurement（センサデータ → 入力・観測）
@@ -579,6 +659,7 @@ classDiagram
     +start()
     +stop()
     +submit(LidarScan)
+    +submitRelocalize(RelocalizeRequest)
   }
 
   IScanMatcher <|.. GicpMatcher
@@ -769,6 +850,8 @@ sequenceDiagram
   participant H as StateHistory
   participant E as InvEkfSe2
   participant G as GnssMeasurementBuilder
+  participant AR as SourceArbiter
+  participant RC as RecoveryManager
   participant S as OutputSmoother
 
   N->>L: addImu(ImuSample)
@@ -782,10 +865,16 @@ sequenceDiagram
   N->>L: addGnss(GnssSample)
   L->>G: build(sample, yaw_rate)
   G-->>L: position / heading（採用条件を満たすものだけ）
-  L->>H: applyDelayed(measurement, estimator, gate)
+  L->>AR: onGnssAccepted(t) / gatePolicy(m) → NEVER_REJECT
+  L->>H: applyDelayed(measurement, estimator, gate, policy)
   H->>E: stateAt(t_z) → linearize → gate → correct
   H->>E: 再伝播（t_z 以降の入力）
-  H-->>L: UpdateResult（world_delta）
+  H-->>L: UpdateResult（world_delta, gate_passed）
+  alt ゲート不通過（推定値がずれている）
+    L->>RC: onRejected(m, result, history)
+    RC-->>L: RecoveryAction（3 回一致したら REANCHOR）
+    L->>H: applyReanchor(m, inflation)
+  end
   L->>S: onCorrection(world_delta)
 ```
 
@@ -801,6 +890,8 @@ sequenceDiagram
   participant G as GicpMatcher
   participant LB as LidarMeasurementBuilder
   participant H as StateHistory
+  participant AR as SourceArbiter
+  participant RC as RecoveryManager
 
   N->>L: addLidarScan(scan)
   L->>W: submit(scan)（最新のみ保持してすぐ戻る）
@@ -814,7 +905,17 @@ sequenceDiagram
   W->>LB: build(result, anchor, t)
   LB-->>W: PoseMeasurement
   W->>L: on_result(PoseMeasurement)
-  L->>H: applyDelayed(...)（mutex 取得）
+  Note over L: mutex 取得
+  L->>AR: classifyLidar(m, state)
+  alt GNSS FIX 中で食い違い
+    AR-->>L: REJECT_MISMATCH（アンカーずれとして記録）
+  else FUSE_PRIMARY / FUSE_INFLATED
+    L->>H: applyDelayed(...)
+    opt ゲート不通過（GNSS 無し）
+      L->>RC: onRejected(...)
+      RC-->>L: REANCHOR（5 回一致）または RELOCALIZE（2 s 不一致）
+    end
+  end
 ```
 
 ### 4.3 地図タイルの更新
@@ -847,7 +948,7 @@ sequenceDiagram
 | ディレクトリ | クラス / ファイル |
 |---|---|
 | `core/include/gll/common/` | `types.hpp`（センサデータ・出力の型）、`se2.hpp`（`SE2`）、`geodesy.hpp`（`UtmProjector`）、`logger.hpp`（`ILogger`）、`config.hpp`（`LocalizerConfig`） |
-| `core/include/gll/estimation/` | `state_estimator.hpp`（`IStateEstimator`、`FilterState`、`Measurement`）、`inv_ekf_se2.hpp`、`es_ekf_2d.hpp`、`state_history.hpp`、`mahalanobis_gate.hpp`、`output_smoother.hpp`、`status_monitor.hpp`、`initializer.hpp` |
+| `core/include/gll/estimation/` | `state_estimator.hpp`（`IStateEstimator`、`FilterState`、`Measurement`）、`inv_ekf_se2.hpp`、`es_ekf_2d.hpp`、`state_history.hpp`、`mahalanobis_gate.hpp`、`output_smoother.hpp`、`status_monitor.hpp`、`initializer.hpp`、`source_arbiter.hpp`、`recovery_manager.hpp` |
 | `core/include/gll/measurement/` | `attitude_estimator.hpp`、`motion_input_builder.hpp`、`gnss_measurement_builder.hpp`、`lidar_measurement_builder.hpp`、`stop_detector.hpp` |
 | `core/include/gll/matching/` | `scan_matcher.hpp`（`IScanMatcher`、`RegistrationTarget`、`RegistrationResult`）、`gicp_matcher.hpp`、`scan_preprocessor.hpp`、`scan_matching_worker.hpp` |
 | `core/include/gll/map/` | `map_anchor.hpp`、`map_group.hpp`（`MapGroup`、`TileIndex`、`TileMeta`）、`tile_loader.hpp`（`ITileLoader`、`BinaryTileLoader`、`TileData`）、`map_tile_manager.hpp` |
@@ -861,9 +962,9 @@ sequenceDiagram
 設計書 10 章の Phase 1 に対応して、次のクラスを実装する。
 
 - **common**: 全クラス
-- **estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`、`Initializer`（GNSS 区間の初期化のみ）
+- **estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`、`Initializer`（GNSS 区間の初期化のみ）、`SourceArbiter`（GNSS 部分）、`RecoveryManager`（GNSS の再アンカーと `LOST` の判定）
 - **measurement**: `AttitudeEstimator`、`MotionInputBuilder`、`GnssMeasurementBuilder`、`StopDetector`
 - **facade**: `Localizer`（LiDAR / 地図関連のメンバは空の実装にしておく）
 - **gll_ros2**: LiDAR 以外の全クラス
 
-`matching` と `map`、`LidarMeasurementBuilder`、`tools` は Phase 2 で実装する。
+`matching` と `map`、`LidarMeasurementBuilder`、`tools`、`SourceArbiter` / `RecoveryManager` の LiDAR 部分（食い違い判定、LiDAR の再アンカー、再位置推定）は Phase 2 で実装する。
