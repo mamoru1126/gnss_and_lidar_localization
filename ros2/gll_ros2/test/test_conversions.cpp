@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace gll_ros2;
@@ -161,6 +162,50 @@ TEST(Conversions, PointCloudAbsoluteSecondsFloat64) {
   const auto s = toCore(m, PointCloudOptions());
   EXPECT_NEAR(s.t, 1727400000.08, 1e-6);
   EXPECT_NEAR(s.times[0], -0.08, 1e-5);
+}
+
+TEST(Conversions, PointCloudLivoxMid360) {
+  // livox_ros_driver2（xfer_format: 0）の PointCloud2: x, y, z, intensity（FLOAT32）、tag, line（UINT8）、
+  // timestamp（FLOAT64、絶対時刻の ns）。詰めて並ぶので timestamp は 8 バイト境界にない（offset 18、point_step 26）
+  using sensor_msgs::msg::PointField;
+  sensor_msgs::msg::PointCloud2 m;
+  const double t0 = 1727400000.0;
+  m.header.stamp = toStamp(t0);
+  m.height = 1;
+  m.width = 3;
+  const std::vector<std::tuple<std::string, uint32_t, uint8_t>> fields = {
+      {"x", 0, PointField::FLOAT32},     {"y", 4, PointField::FLOAT32},   {"z", 8, PointField::FLOAT32},
+      {"intensity", 12, PointField::FLOAT32}, {"tag", 16, PointField::UINT8}, {"line", 17, PointField::UINT8},
+      {"timestamp", 18, PointField::FLOAT64}};
+  for (const auto& [name, off, type] : fields) {
+    PointField f;
+    f.name = name;
+    f.offset = off;
+    f.datatype = type;
+    f.count = 1;
+    m.fields.push_back(f);
+  }
+  m.point_step = 26;
+  m.row_step = m.point_step * m.width;
+  m.data.assign(m.row_step, 0);
+  const double ns0 = t0 * 1e9;
+  const double dts[3] = {0.0, 0.04, 0.1};
+  for (uint32_t i = 0; i < m.width; ++i) {
+    uint8_t* p = &m.data[i * m.point_step];
+    const float xyz[3] = {1.0f + i, 2.0f, 3.0f};
+    std::memcpy(p, xyz, 12);
+    const double ts = ns0 + dts[i] * 1e9;
+    std::memcpy(p + 18, &ts, 8);
+  }
+  std::string field;
+  const auto s = toCore(m, PointCloudOptions(), &field);
+  EXPECT_EQ(field, "timestamp");
+  ASSERT_EQ(s.points.size(), 3u);
+  EXPECT_NEAR(s.t, t0 + 0.1, 1e-6);
+  ASSERT_EQ(s.times.size(), 3u);
+  EXPECT_NEAR(s.times[0], -0.1, 1e-5);
+  EXPECT_NEAR(s.times[1], -0.06, 1e-5);
+  EXPECT_FLOAT_EQ(s.points[2].x(), 3.0f);
 }
 
 TEST(Conversions, PointCloudWithoutTimeField) {

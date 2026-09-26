@@ -78,6 +78,10 @@ MapSetConfig loadMapSetConfig(const std::string& path) {
     }
     cfg.groups.push_back(mg);
   }
+  for (const auto& g : cfg.groups)
+    if (g.local_anchor != cfg.groups.front().local_anchor)
+      throw std::runtime_error("maps.yaml '" + path +
+                               "': 'anchor: local' groups cannot be mixed with groups anchored to UTM");
   return cfg;
 }
 

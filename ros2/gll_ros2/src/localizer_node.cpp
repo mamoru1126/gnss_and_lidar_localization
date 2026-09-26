@@ -176,6 +176,11 @@ void LocalizerNode::setupMap(const gll::LocalizerConfig& cfg) {
     return;
   }
   const gll::MapSetConfig ms = gll::loadMapSetConfig(path);
+  if (ms.local()) {
+    // 地図の座標をそのまま map として出力する。GNSS（UTM）とは座標系が違うので使わない（設計書 4.2 節）
+    gnss_enabled_ = false;
+    RCLCPP_WARN(get_logger(), "maps use 'anchor: local': the output is in the map coordinates and GNSS input is ignored");
+  }
   if ((ms.utm_zone && *ms.utm_zone != cfg.gnss.utm_zone) || (ms.utm_north && *ms.utm_north != cfg.gnss.utm_north))
     throw std::runtime_error("UTM zone in " + path + " does not match gnss.utm_zone / gnss.utm_north");
   auto logger = std::make_shared<RosLogger>(get_logger());
@@ -211,6 +216,7 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
   const double rate = declare_parameter<double>("output_rate", 50.0);
   const std::string estimator = declare_parameter<std::string>("estimator.type", "invariant_ekf");
   const auto rpy = declare_parameter<std::vector<double>>("imu.rotation_rpy_deg", {0.0, 0.0, 0.0});
+  imu_acc_scale_ = declare_parameter<double>("imu.acc_scale", 1.0);
   if (rpy.size() == 3)
     R_base_imu_ = rpyToMatrix(gll::deg2rad(rpy[0]), gll::deg2rad(rpy[1]), gll::deg2rad(rpy[2]));
   const auto origin = declare_parameter<std::vector<double>>("map_local_origin", std::vector<double>{});
@@ -234,15 +240,21 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
   const auto sensor_qos = rclcpp::SensorDataQoS();
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
       "~/input/imu", sensor_qos,
-      [this](const sensor_msgs::msg::Imu::ConstSharedPtr m) { localizer_->addImu(toCore(*m, R_base_imu_)); });
+      [this](const sensor_msgs::msg::Imu::ConstSharedPtr m) {
+        gll::ImuSample s = toCore(*m, R_base_imu_);
+        s.acc *= imu_acc_scale_;  // 加速度が g 単位のドライバ（livox_ros_driver2 の内蔵 IMU など）用
+        localizer_->addImu(s);
+      });
   odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "~/input/odom", sensor_qos,
       [this](const nav_msgs::msg::Odometry::ConstSharedPtr m) { localizer_->addOdom(toCore(*m)); });
-  gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
-      "~/input/gnss/fix", sensor_qos, [this](const sensor_msgs::msg::NavSatFix::ConstSharedPtr m) {
-        localizer_->addGnss(toCore(*m, gnss_stamp_offset_));
-      });
-  if (cfg_.gnss.use_velocity) {
+  if (gnss_enabled_) {
+    gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
+        "~/input/gnss/fix", sensor_qos, [this](const sensor_msgs::msg::NavSatFix::ConstSharedPtr m) {
+          localizer_->addGnss(toCore(*m, gnss_stamp_offset_));
+        });
+  }
+  if (gnss_enabled_ && cfg_.gnss.use_velocity) {
     gnss_vel_sub_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
         "~/input/gnss/velocity", sensor_qos,
         [this](const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr m) {

@@ -67,7 +67,7 @@ ros2 launch gll_ros2 localizer.launch.py \
    # → /data/maps/area_a/tiles/*.bin と tile_index.yaml
    ```
 
-2. **maps.yaml を書く**。地図グループごとに、タイルの索引とアンカー（地図の 1 点の緯度経度・楕円体高と、地図の x 軸の方位）を与える。UTM で直接与えることもできる。緯度経度が分からない地図だけの現場では `anchor: local` にすると、地図の座標をそのまま `map` として出力する（GNSS とは併用できない）。
+2. **maps.yaml を書く**。地図グループごとに、タイルの索引とアンカー（地図の 1 点の緯度経度・楕円体高と、地図の x 軸の方位）を与える。UTM で直接与えることもできる。緯度経度が分からない地図だけの現場では `anchor: local` にすると、地図の座標をそのまま `map` として出力する（GNSS の入力は無視する。UTM にアンカーした地図とは混在できない）。
 
    ```yaml
    utm: {zone: 54, hemisphere: north}      # 任意。gnss.utm_zone と違えば起動を止める
@@ -95,7 +95,7 @@ ros2 launch gll_ros2 localizer.launch.py \
        points_topic:=/sensing/lidar/points map_config:=/data/maps/maps.yaml
    ```
 
-   点ごとの時刻のフィールド（`time` / `t` / `timestamp` / `time_stamp` / `offset_time`）は自動で判別してデスキューに使う。使ったフィールドは起動後の最初のスキャンでログに出る。
+   点ごとの時刻のフィールド（`time` / `t` / `timestamp` / `time_stamp` / `offset_time`）は自動で判別してデスキューに使う。使ったフィールドは起動後の最初のスキャンでログに出る。Livox Mid-360 は livox_ros_driver2 を `xfer_format: 0`（PointCloud2）で起動する（`timestamp` を使う）。Mid-360 の内蔵 IMU を使う場合は、加速度が g 単位なので `imu.acc_scale: 9.80665` にする。
 
 4. **地図だけの現場での初期化**。静止初期化の後、RViz の「2D Pose Estimate」などで `~/input/initial_pose` に大まかな初期姿勢（数 m・数十度ずれていてよい）を与えると、その周りを探して地図上で初期化する。止めた場所から起動する運用なら、`init.saved_pose_path` に位置を定期保存し、`init.use_saved_pose: true` で次の起動時に使える。見つからないとき（5 回失敗、または 15 s）は、与えた初期姿勢はそのまま使い、保存した位置は捨てて GNSS か初期姿勢を待つ（[設計書](docs/design.md) 3.11 節）。
 

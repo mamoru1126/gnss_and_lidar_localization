@@ -22,6 +22,7 @@ gll_localizer:
 
     imu:
       rotation_rpy_deg: [0.0, 0.0, 0.0]   # IMU 座標系 -> base_link の回転
+      acc_scale: 1.0                      # 加速度に掛ける係数。Livox Mid-360 の内蔵 IMU（g 単位）を使うなら 9.80665
 
     gnss:
       utm_zone: 54
@@ -105,7 +106,7 @@ gll_localizer:
       min_target_points: 500
       publish_points_max: 200000          # ~/debug/map_points に出す点数の上限
 
-    lidar:
+    lidar:                                # Livox Mid-360 は livox_ros_driver2 の xfer_format: 0（PointCloud2）で出す
       extrinsic_xyz: [0.0, 0.0, 0.0]      # base_link から見た LiDAR の位置 [m]
       extrinsic_rpy_deg: [0.0, 0.0, 0.0]  # base_link -> LiDAR の回転 [deg]
       time_field: auto                    # 点ごとの時刻のフィールド（auto / 名前 / "" で使わない）

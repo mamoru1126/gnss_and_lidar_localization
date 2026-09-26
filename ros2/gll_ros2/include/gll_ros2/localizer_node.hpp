@@ -57,6 +57,7 @@ class LocalizerNode : public rclcpp::Node {
   std::unique_ptr<gll::Localizer> localizer_;
   gll::LocalizerConfig cfg_;
   Eigen::Matrix3d R_base_imu_ = Eigen::Matrix3d::Identity();
+  double imu_acc_scale_ = 1.0;
   double gnss_stamp_offset_ = 0.0;
   PointCloudOptions points_opt_;
   std::string map_frame_;
@@ -92,6 +93,7 @@ class LocalizerNode : public rclcpp::Node {
   double dr_error_distance_ = 30.0;
   bool dr_error_active_ = false;
   bool lidar_enabled_ = false;
+  bool gnss_enabled_ = true;  ///< anchor: local の地図では GNSS を使わない
   bool points_time_logged_ = false;
   double last_lidar_debug_t_ = -1.0;
   const gll::MatchTarget* last_published_target_ = nullptr;

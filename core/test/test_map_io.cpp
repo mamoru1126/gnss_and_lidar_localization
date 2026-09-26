@@ -196,24 +196,42 @@ TEST(MapConfig, LoadsGroupsWithAnchors) {
           "heading_deg: 90, stddev_xy: 0.03, stddev_yaw_deg: 0.1}\n"
           "  - id: b\n"
           "    tile_index: b/tile_index.yaml\n"
-          "    anchor: {easting: 386000, northing: 3950000, grid_heading_deg: 0, use_scale_factor: false}\n"
-          "  - id: c\n"
-          "    tile_index: c/tile_index.yaml\n"
-          "    anchor: local\n";
+          "    anchor: {easting: 386000, northing: 3950000, grid_heading_deg: 0, use_scale_factor: false}\n";
   }
   const MapSetConfig cfg = loadMapSetConfig((d / "maps.yaml").string());
-  ASSERT_EQ(cfg.groups.size(), 3u);
+  ASSERT_EQ(cfg.groups.size(), 2u);
+  EXPECT_FALSE(cfg.local());
   EXPECT_EQ(*cfg.utm_zone, 54);
   EXPECT_TRUE(*cfg.utm_north);
   EXPECT_NEAR(cfg.groups[0].anchor.heading, deg2rad(90.0), 1e-12);
   EXPECT_NEAR(cfg.groups[0].anchor.stddev_xy, 0.03, 1e-12);
   EXPECT_TRUE(cfg.groups[1].anchor.use_utm);
-  EXPECT_TRUE(cfg.groups[2].local_anchor);
   EXPECT_EQ(cfg.groups[1].tile_index, (d / "b" / "tile_index.yaml").lexically_normal().string());
 
   const auto groups = loadMapGroups(cfg, UtmProjector(54, true));
-  ASSERT_EQ(groups.size(), 3u);
+  ASSERT_EQ(groups.size(), 2u);
   EXPECT_NEAR(groups[1].anchor.rotation(), kPi / 2.0, 1e-12);  // グリッド北 = UTM の +y
+  fs::remove_all(d);
+}
+
+TEST(MapConfig, LocalAnchor) {
+  // 緯度経度が分からない地図だけの現場: 地図の座標をそのまま map として出力する
+  const fs::path d = tempDir("mapcfg3");
+  {
+    std::ofstream os(d / "maps.yaml");
+    os << "map_groups:\n  - {id: site, tile_index: site/tile_index.yaml, anchor: local}\n";
+  }
+  const MapSetConfig cfg = loadMapSetConfig((d / "maps.yaml").string());
+  ASSERT_EQ(cfg.groups.size(), 1u);
+  EXPECT_TRUE(cfg.groups[0].local_anchor);
+  EXPECT_TRUE(cfg.local());
+  // UTM にアンカーしたグループとは混在できない
+  {
+    std::ofstream os(d / "maps.yaml");
+    os << "map_groups:\n  - {id: site, tile_index: s.yaml, anchor: local}\n"
+          "  - {id: b, tile_index: b.yaml, anchor: {easting: 386000, northing: 3950000}}\n";
+  }
+  EXPECT_THROW(loadMapSetConfig((d / "maps.yaml").string()), std::runtime_error);
   fs::remove_all(d);
 }
 
