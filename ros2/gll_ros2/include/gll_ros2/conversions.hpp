@@ -10,9 +10,11 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <array>
 #include <string>
+#include <vector>
 
 namespace gll_ros2 {
 
@@ -36,6 +38,26 @@ gll::GnssSample toCore(const sensor_msgs::msg::NavSatFix& m, double stamp_offset
 
 /// GNSS の速度（twist.linear.x = 東、y = 北）。
 gll::GnssVelocitySample toCore(const geometry_msgs::msg::TwistWithCovarianceStamped& m, double stamp_offset);
+
+/// PointCloud2 の読み方（設計書 6.1 節）。
+struct PointCloudOptions {
+  /// 点ごとの時刻のフィールド名。"auto" なら time / t / timestamp / time_stamp / offset_time の順に探す。"" なら使わない。
+  std::string time_field = "auto";
+  /// 点ごとの時刻が無いときにスキャンの時刻にする header.stamp からのずれ [s]（ドライバの仕様に合わせる）。
+  double stamp_offset = 0.0;
+};
+
+/// PointCloud2 → LidarScan（LiDAR 座標系）。x / y / z は FLOAT32 か FLOAT64。
+/// 点ごとの時刻があれば、スキャンの最後の点の時刻を t にし、各点の t からの相対時刻を times に入れる。
+/// 時刻の単位は型から決める: 整数型はヘッダの時刻からの ns、FLOAT32 はヘッダの時刻からの秒、
+/// FLOAT64 は値の大きさで、絶対時刻の ns（> 1e15）・絶対時刻の秒（> 1e6）・ヘッダの時刻からの秒を見分ける。
+/// time_field_used に使ったフィールド名を返す（無ければ空）。
+gll::LidarScan toCore(const sensor_msgs::msg::PointCloud2& m, const PointCloudOptions& opt,
+                      std::string* time_field_used = nullptr);
+
+/// 点群を PointCloud2（x, y, z の FLOAT32）にする（可視化用）。
+sensor_msgs::msg::PointCloud2 toPointCloud2(const std::vector<gll::Vec3f>& points, const std::string& frame_id,
+                                            const builtin_interfaces::msg::Time& stamp);
 
 /// 6×6 の共分散（x, y, z, roll, pitch, yaw）に (x, y, yaw) の 3×3 を入れる。z / roll / pitch は other_var。
 std::array<double, 36> toCovariance6(const gll::Mat3& cov_xy_yaw, double other_var);

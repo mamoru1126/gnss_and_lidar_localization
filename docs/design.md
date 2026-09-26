@@ -1,7 +1,7 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md) / [検証計画: i2Nav-Robot](./validation_i2nav.md)
-- 状態: ドラフト（v0.9）
+- 状態: ドラフト（v0.10。Phase 2 を実装済み）
 
 | 版 | 変更内容 |
 |---|---|
@@ -14,6 +14,7 @@
 | v0.7 | 出力の共分散に、出力整形層に残っているオフセットの分（$`\mathbf{o}\mathbf{o}^\top`$）を加えるよう変更（3.10 節） |
 | v0.8 | ROS 2 Jazzy と Docker 環境を確定し、ROS 1 対応は後回しに。出力 TF を `map` → `base_link`（`map` = UTM）とし、地図グループの座標系を `pcd_<group_id>` に改名。ODOM を `nav_msgs/Odometry`（twist を使用）に確定し、横方向の速度も予測に使えるようにした |
 | v0.9 | 運用上の前提（点群地図と GNSS 区間の間には必要十分な距離を設ける。要件定義 3 章）を反映。**デッドレコニング距離の監視**を追加し、位置の観測なしで一定距離を走ったら diagnostics で ERROR を通知するようにした（3.12 節）。GNSS のメッセージが途切れた後は FIX の安定待ちをやり直す（3.6 節）。複数の地図グループの扱いを見直した: アクティブグループを現在位置で決める、LiDAR の結果は照合に使ったターゲットのグループのアンカーで変換する、タイル ID にグループを含める、z を楕円体高で保持する、グループの重なりを起動時に検出する（3.9 節、5 章） |
+| v0.10 | **Phase 2（スキャンマッチング）を実装**し、実装に合わせて更新。**GNSS 区間が無く点群地図だけがある現場**も対象にした: 初期姿勢（外部から与える、または前回保存した位置）の周りで位置合わせして地図上で初期化する（3.11 節）。スキャンマッチングの共分散の式と品質の指標（overlap）を確定し（6.2 節）、多仮説の探索（6.4 節）、再位置推定の探索範囲の下限（3.13.4 節）、タイルと地図設定の形式（5.2 節）、アンカーの UTM での直接指定と `local`（4.2 節）、点群の時刻の扱い（6.1 節）を追記 |
 
 ### 前提ハードウェア・運用条件（v0.2〜v0.3、v0.9 で確定）
 
@@ -24,6 +25,7 @@
 | IMU | **加速度と角速度のみ**（姿勢は出力しない） | roll / pitch を自前で推定する姿勢推定器が必要（3.9 節）。ジャイロバイアスは停止中に推定する |
 | 車速 | **最高 6 km/h（約 1.7 m/s）** | タイルの先読みは余裕がある。スキャン中の並進による歪みは小さい（0.1 s で 0.17 m 以下）が、旋回時の回転による歪みは残る（6.1 節）。出力整形のレートは車速に合わせて低めに設定する |
 | LiDAR マッチング | **small_gicp** | コア層に置ける（ROS 非依存、Eigen ベース）。タイル単位でのターゲット更新は、ロード済みタイルを結合して再構築する方式にする（6 章） |
+| 現場（v0.10） | **GNSS 区間が無く、点群地図だけがある現場もある** | GNSS なしで起動できるよう、地図上での初期化を用意する（3.11 節）。ジャイロバイアスは静止と ZARU、ODOM のスケールは LiDAR の位置観測で推定されるので、GNSS が無くても推定器はそのまま動く |
 | 運用（v0.9） | **点群地図と GNSS 区間の間には必要十分な距離が設定される**（要件定義 3 章） | GNSS 区間をはさむ地図グループどうしは重ならないので、照合に使うグループを現在位置だけで決められる（5.5 節）。長いデッドレコニングは前提が崩れた状態とみなし、diagnostics で ERROR を通知する（3.12 節） |
 
 ---
@@ -42,6 +44,7 @@
 | D-10 | GNSS / LiDAR の優先度（v0.4） | **RTK-FIX の GNSS を常に優先して信用する**。GNSS FIX 中の LiDAR は、整合していれば重みを下げて融合し、食い違えば棄却する。推定値がずれたときは再アンカー、LiDAR が失敗したときは再位置推定で復帰する（3.13 節） | 要件（FIX 区間は GNSS）とユーザ方針に合わせるため。モードの切り替えを持たずに、優先度をフィルタの重みと判定の規則だけで表現できる |
 | D-8 | 出力の連続性 | ① 観測の Mahalanobis ゲート、② 補正量をレート制限して吸収する出力整形層、③ 地図アンカーの事前較正 の 3 段で担保する | 観測更新で生じる補正ステップを、経路追従に影響しない大きさに抑えるため |
 | D-9 | ソフトウェア構成（要件⑥） | **ROS 非依存のコアライブラリ（C++17 + Eigen）** と、薄い ROS 2 インターフェースノードに分離する | ROS 1 への移行は IF 層を差し替えるだけで済む |
+| D-12 | 地図だけの現場での起動（v0.10） | 初期姿勢（RViz などから与える、または前回保存した位置）の周りで、複数の初期値から位置合わせして初期化する。初期姿勢をまったく与えない、地図全体からの探索は行わない | 地図全体の探索は重く、似た場所を取り違えやすい。与えた初期姿勢の近くに探索範囲を絞り、一意性を確かめてから採用する |
 | D-11 | デッドレコニングの監視（v0.9） | 位置の観測なしで走った距離を積算し、`dr_error_distance` を超えたら diagnostics で ERROR を通知する（3.12 節） | 運用上の前提（地図と GNSS 区間の間の距離）が崩れたことを、共分散のモデルに頼らずに検知するため |
 
 ---
@@ -325,17 +328,20 @@ v0.5 で、GNSS の入力を標準の `sensor_msgs/NavSatFix` に変更した（
 \mathbf{R} = \Sigma_{\mathrm{reg}} + \mathbf{T}^\top\Sigma_{\mathrm{anchor}}\mathbf{T} + \Sigma_{\mathrm{floor}},\qquad \mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)
 ```
 
-- $`\Sigma_{\mathrm{reg}}`$: スキャンマッチングの共分散（6.2 節）から、(x, y, yaw) の成分を取り出したもの。small_gicp の共分散はもともと機体座標系側の摂動で表されているので、**座標変換をせずにそのまま使える**。これも左不変誤差を選んだ利点である（roll / pitch が小さいことを前提に、SE(3) → SE(2) の射影として近似する）。
-- $`\Sigma_{\mathrm{anchor}}`$: アンカーの不確かさ（世界座標系で与える）。
-- $`\Sigma_{\mathrm{floor}}`$: 下限値。
+- $`\Sigma_{\mathrm{reg}}`$: スキャンマッチングの共分散（6.2 節の式）から、(x, y, yaw) の成分を取り出したもの。small_gicp の情報行列はもともと機体座標系側の摂動に対するものなので、**座標変換をせずにそのまま使える**。これも左不変誤差を選んだ利点である（roll / pitch が小さいことを前提に、SE(3) → SE(2) の射影として近似する）。
+- $`\Sigma_{\mathrm{anchor}}`$: アンカーの不確かさ（世界座標系で与える。maps.yaml の `stddev_xy` / `stddev_yaw_deg`）。
+- $`\Sigma_{\mathrm{floor}}`$: 下限値（`min_stddev_xy` 既定 0.02 m、`min_stddev_yaw` 既定 0.2°）。
 
 **注意**: アンカー誤差は時間的に相関するバイアスで、白色雑音ではない。上の式はそれを保守的に近似しているだけである。GNSS と LiDAR が両方有効な区間で、両者の差からアンカー誤差をオンライン推定する拡張（状態に地図グループごとのオフセットを追加する）は Phase 4 の検討事項とする。
 
-**採用条件**:
+**採用条件**（実装: `LidarMeasurementBuilder`）:
 
 - 位置合わせが収束した（反復回数が上限未満）。
-- インライア率と、1 点あたりの残差が閾値を満たす（6.2 節）。
-- 3.5 節の Mahalanobis ゲートを通過した。
+- インライア率（`min_inlier_ratio` 既定 0.6）と overlap（`min_overlap` 既定 0.5）が閾値を満たす（6.2 節）。
+- 初期値（予測姿勢）からの移動量が `max_jump_xy` / `max_jump_yaw`（既定 1.0 m / 5°）以内。
+- GNSS FIX 中は 3.13.2 節の食い違いの判定、それ以外は 3.5 節の Mahalanobis ゲートを通過した。
+
+品質の条件を満たさなかった結果と、ゲートに落ちた結果は、どちらも「LiDAR の棄却」として数え、続けば再位置推定を行う（3.13.4 節）。
 
 ### 3.8 遅延観測の扱い
 
@@ -405,8 +411,21 @@ z は常に楕円体高（`map` の z）で保持する（v0.9）。スキャン
 | 開始地点 | 手順 |
 |---|---|
 | GNSS 区間 | ① RTK-FIX を待つ → 位置を初期化する。② 走行して `init_heading_min_distance`（既定 1 m）進んだら、GNSS の変位の向きから粗い yaw を決め、$`\sigma_\varphi`$ = `init_yaw_stddev`（既定 15°）でフィルタを始動する。③ 以後は Invariant EKF が位置観測と進行方位の観測で yaw を詰める。$`\sigma_\varphi`$ < `ready_yaw_stddev`（既定 2°）かつ位置の σ < `ready_pos_stddev`（既定 0.1 m）になったら初期化完了とする。外部から初期姿勢が与えられた場合はそれを優先する。シングルアンテナのため、停止したままでは yaw を決められない。Invariant EKF は yaw の誤差が大きくても線形化が崩れにくいので、粗い yaw から始めても安定して収束する |
-| 地図区間 | 外部から初期姿勢を与えるか、前回終了時の姿勢を保存しておいて使う → その周辺で、yaw を N 通り（既定 12 通り）× 位置格子 の初期値からスキャンマッチングを試し、最良の結果で初期化する。GICP は収束する範囲が狭いので、粗い VGICP（ボクセル 2.0 m）で候補を絞ってから GICP で詰める 2 段階にする |
+| 地図区間 | 外部から初期姿勢を与えるか、前回保存した位置を使う → その周りで、位置の格子 × yaw の初期値から位置合わせを試し、一意に決まった最良の結果で初期化する（下記。v0.10 で実装）。GICP は収束する範囲が狭いので、粗い VGICP（ボクセル 2.0 m）で候補を絞ってから GICP で詰める 2 段階にする（6.4 節） |
 | 共通 | 初期化が完了するまでは、出力を `INITIALIZING` として下流に使わせない |
+
+**地図上での初期化**（v0.10。GNSS 区間が無く、点群地図だけがある現場で必要になる）:
+
+1. **初期姿勢**: 次のどちらかで与える。
+   - 外部から与える: `~/input/initial_pose`（RViz の「2D Pose Estimate」など）。数 m・数十度ずれていてもよい。共分散が入っていなければ 1 m・30° とみなす。
+   - 前回保存した位置: `init.saved_pose_path` に推定した位置を定期的に保存しておき（既定 1 s ごとと終了時）、`init.use_saved_pose: true` なら起動時にそれを初期姿勢にする（σ = 0.5 m・10°）。止めた場所から動かさずに起動する運用を想定する。フィルタがすでに動いていれば使わない。
+2. **地図の上か**: 初期姿勢がどれかのタイルから `init_map_distance`（既定 10 m）以内なら、地図上で初期化する（初期化フェーズ `WAIT_MAP_MATCH`。この間は GNSS による初期化も行わない）。地図の外なら、外部から与えた初期姿勢はそのまま使い、保存した位置は使わない（GNSS を待つ）。
+3. **探索範囲**: 位置は初期姿勢の共分散の 3σ（`init_min_radius`〜`init_max_radius` = 0.5〜5 m に収める）、yaw は 3σ（10°〜180°）。z は、推定した楕円体高があればそれを、無ければ地図の地面の高さ（周り 3 m の点の z の下から 10 %）に `base_link_height` を足したものを使う。roll / pitch は姿勢推定器の値。
+4. **位置合わせ**: 初期姿勢の後の最初のスキャン（姿勢推定器の静止初期化が済んでから）で、6.4 節の多仮説の探索を行う。最良の解が品質の条件を満たし、次点（1 m または 10° 以上離れた解）と区別できれば（overlap の比 ≥ 1.5）、その姿勢で初期化する。初期の共分散は、位置合わせの共分散にアンカーの不確かさを足したもの。
+5. **失敗したとき**: 次のスキャンでやり直す。`init_max_attempts`（既定 5）回失敗したら、外部から与えた初期姿勢はそのまま使って初期化し（WARN）、保存した位置は捨てて GNSS か初期姿勢を待つ。LiDAR のデータが来ない、地図のターゲットができないなどで、姿勢推定器の静止初期化の後 `init_timeout`（既定 15 s）たっても決まらないときも同じに扱う（保存した位置のせいで、GNSS による初期化が止まったままにならないように）。
+6. **対象外**: 初期姿勢をまったく与えない、地図全体からの探索（大域的な自己位置推定）は行わない（1 章 D-12）。
+
+合成環境のシミュレーションでは、1 m・12° ずれた初期姿勢から、203 通りの候補を試して 0.8 s で初期化できた（9 章）。
 
 ### 3.12 状態監視（モード）
 
@@ -501,8 +520,8 @@ GNSS FIX 中は、推定値はほぼ GNSS で決まっている。そこで、Li
 
 **再アンカー**（推定値を観測側に寄せ直す手順）:
 
-1. 候補の観測列 $`\{Z_i\}`$ を、StateHistory の相対運動（オドメトリの変位）を使って最新時刻にそろえる。
-2. そろえた観測どうしのばらつきが `reanchor_consistency`（既定 0.10 m / 1.0°）以内なら、「観測どうしは互いに一致している（外れているのは推定値の方）」と判断する。
+1. 候補の観測 $`\{Z_i\}`$ ごとに、観測とその時刻の推定値との差（世界座標系の位置の差と yaw の差）を求める。推定値の方がずれているなら、短い区間ではこの差はほぼ一定になる（推定の相対運動はオドメトリで正確なため）。観測の方が外れているなら、差はばらつく。
+2. 差どうしのばらつきが `reanchor_consistency`（既定 0.10 m / 1.0°）以内なら、「観測どうしは互いに一致している（外れているのは推定値の方）」と判断する。
 3. 共分散を膨らませる: $`\mathbf{P}_{\xi\xi} \leftarrow \mathbf{P}_{\xi\xi} + \mathrm{diag}(e_x^2, e_y^2, e_\psi^2) + \Sigma_{\mathrm{reanchor}}`$（$`\mathbf{e}`$ は最新の観測と推定値の差）
 4. 最新の観測で通常の更新を行う。推定値は観測側へ強く寄る。
 5. 棄却のカウンタをリセットする。イベント `REANCHOR(source, |e|)` を診断に出す。
@@ -515,7 +534,7 @@ GNSS FIX 中は、推定値はほぼ GNSS で決まっている。そこで、Li
 | GNSS（RTK-FIX） | **棄却しない**（FIX は信用する方針）。推定値がずれていると判断し、再アンカーの候補にする | 連続 `reanchor_confirm_gnss`（既定 3 サンプル = 10 Hz で 0.3 s）が互いに一致したら再アンカーする。単発の外れ値だけを除くための確認で、FIX を疑う目的ではない |
 | GNSS の進行方位 | 棄却する（補助的な観測のため） | なし |
 | LiDAR（GNSS FIX 中） | 3.13.2 節の固定閾値で判定する（食い違いなら棄却） | なし（GNSS を優先する） |
-| LiDAR（GNSS 無し） | Mahalanobis ゲートで棄却し、再アンカーの候補にする | 連続 `reanchor_confirm_lidar`（既定 5 スキャン = 0.5 s）が互いに一致し、かつ各スキャンが品質条件（6.2 節）を満たしたら再アンカーする |
+| LiDAR（GNSS 無し） | Mahalanobis ゲートで棄却し、再アンカーの候補にする | `reanchor_confirm_lidar`（既定 5 スキャン = 0.5 s）の候補が互いに一致したら再アンカーする。候補になるのは品質の条件（6.2 節）を満たした結果だけ |
 
 - **GNSS → LiDAR の引き継ぎ**（FIX が外れた直後）では、アンカーずれがあると LiDAR がゲートで落ちる。上の LiDAR の再アンカーが働き、0.5 秒ほどで LiDAR 側に寄る。
 - **LiDAR → GNSS の引き継ぎ**（FIX が戻ったとき）では、FIX が安定待ち（1 s）を経て採用される。推定値とずれていれば、GNSS の再アンカーで 0.3 秒ほどで GNSS 側に寄る。
@@ -525,12 +544,14 @@ GNSS FIX 中は、推定値はほぼ GNSS で決まっている。そこで、Li
 GNSS が無い区間で LiDAR の観測が互いに一致しない場合は、推定値ではなく位置合わせの方が失敗している（誤った局所解）と判断する。
 
 1. LiDAR を使わずにデッドレコニングを続ける（共分散は増えていく）。
-2. 棄却が `relocalize_after_rejects`（既定 20 スキャン = 2 s）続き、かつ GNSS FIX が無い場合は、**再位置推定**を行う。
-   - 推定位置の周辺（半径 3σ、yaw ±3σ。上限は `relocalize_max_radius` 既定 3 m / 30°）に初期値の候補を並べる。
-   - 各候補から位置合わせを行う（`GicpMatcher::alignMultiHypothesis`。粗い VGICP → GICP の 2 段階）。
-3. 最良の結果が品質条件を満たし、かつ 2 番目に良い候補（最良から 1 m または 10° 以上離れたもの）よりスコアが十分良い場合（`relocalize_uniqueness_ratio` 既定 1.5）だけ採用し、再アンカーする。一意に決まらない場合は採用しない（対称な構造での取り違えを防ぐ）。
-4. `relocalize_max_attempts`（既定 3）回失敗したら `LOST` にする。
-5. `LOST` からは、GNSS の再アンカー（FIX が得られた時点で自動的に復帰）、または外部から与えた初期姿勢でのみ復帰する。
+2. 棄却（ゲートに落ちた結果と、品質の条件を満たさなかった結果の両方を数える）が `relocalize.after_rejects`（既定 20 スキャン = 2 s）続き、かつ GNSS FIX が無い場合は、**再位置推定**を行う。
+   - 推定位置の周りに初期値の候補を並べる。半径は、推定値の共分散の 3σ と、位置の観測なしで走った距離（3.12 節）の `radius_per_dr_distance` 倍（既定 5 %）の大きい方を、`min_radius`〜`max_radius`（既定 1〜3 m）に収めたもの。yaw は 3σ を 10°〜30° に収めたもの（v0.10）。フィルタの共分散は、モデル化していない誤差（スリップなど）があると小さすぎることがあるので、走った距離からも下限を決める。
+   - 次のスキャンで、各候補から位置合わせを行う（6.4 節の多仮説の探索。粗い VGICP → GICP の 2 段階）。
+3. 最良の結果が品質条件を満たし、かつ 2 番目に良い候補（最良から 1 m または 10° 以上離れたもの）より overlap が十分大きい場合（`uniqueness_ratio` 既定 1.5 倍）だけ採用し、再アンカーする。一意に決まらない場合は採用しない（対称な構造での取り違えを防ぐ）。
+4. `max_attempts`（既定 3）回失敗したら `LOST` にする。
+5. `LOST` の間は、GNSS FIX が無ければ `lost_retry_interval`（既定 5 s）ごとに、最も広い範囲（3 m・30°）で再位置推定を試す（地図だけの現場で自動的に復帰できるように。v0.10）。ほかに、GNSS の採用・再アンカー、外部から与えた初期姿勢、ゲートを通った LiDAR の観測でも復帰する。
+
+合成環境のシミュレーションでは、LiDAR が 25 秒止まって 1.55 m ずれた状態から、LiDAR が戻って 2 秒後に再位置推定（39 候補、0.2 s）で戻った（9 章）。
 
 #### 3.13.5 状態遷移のまとめ
 
@@ -595,6 +616,16 @@ stateDiagram-v2
 
 この変換は剛体変換ではなく**相似変換**になる。変換はコア内で `MapAnchor` クラスとしてまとめ、スキャンマッチングの初期値計算（UTM → 地図）と結果の変換（地図 → UTM）の両方に同じものを使う。
 
+**アンカーの与え方**（v0.10。maps.yaml の `anchor`。5.2 節）:
+
+| 与え方 | キー | 使いどころ |
+|---|---|---|
+| 緯度経度 | `latitude`、`longitude`、`ellipsoid_height`、`heading_deg`（真北から時計回り） | 通常。GNSS で測ったアンカー点 |
+| UTM で直接 | `easting`、`northing`、`ellipsoid_height`、`grid_heading_deg`（グリッド北から時計回り） | アンカー点の UTM 座標が分かっている場合。子午線収差と縮尺係数は、その点の緯度経度から求める |
+| `local` | `anchor: local` | 緯度経度が分からない、地図だけの現場。地図の座標をそのまま `map` として出力する（経路も地図の座標で与える）。座標系が UTM と違うので、GNSS の入力は無視する（購読しない）。UTM にアンカーしたグループとは混在できない（maps.yaml の読み込みでエラー） |
+
+いずれも `map_point`（アンカー点の地図座標）、`stddev_xy`、`stddev_yaw_deg`、`use_scale_factor`（縮尺係数を使うか。既定 true）を指定できる。
+
 ### 4.3 数値精度
 
 UTM 座標は $`10^5`$〜$`10^6`$ m のオーダーになる。`float32` では有効桁が足りず、0.1〜0.5 m 程度に丸められる。そこで次のように扱う。
@@ -638,21 +669,22 @@ UTM 座標は $`10^5`$〜$`10^6`$ m のオーダーになる。`float32` では�
 
 オフラインツール `gll_map_tiler` で、外部ツールが出力した統合済みの点群を正方形のタイルに分割する。
 
+- 使い方: `gll_map_tiler -i map.pcd [-i more.pcd ...] -o <出力先> [--tile-size 20] [--voxel-size 0.2] [--num-neighbors 20]`。1 回の実行で 1 つの地図グループを作る。入力の PCD は、DATA が ascii / binary / binary_compressed で、x / y / z が float32 か float64 のもの（PCL には依存しない独自の読み込み。v0.10）
 - タイルサイズ: 既定 20 m（地図座標系、xy 平面）
-- 前処理: ボクセルダウンサンプリング（既定 0.2 m）と外れ値除去
-- 出力: `tiles/<ix>_<iy>.pcd` と `tile_index.yaml`
+- 前処理: ボクセルダウンサンプリング（既定 0.2 m）。点ごとの共分散は、分割する前の点群全体で近傍 20 点から計算する（6.2 節）
+- 出力: `tiles/<ix>_<iy>.bin`（独自のバイナリ形式。下記）と `tile_index.yaml`
 - タイルの番号 `<ix>_<iy>` はグループの中でしか一意でないので、コアの中では（グループ ID, ix, iy）の組 `TileId` でタイルを識別する（v0.9）。キャッシュなどで、別のグループの同じ番号のタイルを取り違えないようにするため
 
 地図設定ファイルの例:
 
 ```yaml
-# config/maps.yaml
-utm:
+# maps.yaml（ノードのパラメータ map.config_path で指定する。相対パスはこのファイルからの相対）
+utm:                                  # 任意。書いた場合は gnss.utm_zone / utm_north と一致するか確かめる
   zone: 54
   hemisphere: north
 map_groups:
   - id: area_a
-    tile_index: maps/area_a/tile_index.yaml
+    tile_index: area_a/tile_index.yaml
     anchor:
       map_point: [0.0, 0.0, 0.0]      # アンカー点の地図座標 [m]
       latitude: 35.681236             # [deg]
@@ -662,34 +694,35 @@ map_groups:
       stddev_xy: 0.05                 # アンカーの不確かさ [m]
       stddev_yaw_deg: 0.2
   - id: area_b
-    tile_index: maps/area_b/tile_index.yaml
-    anchor: { ... }
+    tile_index: area_b/tile_index.yaml
+    anchor: {easting: 386250.0, northing: 3952100.0, ellipsoid_height: 41.0, grid_heading_deg: 12.5}
 ```
 
 ```yaml
-# maps/area_a/tile_index.yaml（ツールが生成）
-tile_size: 20.0
+# area_a/tile_index.yaml（gll_map_tiler が生成）
+format: gll_tiles_v1
+tile_size: 20
+voxel_size: 0.2
+num_neighbors: 20
 tiles:
-  - id: "3_-1"
-    file: tiles/3_-1.pcd
-    bounds_min: [60.0, -20.0, -5.2]   # 地図座標
-    bounds_max: [80.0,   0.0, 12.3]
-    num_points: 18234
+  - {ix: 3, iy: -1, file: tiles/3_-1.bin, num_points: 18234, bounds_min: [60.000, -20.000, -5.200], bounds_max: [80.000, 0.000, 12.300]}
 ```
 
-起動時に `MapTileManager` が全グループのタイルの UTM バウンディングボックスを計算し、2D の空間インデックス（一様グリッドのハッシュ）に登録する。この時点では点群本体は読み込まない。
+**タイルファイルの形式**（リトルエンディアン）: 先頭 8 バイトが `GLLTILE1`、続いて点数（uint64）、フラグ（uint32。ビット 0 が共分散あり）、点の xyz（float32 × 3 × 点数）、共分散の上三角 xx・xy・xz・yy・yz・zz（float32 × 6 × 点数）。
+
+起動時に `MapTileManager` が全グループのタイルの四隅を UTM に変換して、タイルの範囲（四角形）を求める。この時点では点群本体は読み込まない。タイルの数は多くても数千枚の想定なので、範囲の判定は全タイルを順に調べる（見直しは `update_distance` 既定 1 m 動くか、`update_interval` 既定 1 s ごと）。
 
 ### 5.3 動的ロード / アンロード
 
-**判定周期**: 前回の判定位置から `reload_distance`（既定 5 m）移動したとき、または 1 Hz のどちらか早い方。
+**判定周期**: 前回の判定位置から `update_distance`（既定 1 m）移動したとき、または `update_interval`（既定 1 s）たったときのどちらか早い方（v0.10 で `reload_distance` 5 m から変更）。
 
-**要求中心**: 現在位置に、進行方向への先読み（速度 × `lookahead_time`、既定 3 s）を加えた点。
+**要求中心**: 現在位置と、進行方向へ先読みした点（速度 × `lookahead_time`、既定 3 s）の 2 点。
 
 先読みは、タイルを前もって読み込んでおくためだけに使う。ロードの対象は全グループのタイルで、次に入るグループのタイルも、近づいた時点でキャッシュに入る。どのグループで照合するか（アクティブグループ）は、先読みを含まない現在位置で決める（5.5 節、v0.9）。
 
 | 操作 | 条件 |
 |---|---|
-| ロード要求 | 要求中心から半径 `load_radius`（既定 60 m）以内と交差するタイル |
+| ロード要求 | 2 つの要求中心のどちらかから半径 `load_radius`（既定 60 m）以内と交差するタイル |
 | アンロード | 現在位置からの距離が `unload_radius`（既定 90 m）を超えたタイル（ヒステリシスでロードとアンロードの繰り返しを防ぐ） |
 
 処理の流れ:
@@ -755,25 +788,34 @@ sequenceDiagram
 
 ### 6.1 前処理
 
-1. 時刻の揃え: スキャンの代表時刻は、スキャン終了時刻または中央時刻（ドライバの仕様に合わせて設定で選ぶ）。
-2. 歪み補正（デスキュー）:
-   - 並進による歪みは、6 km/h では 0.1 s のスキャン中に最大 0.17 m で、影響は小さい。
-   - 一方、旋回中の回転による歪み（例: 30 deg/s なら 3°、30 m 先で約 1.6 m）は無視できない。
-   - そこで Phase 2 で、**ジャイロだけを使う回転の歪み補正**を入れる（LiDAR が点ごとのタイムスタンプを出す場合）。並進の補正は Phase 4 とする。
-3. base_link 座標系への変換 → 車体領域の除去（クロップボックス） → 距離でのクロップ（既定 1.0〜50 m）
-4. ボクセルダウンサンプリング（既定 1.0 m）
+実装: `ScanPreprocessor`（デスキュー → base_link への変換 → クロップ）と `GicpMatcher::prepareSource`（間引き → 点ごとの共分散）。
+
+1. **時刻**: ROS の `PointCloud2` に点ごとの時刻があれば、それを使う（v0.10）。フィールド名は `lidar.time_field`（既定 `auto`: `time` → `t` → `timestamp` → `time_stamp` → `offset_time` の順に探す）。単位は型から決める。
+   - 整数型: ヘッダの時刻からの ns（Ouster の `t`、Livox の `offset_time` など）
+   - FLOAT32: ヘッダの時刻からの秒（Velodyne の `time` など）
+   - FLOAT64: 値の大きさで見分ける。1e15 より大きければ絶対時刻の ns、1e6 より大きければ絶対時刻の秒（Hesai・Robosense の `timestamp` など）、それ以外はヘッダの時刻からの秒。**想定機種の Livox Mid-360**（livox_ros_driver2、`xfer_format: 0` の PointCloud2）は `timestamp` が FLOAT64 の絶対時刻の ns で、前者に当たる（フィールドが 8 バイト境界にない詰めた並びでも読める。単体テストで確認）
+
+   スキャンの代表時刻は、**最後の点の時刻**とする（遅れを小さくするため）。点ごとの時刻が無ければ、`header.stamp + lidar.stamp_offset` を代表時刻にし、デスキューはしない。
+2. **歪み補正（デスキュー）**: スキャンの間、機体の速度と角速度が一定とみなし、各点を代表時刻の base_link に移す。時刻 $`\tau`$（代表時刻からの相対時刻。負の値）に測った点 $`\mathbf{p}`$（base_link）は、次の式で移す（SE(3) の指数写像。並進 $`\mathbf{u} = \mathbf{v}\tau`$、回転 $`\mathbf{w} = \omega\tau`$）。
+
+   ```math
+   \mathbf{p}' = \mathrm{Exp}(\mathbf{w})\,\mathbf{p} + \mathbf{V}(\mathbf{w})\,\mathbf{u}
+   ```
+
+   - $`\omega`$ はバイアスを補正したジャイロの 3 軸、$`\mathbf{v}`$ は ODOM の速度（推定したスケールを掛けたもの）と横速度。v0.8 までの計画（回転だけ）を広げ、並進も補正する。
+   - 時刻を 0.1 ms 刻みにまとめて変換を使い回す。合成データでは、1 rad/s で旋回しながら取ったスキャンの歪み（最大 3.8 m）が 2.3 mm になった。
+3. base_link 座標系への変換（`lidar.extrinsic_xyz` / `extrinsic_rpy_deg`）→ 距離でのクロップ（LiDAR からの距離 1.0〜50 m）→ 車体の点の除去（`crop_box_*`。既定は無効）
+4. ボクセルダウンサンプリング（`source_voxel_size` 既定 0.5 m）→ 近傍 10 点から点ごとの共分散と法線（small_gicp の `estimate_normals_covariances_omp`）
 
 ### 6.2 small_gicp による位置合わせ（v0.2 で NDT から変更）
 
-**手法**: GICP（平面どうしの位置合わせ）。ソースとターゲットの両方で点ごとの共分散を使う。初期化時の粗い探索には VGICP を使う（3.11 節）。
+**手法**: GICP（平面どうしの位置合わせ）。ソースとターゲットの両方で点ごとの共分散を使う。small_gicp v1.0.1 のテンプレート（`Registration<GICPFactor, ParallelReductionOMP>`、Levenberg-Marquardt）を使い、small_gicp の型は `GicpMatcher` の中に閉じ込める。
 
 **ターゲット（地図）の構成**: small_gicp には、タイル ID 単位でターゲットの点を削除する仕組みが無い。そこで次のようにする。
 
-1. **点ごとの共分散はオフラインで計算**する。`gll_map_tiler` がグループ全体の点群に対して近傍 k 点（既定 20）から共分散を求め、タイルファイルに保存する。**分割前の点群で計算する**ことで、タイル境界で近傍点が欠けて共分散が劣化するのを防ぐ。
-2. タイルファイルは独自のバイナリ形式（`float32` の xyz と、共分散の上三角 6 要素）とする。コアから PCL への依存を無くすため。
-3. ロード済みタイルの集合が変わったら、地図ロードワーカーが**結合した点群と KdTree を再構築**し、ダブルバッファで差し替える（5.3 節）。6 km/h ではタイル集合が変わるのは数秒〜数十秒に 1 回で、再構築（数十万点で数十 ms 程度の見込み）は十分に間に合う。
-
-**ソース（スキャン）の前処理**: `voxelgrid_sampling`（既定 0.5 m）→ `estimate_covariances_omp`（k = 10）
+1. **点ごとの共分散はオフラインで計算**する。`gll_map_tiler` がグループ全体の点群に対して近傍 20 点から共分散を求め、タイルファイルに保存する。**分割前の点群で計算する**ことで、タイル境界で近傍点が欠けて共分散が劣化するのを防ぐ。
+2. タイルファイルは独自のバイナリ形式（5.2 節）とする。コアから PCL への依存を無くすため。
+3. アクティブグループのロード済みタイルの集合が変わったら、地図ロードワーカーが**結合した点群と KdTree を再構築**し、ダブルバッファで差し替える（5.3 節）。6 km/h ではタイル集合が変わるのは数秒〜数十秒に 1 回で、再構築は十分に間に合う。
 
 **主なパラメータ**（既定値。実データで調整する）:
 
@@ -782,32 +824,47 @@ sequenceDiagram
 | `max_correspondence_distance` | 1.0 m |
 | 収束判定（回転 / 並進） | 1e-3 rad / 1e-3 m |
 | 最大反復回数 | 20 回 |
-| スレッド数 | 4 |
+| スレッド数 | 4（ROS のパラメータの既定。コアの既定は 2） |
 
-**初期値**: 3.8 節のスキャン時刻の予測姿勢（x, y, yaw）と、3.9 節の z / roll / pitch を合わせて地図座標系に変換したもの。
+**初期値**: 3.8 節のスキャン時刻の予測姿勢（x, y, yaw）を、**照合するターゲットのグループのアンカー**で地図座標系に変換し（5.5 節）、z と roll / pitch を合わせたもの（3.9 節）。
 
-**品質指標**（small_gicp の `RegistrationResult` から計算する）:
+**品質指標**（`RegistrationResult`）:
 
 - `converged` かつ反復回数が上限未満
-- インライア率（`num_inliers` / ソース点数）≥ `gicp_min_inlier_ratio`（既定 0.6）
-- インライア 1 点あたりの残差（`error` / `num_inliers`）≤ `gicp_max_error_per_point`
+- インライア率（対応点が見つかったスキャンの点の割合）≥ `min_inlier_ratio`（既定 0.6）
+- **overlap** ≥ `min_overlap`（既定 0.5）: 位置合わせ後のスキャンの点のうち、`overlap_distance`（既定 0.3 m）以内に地図の点があるものの割合。**法線が鉛直に近い点（地面・天井）は数えない**（v0.10）。地面はどの水平位置でも重なるので、含めると誤った解でも overlap が高くなるため。水平でない面（壁・柱など）の点が 50 点未満なら、全点で数える
+- 初期値からの移動量 ≤ `max_jump_xy` / `max_jump_yaw`（既定 1.0 m / 5°）
 
-**共分散**:
+**共分散**（v0.10 で確定）:
 
-- 収束点でのヘッセ行列 $`\mathbf{H}`$（6×6）から、$`\Sigma \approx \hat\sigma^2 \mathbf{H}^{-1}`$ を求める。
-- $`\hat\sigma^2`$ は正規化した残差から推定するか、固定のスケール `gicp_cov_scale` を使う。
-- small_gicp の $`\mathbf{H}`$ は**機体座標系側の摂動**に対するもので、成分の並びは回転 → 並進である（実装時にバージョンごとの定義を確認する）。これを随伴変換で地図座標系の (x, y, yaw) に変換してから使う。
-- GICP の共分散は実際より小さく見積もられやすいので、3.7 節の $`\Sigma_{\mathrm{floor}}`$ でクリップする。
-- 退化した環境（長い廊下やトンネル）では $`\mathbf{H}`$ の固有値が小さい方向に分散が大きくなり、その方向の補正は自動的に弱まる。
+```math
+\Sigma_6 = \kappa\, N_{\mathrm{in}}\, (\mathbf{H} + \epsilon \mathbf{I})^{-1},\qquad \Sigma_{\mathrm{reg}} = [\Sigma_6]_{(x,\,y,\,\psi)}
+```
 
-**失敗判定**: 3.7 節の採用条件に加え、初期値からの移動量が `gicp_max_jump`（既定 1.0 m / 5 deg）を超えた場合も棄却する。
+- $`\mathbf{H}`$ は収束点での small_gicp の情報行列（6×6）。**機体座標系側の摂動**（$`\mathbf{T} \leftarrow \mathbf{T}\,\mathrm{Exp}(\delta)`$）に対するもので、$`\delta`$ の並びは回転 3 → 並進 3（v1.0.1 で確認）。このまま 3.7 節の機体座標系の観測共分散に使える（座標変換は要らない）。
+- small_gicp の点ごとの共分散は、固有値を (1e-3, 1, 1) にそろえた正規化した値なので、$`\mathbf{H}^{-1}`$ は物理的な誤差の大きさを表さない。また点どうしは強く相関しているので、点数を増やしても精度は $`1/\sqrt{N}`$ では良くならない。そこで**インライア数 $`N_{\mathrm{in}}`$ を掛け戻して点数によらない形にし**、係数 $`\kappa`$ = `cov_scale`（既定 0.15）で実際の精度に合わせる。既定値では、面が十分ある環境で σ が数 cm・0.1° 程度になる。
+- 退化した環境（長い廊下など）では、$`\mathbf{H}`$ の情報が小さい方向の分散が大きくなり、その方向の補正は自動的に弱まる。合成データの廊下（x 方向に長い 2 枚の壁）では、x の分散が y の 70 倍になった。
+- $`\epsilon`$ = 1e-6 は、情報がまったく無い方向で逆行列が発散しないための値。
+- GICP の共分散は実際より小さく見積もられやすいので、3.7 節の $`\Sigma_{\mathrm{floor}}`$ を加える。$`\kappa`$ は実データ（i2Nav-Robot の V2-1）で、誤差と共分散の整合から決める。
+
+**失敗の扱い**: 品質の条件を満たさない結果は観測にしない。その回数は、ゲートで落ちた回数と合わせて数え、続けば再位置推定を行う（3.13.4 節）。
 
 ### 6.3 処理時間の目安
 
-- 前処理 + GICP で 10〜30 ms / スキャン（10 Hz の LiDAR に対して十分）。
-- マッチングは専用ワーカースレッドで実行する。処理が追いつかない場合は、最新のスキャンだけを処理する（古いスキャンは捨てる）。
+- 合成データ（16 ライン、14,000 点のスキャン、地図 36 万点）で、前処理後 4,000 点の GICP が 10 ms（2 スレッド、3 反復）。10 Hz の LiDAR に対して十分。実機の CPU での値は Phase 3 で測る。
+- マッチングは専用のワーカースレッドで実行する（`lidar.async`）。処理が追いつかない場合は、最新のスキャンだけを処理する（古いスキャンは捨て、`lidar_dropped` を数える）。
+- 多仮説の探索（6.4 節）は 0.2〜0.8 s かかる。その間に届いたスキャンは捨てる（初期化と再位置推定のときだけなので、影響は小さい）。
 
----
+### 6.4 多仮説の探索（地図上での初期化と再位置推定。v0.10）
+
+実装: `GicpMatcher::search`。初期値の周りに候補を並べ、次の 3 段で解を選ぶ。
+
+1. **候補**: 位置は探索の中心から `position_step`（既定 1 m）間隔の格子で、半径以内の点。yaw は `yaw_step`（既定 20°）間隔で ±探索幅（探索幅が 180° なら全周）。z・roll・pitch は中心の値。
+2. **粗い位置合わせ**: 各候補から、ソースを `coarse_source_voxel`（既定 1.0 m）で間引いた点群を、ターゲットのボクセル地図（VGICP、`coarse_voxel_size` 既定 2.0 m）に `coarse_max_iterations`（既定 10）回まで合わせる。候補ごとに並列に処理する。1 m 間隔の overlap（水平でない面の点）で順位を付ける。
+3. **詰める**: 上位の候補から、互いに `distinct_xy` / `distinct_yaw`（既定 1 m / 10°）以上離れたものを `refine_candidates`（既定 5）個選び、通常の GICP で詰めて overlap（0.3 m）を求める。
+4. **判定**: overlap が最大の解を最良とし、最良から十分離れた解のうち overlap が最大のものを次点とする。最良の解が品質の条件（インライア率、overlap ≥ `min_overlap` 既定 0.6）を満たし、次点の overlap の `uniqueness_ratio`（既定 1.5）倍以上なら採用する。
+
+合成データでの結果（9 章）: 1.2 m・35° ずれた初期値から 147 候補で 3 cm・0.2° 以内、yaw が分からない（全周）場合も 162 候補で見つかった。正方形の部屋の中心（90° ごとに同じ見え方）では、次点との区別がつかず「ambiguous」として採用しなかった。
 
 ## 7. ソフトウェアアーキテクチャ
 
@@ -840,28 +897,29 @@ flowchart TB
 - ログは `ILogger` インターフェースを通して出す（IF 層が `RCLCPP_*` / `ROS_*` に橋渡しする）。
 - 設定はプレーンな構造体（`LocalizerConfig`）で受け取る。YAML や ROS パラメータからの読み込みは IF 層の責務とする（コア単体のテスト用に、YAML から読み込むヘルパーは用意する）。
 
-### 7.2 ディレクトリ構成（案）
+### 7.2 ディレクトリ構成
 
 ```
 gnss_and_lidar_localization/
 ├── core/                       # gll_core（純粋な CMake。colcon / catkin からも plain CMake でビルド可能）
 │   ├── CMakeLists.txt
 │   ├── include/gll/
-│   │   ├── common/             # types.hpp, logger.hpp, config.hpp, geodesy.hpp, se2.hpp
-│   │   ├── estimation/         # state_estimator.hpp, inv_ekf_se2.hpp, state_history.hpp, output_smoother.hpp
-│   │   ├── measurement/        # gnss_model.hpp, lidar_model.hpp, attitude_estimator.hpp
-│   │   ├── map/                # map_anchor.hpp, map_tile_manager.hpp, tile_loader.hpp
-│   │   ├── matching/           # scan_matcher.hpp, gicp_matcher.hpp
+│   │   ├── common/             # types, config, logger, geodesy（UTM）, se2, pose_store
+│   │   ├── estimation/         # 推定器（InvEkfSe2 / EsEkf2D）、履歴、ゲート、出力整形、状態監視、初期化、優先度、復帰
+│   │   ├── measurement/        # 姿勢推定器、予測入力、停止検出、GNSS / LiDAR の観測の生成
+│   │   ├── map/                # アンカー、maps.yaml、タイルと索引、PCD の読み書き、タイル化、MapTileManager
+│   │   ├── matching/           # IScanMatcher、GicpMatcher（small_gicp）、ScanPreprocessor
 │   │   └── localizer.hpp       # ファサード
 │   ├── src/
-│   └── test/                   # GoogleTest（ROS 無しで実行可能）
+│   ├── tools/                  # gll_map_tiler（統合済みの PCD → タイル + tile_index.yaml）
+│   └── test/                   # GoogleTest（ROS 無しで実行可能。合成環境のレイキャストによる LiDAR の模擬を含む）
 ├── ros2/
 │   └── gll_ros2/               # ament_cmake パッケージ（ノード、launch、パラメータ）
 ├── ros1/                       # 将来: gll_ros1（catkin）
 ├── tools/
-│   ├── map_tiler/              # 点群 → タイル + tile_index.yaml
-│   └── anchor_calibrator/      # GNSS ログとスキャンマッチング結果からアンカーを較正
-├── config/
+│   ├── sim/                    # Invariant EKF と ESEKF の比較（Python）
+│   └── anchor_calibrator/      # 将来: GNSS ログとスキャンマッチング結果からアンカーを較正
+├── docker/
 └── docs/
 ```
 
@@ -870,13 +928,11 @@ gnss_and_lidar_localization/
 ```cpp
 namespace gll {
 
-struct ImuSample   { double t; Eigen::Vector3d gyro; Eigen::Vector3d acc;
-                     std::optional<Eigen::Quaterniond> orientation; };
+struct ImuSample   { double t; Eigen::Vector3d gyro; Eigen::Vector3d acc; };   // base_link 座標系
 struct OdomSample  { double t; double v; double v_lat; std::optional<double> yaw_rate; };  // twist の x, y, angular.z
-enum class GnssFixType { NONE, SINGLE, DGPS, RTK_FLOAT, RTK_FIX };
-struct GnssSample  { double t; double lat, lon, h; Eigen::Matrix3d cov; GnssFixType fix;
-                     std::optional<double> heading; std::optional<double> heading_var; };
-struct LidarScan   { double t; std::vector<Eigen::Vector3f> points; };  // lidar 座標系
+struct GnssSample  { double t; double lat, lon, h; Eigen::Matrix3d cov_enu; bool cov_known; int raw_status; };
+struct LidarScan   { double t; std::vector<Eigen::Vector3f> points;  // LiDAR 座標系
+                     std::vector<float> times; };                    // 点ごとの t からの相対時刻（無ければ空）
 
 struct Pose2D      { double x, y, yaw; };
 struct LocalizationOutput {
@@ -887,6 +943,7 @@ struct LocalizationOutput {
   Eigen::Matrix3d raw_cov;     // フィルタの推定値の共分散 Σ_w
   double v, yaw_rate;
   LocalizationStatus status;
+  RecoveryState recovery;
   std::string active_map_group;
   double dr_distance;          // 最後に位置の観測を採用してから走った距離 [m]（3.12 節）
   bool dr_distance_exceeded;   // dr_distance > dr_error_distance（diagnostics で ERROR）
@@ -894,19 +951,24 @@ struct LocalizationOutput {
 
 class Localizer {
  public:
-  Localizer(const LocalizerConfig& cfg,
-            std::unique_ptr<IScanMatcher> matcher,
-            std::unique_ptr<ITileLoader> tile_loader,
-            std::shared_ptr<ILogger> logger);
+  enum class InitialPoseSource { EXTERNAL, SAVED };
+  Localizer(const LocalizerConfig& cfg, std::unique_ptr<IStateEstimator> estimator = nullptr,
+            std::shared_ptr<ILogger> logger = nullptr);
+
+  // LiDAR を使う場合: maps.yaml から作った MapTileManager とスキャンマッチャを渡す
+  void setMap(std::shared_ptr<MapTileManager> maps, std::shared_ptr<const IScanMatcher> matcher);
 
   void addImu(const ImuSample&);
   void addOdom(const OdomSample&);
   void addGnss(const GnssSample&);
-  void addLidarScan(LidarScan);               // 非同期処理（ワーカーに渡す）
-  void setInitialPose(const Pose2D&, const Eigen::Matrix3d& cov);
+  void addLidarScan(LidarScan);               // lidar.async なら専用スレッドに渡してすぐ戻る
+  void setInitialPose(double t, const Pose2D&, const Eigen::Matrix3d& cov,
+                      InitialPoseSource source = InitialPoseSource::EXTERNAL);  // 地図の上なら周りを探して初期化
 
-  std::optional<LocalizationOutput> getOutput() const;  // 最新の出力
+  std::optional<LocalizationOutput> getOutput();  // 最新の出力（地図のタイルの見直しもここで行う）
   Diagnostics diagnostics() const;
+  std::optional<LidarMatchInfo> lastLidarMatch() const;          // デバッグ出力用
+  std::shared_ptr<const MatchTarget> currentMapTarget() const;   // 可視化用
 };
 
 }  // namespace gll
@@ -917,8 +979,10 @@ class Localizer {
 | スレッド | 所有者 | 役割 |
 |---|---|---|
 | 呼び出し側スレッド | IF 層（ROS のコールバック） | `add*` を呼ぶ。IMU / ODOM / GNSS はその場で予測・更新する（mutex で保護。処理は μs オーダー） |
-| マッチングワーカー | コア（`std::thread`） | LiDAR の前処理と GICP を行い、結果を観測キューに入れる → フィルタの mutex を取って遅延更新する |
-| 地図ロードワーカー | コア（`std::thread`） | タイルの読み込みとボクセル化、ダブルバッファの裏側の更新 |
+| マッチングワーカー | コア（`Localizer` の中の `std::thread`。`lidar.async`） | 最新のスキャンだけを保持し、前処理と GICP（初期化・再位置推定では多仮説の探索）を行う。フィルタの mutex は、予測姿勢の取得と観測の適用のときだけ短く取る |
+| 地図ロードワーカー | コア（`MapTileManager` の中の `std::thread`。`map.async`） | タイルの読み込み、ターゲット（結合した点群と KdTree）の再構築、ダブルバッファの差し替え |
+
+テストでは `lidar.async` と `map.async` を false にし、同じスレッドで決まった順に処理する（結果が毎回同じになる）。
 
 コアは ROS のタイマーや executor に依存しない。出力の publish 周期（既定 50 Hz）は IF 層のタイマーが決め、`getOutput()` をポーリングする。IMU の受信ごとに publish することもできる。
 
@@ -932,7 +996,7 @@ class Localizer {
 | `~/input/odom` | `nav_msgs/Odometry` | v0.8 で確定。**twist だけを使う**（`twist.linear.x` = 前進速度、`twist.linear.y` = 横速度、`twist.angular.z` = ヨーレート。いずれも `child_frame_id` の機体座標系）。pose（オドメトリ自身が積分した位置・姿勢）は使わない |
 | `~/input/gnss/fix` | `sensor_msgs/NavSatFix` | 独自ドライバ。3.6 節の取り決めに従う |
 | `~/input/gnss/velocity` | `geometry_msgs/TwistWithCovarianceStamped` | 任意（`use_gnss_velocity: true` のときだけ購読） |
-| `~/input/points` | `sensor_msgs/PointCloud2` | |
+| `~/input/points` | `sensor_msgs/PointCloud2` | `map.config_path` を指定したときだけ購読する。点ごとの時刻のフィールドは自動で判別する（6.1 節） |
 | `~/input/initial_pose` | `geometry_msgs/PoseWithCovarianceStamped` | |
 
 **NavSatFix の変換**（IF 層の `NavSatFixConverter`）: `status.status`、`position_covariance(_type)`、`altitude`、`header.stamp` を 3.6 節の取り決めに従ってコアの `GnssSample` に変換する（RTK-FIX の判定そのものはコアの `GnssMeasurementBuilder` で行う）。速度トピックは `GnssVelocitySample` に変換する。
@@ -945,10 +1009,10 @@ class Localizer {
 | `~/output/odometry` | `nav_msgs/Odometry` | 速度・ヨーレートを含む |
 | `~/output/status` | `diagnostic_msgs/DiagnosticStatus` | 出力周期ごとの状態（3.12 節）。デッドレコニング距離が `dr_error_distance` を超えたら ERROR とメッセージ（v0.9） |
 | `~/debug/raw_pose` | `geometry_msgs/PoseWithCovarianceStamped` | フィルタの生の推定値 |
-| `~/debug/gicp_pose`, `~/debug/gicp_quality` | | スキャンマッチングの結果・品質指標 |
-| `~/debug/loaded_map` | `sensor_msgs/PointCloud2` | frame_id = `map_local`（低頻度） |
-| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 1 Hz。`gll_localizer`（`~/output/status` と同じ内容）と `gll_localizer: counters`（入力・採用・棄却の数）。処理時間は Phase 2 以降で追加 |
-| TF | | **`map` → `base_link`**（odom フレームは使わない。v0.8）。可視化用に `map` → `map_local` の静的変換も出せる。フレーム名はパラメータ（`map_frame`、`base_frame`）で変えられる |
+| `~/debug/lidar_pose` | `geometry_msgs/PoseWithCovarianceStamped` | スキャンマッチングの結果（UTM）と観測共分散。品質指標は diagnostics に出す |
+| `~/debug/map_points` | `sensor_msgs/PointCloud2` | 照合に使っている地図（ターゲット）。frame_id = `map_local`、ターゲットが変わったときだけ（transient local） |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 1 Hz。`gll_localizer`（`~/output/status` と同じ内容）、`gll_localizer: counters`（入力・採用・棄却の数。LiDAR を含む）、`gll_localizer: map`（アクティブグループ、読み込んだタイル、照合の処理時間と品質。アンカーずれが `anchor_mismatch_warn` を超えたら WARN） |
+| TF | | **`map` → `base_link`**（odom フレームは使わない。v0.8）。可視化用に `map` → `map_local` の静的変換も出す（`map_local_origin` を指定しなければ、地図があれば最初のグループのアンカーを 100 m 単位に丸めた点）。フレーム名はパラメータ（`map_frame`、`base_frame`）で変えられる |
 
 ### 7.6 ROS 1 への移植（後回し）
 
@@ -965,9 +1029,10 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 |---|---|
 | Eigen3 | 線形代数 |
 | GeographicLib | 緯度経度 ↔ UTM、子午線収差、縮尺係数 |
-| small_gicp | スキャンマッチング（GICP / VGICP）、ダウンサンプリング、共分散推定、KdTree |
-| （PCL） | コアでは使わない。`gll_map_tiler`（オフラインツール）と IF 層での PointCloud2 変換だけで使う |
-| yaml-cpp | 設定・タイルインデックス |
+| small_gicp（v1.0.1） | スキャンマッチング（GICP / VGICP）、ダウンサンプリング、共分散推定、KdTree。タグを固定してソースからビルドする（apt のパッケージは使わない）。GCC 13 と Eigen 3.3 の組み合わせでは、small_gicp の `kdtree.hpp` が `<cstdint>` を必要とするので、使う側で先に含める |
+| OpenMP | small_gicp の並列化（GCC の libgomp） |
+| （PCL） | 使わない（v0.10）。PCD の読み込みは `gll_map_tiler` の独自実装、PointCloud2 の変換は IF 層の独自実装 |
+| yaml-cpp | maps.yaml・tile_index.yaml |
 | GoogleTest | 単体テスト |
 
 ---
@@ -979,8 +1044,8 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 | 項目 | 内容 |
 |---|---|
 | ベースイメージ | `ros:jazzy-ros-base`（Ubuntu 24.04） |
-| apt で入れる依存 | Eigen3、GeographicLib、yaml-cpp、GoogleTest、OpenMP、PCL（ツールと IF 層用）、`ros-jazzy-*` の必要パッケージ（`tf2_ros`、`diagnostic_updater` など） |
-| ソースからビルドする依存 | small_gicp（タグを固定して `git clone` し、CMake でインストール） |
+| apt で入れる依存 | Eigen3、GeographicLib、yaml-cpp、GoogleTest、`ros-jazzy-*` の必要パッケージ（`tf2_ros`、各メッセージなど） |
+| ソースからビルドする依存 | small_gicp v1.0.1（タグを固定して `git clone` し、静的ライブラリとして CMake でインストール。`SMALL_GICP_VERSION` で変えられる） |
 | ステージ | `dev`（ビルド・テスト・デバッグ用。Python の `rosbags` など検証用ツールも入れる）と `runtime`（実行に必要なものだけ） |
 | 構成ファイル | `docker/Dockerfile`、`docker/compose.yaml`（ワークスペースとデータディレクトリ `$GLL_DATA` をマウント。RViz 用の X11 転送は任意） |
 | VS Code | `.devcontainer/devcontainer.json`（任意。`dev` ステージを使う） |
@@ -1005,11 +1070,20 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 | | `gnss_fix_settle_time` | 1.0 s | |
 | | `gnss_settle_reset_gap` | 3.0 s | GNSS のメッセージがこれ以上途切れたら、安定待ちをやり直す（v0.9） |
 | GNSS | `cog_min_speed` / `cog_max_yaw_rate` | 0.5 m/s / 5 deg/s | 進行方位観測の採用条件 |
-| LiDAR | `gicp_min_inlier_ratio` | 0.6 | 実データで調整 |
-| | `gicp_max_error_per_point` | 要調整 | |
+| LiDAR | `min_inlier_ratio` / `min_overlap` / `overlap_distance` | 0.6 / 0.5 / 0.3 m | 品質の条件（6.2 節）。実データで調整 |
+| | `cov_scale` | 0.15 | 観測共分散の係数 $`\kappa`$（6.2 節）。実データで調整 |
+| | `min_stddev_xy` / `min_stddev_yaw` | 0.02 m / 0.2 deg | 観測共分散の下限 |
+| | `source_voxel_size` / `source_num_neighbors` | 0.5 m / 10 | スキャンの間引きと共分散 |
+| | `min_range` / `max_range` | 1.0 m / 50 m | |
+| | `extrinsic_xyz` / `extrinsic_rpy_deg` | 0 | base_link から見た LiDAR |
+| | `time_field` / `stamp_offset` | auto / 0 s | 点ごとの時刻（6.1 節） |
 | | `max_correspondence_distance` | 1.0 m | |
-| | `gicp_max_jump` | 1.0 m / 5 deg | |
+| | `max_jump_xy` / `max_jump_yaw` | 1.0 m / 5 deg | |
+| | `max_iterations` / `num_threads` | 20 / 4 | GICP の反復回数の上限、並列数（OpenMP） |
+| | `deskew` / `crop_box_enabled` | true / false | デスキュー、車体の点を除く箱（6.1 節） |
+| | `min_source_points` / `min_interval` | 100 / 0 s | 間引いた後の点数の下限、照合の最小間隔 |
 | 姿勢推定 | `imu_static_init_time` | 3 s | 起動時のジャイロバイアス推定 |
+| | `imu.acc_scale` | 1.0 | 加速度に掛ける係数。Livox Mid-360 の内蔵 IMU（livox_ros_driver2 は g 単位で出す）を使う場合は 9.80665 |
 | 予測 | `sigma_v_lat` | 0.02 m/s | 横すべり（非ホロノミック拘束の不確かさ） |
 | GNSS | `gnss_rtk_fix_status` | 2（`STATUS_GBAS_FIX`） | RTK-FIX を表す `status.status` の値 |
 | | `gnss_stamp_offset` | 0.0 s | `header.stamp` が受信時刻の場合の遅延補正 |
@@ -1028,17 +1102,27 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 | 地図 | `tile_size` | 20 m | ツール側 |
 | | `load_radius` / `unload_radius` | 60 m / 90 m | |
 | | `lookahead_time` | 3 s | |
-| | `reload_distance` | 5 m | |
+| | `update_distance` / `update_interval` | 1 m / 1 s | 必要なタイルとアクティブグループを見直す間隔（v0.10 で `reload_distance` 5 m から変更） |
+| | `min_target_points` | 500 | これより点の少ないターゲットでは照合しない |
 | | `group_switch_margin` | 10 m | アクティブグループの切り替えのヒステリシス（5.5 節、v0.9） |
 | 優先度・食い違い | `lidar_cov_inflation_under_fix` | 4.0 | GNSS FIX 中の LiDAR の共分散の倍率 |
 | | `consistency_xy` / `consistency_yaw` | 0.15 m / 1.0 deg | GNSS FIX 中の LiDAR の食い違い判定 |
 | | `anchor_mismatch_warn` | 0.10 m / 0.5 deg | アンカー較正の警告 |
 | 復帰 | `reanchor_confirm_gnss` / `reanchor_confirm_lidar` | 3 / 5 | 再アンカーに必要な、互いに一致する連続観測数 |
 | | `reanchor_consistency` | 0.10 m / 1.0 deg | 観測どうしの一致判定 |
-| | `relocalize_after_rejects` | 20 | 再位置推定を始める LiDAR の連続棄却数 |
-| | `relocalize_max_radius` | 3 m / 30 deg | 候補の探索範囲の上限 |
-| | `relocalize_uniqueness_ratio` | 1.5 | 最良と次点のスコア比 |
-| | `relocalize_max_attempts` | 3 | |
+| | `relocalize.after_rejects` | 20 | 再位置推定を始める LiDAR の連続棄却数 |
+| | `relocalize.min_radius` / `max_radius` / `max_yaw` | 1 m / 3 m / 30 deg | 再位置推定の探索範囲 |
+| | `relocalize.radius_per_dr_distance` | 0.05 | 探索半径の下限を、位置の観測なしで走った距離のこの割合まで広げる |
+| | `relocalize.uniqueness_ratio` / `min_overlap` | 1.5 / 0.6 | 最良と次点の overlap の比、採用する overlap の下限 |
+| | `relocalize.max_attempts` / `lost_retry_interval` | 3 / 5 s | |
+| 地図上の初期化 | `relocalize.init_min_radius` / `init_max_radius` | 0.5 m / 5 m | 初期姿勢の 3σ をこの範囲に収めて探す |
+| | `relocalize.init_min_yaw` / `init_max_yaw` | 10 deg / 180 deg | |
+| | `relocalize.position_step` / `yaw_step` | 1 m / 20 deg | 候補の間隔 |
+| | `relocalize.coarse_voxel_size` / `coarse_source_voxel` | 2.0 m / 1.0 m | 粗い位置合わせ（VGICP） |
+| | `relocalize.init_map_distance` / `init_max_attempts` | 10 m / 5 | |
+| | `relocalize.init_timeout` | 15 s | 地図上での初期化を待つ時間の上限 |
+| | `init.saved_pose_path` / `use_saved_pose` | "" / false | 前回保存した位置から始めるか（3.11 節） |
+| | `lidar.base_link_height` | 0 m | 地面から base_link までの高さ（z の初期値） |
 | 監視 | `aid_timeout` | 1.0 s | |
 | | `dr_max_stddev` / `lost_stddev` | 0.3 m / 1.0 m | |
 | | `dr_error_distance` | 30 m（仮） | 位置の観測なしでこの距離を走ったら diagnostics で ERROR（3.12 節、v0.9）。i2Nav の V1-2 の結果で決める |
@@ -1052,14 +1136,23 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 
 | レベル | 内容 | 合格基準（案） |
 |---|---|---|
-| 単体テスト（コア、ROS 無し） | SE(2) の Exp / Log / Ad の恒等式、Invariant EKF の遷移行列・観測行列を数値微分と比較する。アンカー変換を往復させる（UTM → 地図 → UTM）。遅延観測の再適用の結果が、時系列順に適用した結果と一致することを確認する | 誤差 1e-9 以内 |
-| シミュレーション | 合成軌跡とノイズで、GNSS 区間 → デッドレコニング → 地図区間の遷移を再現する。NEES / NIS で共分散の整合性を確認する | NEES が χ² の 95% 区間内 |
+| 単体テスト（コア、ROS 無し） | SE(2) の Exp / Log / Ad の恒等式、Invariant EKF の遷移行列・観測行列を数値微分と比較する。アンカー変換を往復させ（UTM → 地図 → UTM）、測地線の計算と比べる（100 m で 1 cm 以内）。遅延観測の再適用の結果が、時系列順に適用した結果と一致することを確認する。PCD・タイル・maps.yaml の読み書き、デスキュー、GICP、多仮説の探索、タイルマネージャ、再位置推定の状態遷移（v0.10） | 誤差 1e-9 以内（数値の比較） |
+| シミュレーション | 合成軌跡とノイズで、GNSS 区間 → デッドレコニング → 地図区間の遷移を再現する。LiDAR は、合成環境（地面・箱・円柱）へのレイキャストで模擬する（16 ライン、回転中の運動も再現。v0.10）。NEES / NIS で共分散の整合性を確認する | NEES が χ² の 95% 区間内 |
 | rosbag 再生 | 実走行データで、RTK-FIX 区間の GNSS を意図的に外して LiDAR のみで推定し、GNSS を真値として比較する | 横方向 RMS < 0.10 m（仮） |
 | 連続性 | 出力の周期間差分から、速度・ヨーレートに相当する成分を除いた「補正ステップ」の最大値を評価する | 1 周期あたり < 0.02 m（仮） |
 | 食い違い・復帰 | シミュレーションで、アンカーずれ（0.1〜0.5 m / 0.5〜2°）、誤った FIX、LiDAR の誤った局所解、長いデッドレコニングを注入し、再アンカー・再位置推定・`LOST` への遷移が 3.13 節どおりに起きることを確認する | 全シナリオで出力の補正ステップが上の基準以内、かつ想定どおりに状態遷移する |
 | 地図切り替え | 例1・例2 の経路を想定した走行で、タイルの読み込み遅延や、ターゲットが空になる区間が発生しないことを確認する。例1 では、アクティブグループが現在位置で切り替わり、GNSS 区間の中ほどで行き来しないことも確認する | マッチングのスキップ 0 回、切り替えは GNSS 区間ごとに 1 回 |
 | デッドレコニングの監視 | GNSS を止めて走らせ、デッドレコニング距離が `dr_error_distance` を超えた時点で diagnostics が ERROR になり、位置の観測を採用すると解除されることを確認する。停止中は距離が増えないことも確認する（Phase 1 のシミュレーションで実装済み） | 超えてから 1 出力周期以内に ERROR |
 | 負荷 | GICP の処理時間、ターゲット再構築の時間、再伝播の時間、メモリ使用量 | GICP < 60 ms（p99） |
+
+**Phase 2 のシミュレーションの結果**（v0.10。`core/test/test_lidar_localization.cpp`。地図と世界が完全に一致する理想的な条件なので、実データではもっと悪くなる）:
+
+| シナリオ | 結果 |
+|---|---|
+| 地図だけ。1 m・12° ずれた初期姿勢から地図上で初期化し、半径 18 m の円を 1.5 m/s で走る | 初期化 0.8 s（203 候補）。位置誤差 RMS 3 mm（最大 2 cm）、yaw 0.011°、出力の補正ステップ最大 1.1 mm、`LIDAR_AIDED` 100 % |
+| 地図1 → GNSS 区間（80 m）→ 地図2（座標系が 40° 回り、アンカーに 10 cm・0.2° の誤差） | アクティブグループの切り替えは 1 回（A → B）。位置誤差 RMS: 地図1 5 mm、GNSS 区間 4 mm、地図2 8 cm（地図2 のアンカーの誤差に合う）。補正ステップ最大 1.3 mm。地図2 のアンカーずれを記録 |
+| 地図だけ。LiDAR が 25 s 止まり、その間 ODOM の速度が 5 % 大きく出る | 止まっている間に 1.55 m ずれ、30 m 走った時点で ERROR。LiDAR が戻って 2 s 後に再位置推定で戻り、ERROR も解除。出力は 0.1 m/s で追従し、補正ステップは最大 1.2 mm |
+| 地図の近くで初期姿勢を与えたが、LiDAR のデータが来ない | 保存した位置: 静止初期化の後 `init_timeout`（テストでは 5 s）で地図上の初期化をあきらめ、GNSS で初期化（位置誤差 RMS 5 mm）。外部から与えた初期姿勢: 同じ時点で、与えた姿勢のまま初期化 |
 
 ---
 
@@ -1068,9 +1161,9 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 | Phase | 内容 |
 |---|---|
 | 1 | **Docker 環境と CI**、コアの骨格（型、設定、ロガー）、SE(2) 演算、Invariant EKF、状態履歴バッファ、GNSS 観測、補助姿勢推定、出力整形、状態監視（デッドレコニング距離の監視を含む。v0.9）、GNSS の再アンカー / ROS 2 IF（IMU・ODOM・GNSS、diagnostics） / 単体テスト。**GNSS + デッドレコニングで動く状態**。シミュレーションで yaw の初期誤差に対する収束を ESEKF 版と比較し、Invariant EKF の優位を確認する |
-| 2 | アンカー変換、タイルツール、地図タイルマネージャ（非同期ロード・ダブルバッファ）、GICP の実装と LiDAR 観測、回転の歪み補正、地図区間での初期化、GNSS FIX 中の LiDAR の食い違い判定と LiDAR の再アンカー、再位置推定 |
-| 3 | 地図グループの切り替え（5.5 節の規則と重なりの検出）、アンカー較正ツール、診断の充実、実走行データでのパラメータ調整（`dr_error_distance` を含む） |
-| 4（拡張） | SE₂(3) 上の 3D Invariant EKF + IMU バイアス（z / roll / pitch の出力）、スキャンのデスキュー、地図アンカーオフセットのオンライン推定、ROS 1 IF |
+| 2（v0.10 で実装済み） | アンカー変換、タイルツール（`gll_map_tiler`）、地図タイルマネージャ（非同期ロード・ダブルバッファ・アクティブグループ・重なりの検出）、GICP の実装と LiDAR 観測、回転と並進の歪み補正、地図区間での初期化（初期姿勢・前回保存した位置）、GNSS FIX 中の LiDAR の食い違い判定と LiDAR の再アンカー、再位置推定、ROS 2 IF（PointCloud2・デバッグ出力・診断） |
+| 3 | 実走行データ（i2Nav-Robot）での検証とパラメータ調整（`cov_scale`、品質の閾値、`dr_error_distance` など）、アンカー較正ツール、実機の CPU での処理時間の確認 |
+| 4（拡張） | SE₂(3) 上の 3D Invariant EKF + IMU バイアス（z / roll / pitch の出力）、地図アンカーオフセットのオンライン推定、ROS 1 IF |
 
 ---
 
@@ -1079,9 +1172,9 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 1. ~~GNSS 受信機~~ → u-blox F9P、シングルアンテナ、独自ドライバ、`sensor_msgs/NavSatFix`（v0.5 で確定）。**残り**: 3.6 節の取り決め（status の値、共分散、楕円体高、stamp の意味）にドライバを合わせられるか。速度トピックを出せるか。出力レート。
 2. ~~ODOM の形式~~ → `nav_msgs/Odometry`（位置・姿勢・並進速度・旋回速度を含む）。twist だけを使う（v0.8 で確定）。**残り**: 車両が横移動・その場旋回・後退をするか（予測モデルは横速度と後退に対応済み）。
 3. ~~IMU~~ → 加速度と角速度のみ（v0.2 で確定）。
-4. **LiDAR**: 機種、スキャン時刻の定義、点ごとのタイムスタンプの有無。
+4. ~~LiDAR~~ → **Livox Mid-360**、点ごとの時刻あり（v0.10 で確定）。livox_ros_driver2 を `xfer_format: 0`（PointCloud2）で使う（`CustomMsg` には対応しない）。**残り**: 実機のデータで、時刻の判別とデスキューの効果、取り付け位置（`lidar.extrinsic_*`）を確かめる。Mid-360 は鉛直の視野が −7°〜52° と上向きなので、取り付けの高さと傾きで、地面と周りの構造物の見え方が変わる。
 5. ~~車速の範囲~~ → 最高 6 km/h（v0.2 で確定）。
-6. ~~地図の作り方~~ → 外部ツールで統合済みの地図が入力される（v0.3 で確定）。**残り**: 入力の点群ファイル形式（PCD を想定）と、アンカー情報の受け渡し形式。
+6. ~~地図の作り方~~ → 外部ツールで統合済みの地図が入力される（v0.3 で確定）。入力は PCD（ascii / binary / binary_compressed）、アンカーは maps.yaml で与える（v0.10）。
 7. **アンカーの高さ**: 楕円体高を与えられるか（地図区間に入るときのスキャンマッチングの z 初期値に使う）。
 8. **地図グループの範囲**: 東西の広がりが数 km を超えるグループがあるか（縮尺係数の変化を無視できるか）。
 9. **計算機**: CPU のコア数と、ほかに動かす処理の負荷（GICP のスレッド数の配分）。
@@ -1090,3 +1183,6 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 12. **地図の鉛直**（v0.9）: 各地図グループの z 軸が鉛直（重力の方向）にそろっているか（5.1 節の前提）。そろっていない場合は、外部ツールでそろえてもらえるか。
 13. **`dr_error_distance` の値**（v0.9）: 地図と GNSS 区間の境目でデッドレコニングになる区間の最大長（運用で決まる）と、経路追従が許せる誤差から決める。既定の 30 m は仮の値で、i2Nav-Robot の V1-2 でデッドレコニング中の誤差の伸びを測ってから決める。
 14. **デッドレコニングの ERROR のときの下流の振る舞い**（v0.9）: 停止するか、減速して走り続けるか（10 と合わせて決める）。
+15. ~~地図だけの現場のアンカー~~ → 緯度経度と方位は分からないので、`anchor: local` で地図の座標をそのまま出力する（v0.10 で確定）。経路も地図の座標で作る。この現場では GNSS を使わない。
+16. **`cov_scale` と品質の閾値**（v0.10）: 合成データでしか確かめていない。実データで、誤差と共分散が整合するように決める（i2Nav-Robot の V2-1）。
+17. **地図上での初期化の運用**（v0.10）: 起動のたびに RViz などで初期姿勢を与えるか、前回保存した位置を使うか（止めた場所から動かさずに起動できるか）。

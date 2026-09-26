@@ -47,6 +47,9 @@ class GnssMeasurementBuilder {
   /// 観測時刻の roll / pitch でレバーアームを水平面に射影する。
   Vec2 projectLeverArm(double roll, double pitch) const;
 
+  /// アンテナの楕円体高から、base_link の楕円体高を求める（LiDAR の照合の z の初期値に使う。設計書 3.9 節）。
+  double baseHeight(const GnssSample& s, const AttitudeEstimator& att) const;
+
  private:
   GnssConfig cfg_;
   UtmProjector utm_;
