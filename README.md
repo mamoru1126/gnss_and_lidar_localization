@@ -2,6 +2,8 @@
 
 RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作成した点群地図と LiDAR の照合で、途切れない自己位置（UTM の x, y, yaw）を推定する ROS 2 パッケージ。推定器は SE(2) 上の **Invariant EKF** 1 つで、GNSS・LiDAR・IMU・ODOM を融合する。GNSS 区間が無く、点群地図だけがある現場でも、初期姿勢（または前回保存した位置）から地図上で初期化して動く。
 
+パッケージ名・名前空間などの **gll** は **G**NSS and **L**iDAR **L**ocalization の略（`gll_core`、`gll_ros2`、`gll::`、`gll_map_tiler`、ノード名 `gll_localizer`）。
+
 - 要件定義: [docs/requirements.md](docs/requirements.md)
 - 設計書: [docs/design.md](docs/design.md)
 - ソフトウェア構成（コンポーネント図・クラス図）: [docs/architecture.md](docs/architecture.md)
