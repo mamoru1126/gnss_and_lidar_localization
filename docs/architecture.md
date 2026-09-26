@@ -454,7 +454,7 @@ classDiagram
   class GatePolicy {
     <<enumeration>>
     REJECT_ON_FAIL
-    NEVER_REJECT
+    DEFER_TO_RECOVERY
     SKIP
   }
   class SourceArbiter {
@@ -549,8 +549,8 @@ classDiagram
 - `OutputSmoother::apply` は、出力姿勢と、オフセットの分を加えた共分散 $`\Sigma_w + \mathbf{o}\mathbf{o}^\top`$ の組（`SmoothedOutput`）を返す（設計書 3.10 節）。
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
 - `linearize` は `std::visit` で観測の型ごとに分岐する。Invariant EKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
-- `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
-- `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、`StateHistory::relativeMotion` で最新時刻にそろえて互いに一致するかを判定し、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
+- `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `DEFER_TO_RECOVERY`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
+- `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、各候補の「観測 − その時刻の推定値」が互いに一致するかを判定し（推定値がずれているなら、このずれはほぼ一定になる）、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
 - `correct` は注入（$`\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\xi)`$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。
 
 ### 3.4 measurement（センサデータ → 入力・観測）
@@ -872,7 +872,7 @@ sequenceDiagram
   N->>L: addGnss(GnssSample)
   L->>G: classify(sample) / buildPosition(sample)
   G-->>L: position（RTK-FIX かつ精度・安定待ちを満たすものだけ）
-  L->>AR: onGnssAccepted(t) / gatePolicy(m) → NEVER_REJECT
+  L->>AR: onGnssAccepted(t) / gatePolicy(m) → DEFER_TO_RECOVERY
   L->>H: applyDelayed(measurement, estimator, gate, policy)
   H->>E: stateAt(t_z) → linearize → gate → correct
   H->>E: 再伝播（t_z 以降の入力）

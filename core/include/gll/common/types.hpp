@@ -1,0 +1,131 @@
+// 共通の型定義（ROS 非依存）。
+// 座標系: base_link は前・左・上（FLU）。map は UTM（Easting, Northing, 楕円体高）。
+#pragma once
+
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
+#include <cmath>
+#include <optional>
+#include <string>
+
+namespace gll {
+
+using Vec2 = Eigen::Vector2d;
+using Vec3 = Eigen::Vector3d;
+using Vec5 = Eigen::Matrix<double, 5, 1>;
+using Mat2 = Eigen::Matrix2d;
+using Mat3 = Eigen::Matrix3d;
+using Mat5 = Eigen::Matrix<double, 5, 5>;
+
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kGravity = 9.80665;
+
+inline double deg2rad(double d) { return d * kPi / 180.0; }
+inline double rad2deg(double r) { return r * 180.0 / kPi; }
+
+/// 角度を [-pi, pi) に正規化する。
+inline double wrapAngle(double a) {
+  a = std::fmod(a + kPi, 2.0 * kPi);
+  if (a < 0.0) a += 2.0 * kPi;
+  return a - kPi;
+}
+
+/// IMU の 1 サンプル（base_link 座標系に回転済み）。
+struct ImuSample {
+  double t = 0.0;
+  Vec3 gyro = Vec3::Zero();  ///< 角速度 [rad/s]
+  Vec3 acc = Vec3::Zero();   ///< 比力 [m/s^2]（静止時に +g が上向き）
+};
+
+/// ODOM の 1 サンプル（nav_msgs/Odometry の twist）。
+struct OdomSample {
+  double t = 0.0;
+  double v = 0.0;      ///< 前進速度 [m/s]（twist.linear.x）
+  double v_lat = 0.0;  ///< 横速度 [m/s]（twist.linear.y）
+  std::optional<double> yaw_rate;  ///< ヨーレート [rad/s]（twist.angular.z）
+};
+
+enum class GnssFixType { NONE, SINGLE, DGPS, RTK_FLOAT, RTK_FIX };
+
+/// GNSS の測位結果（sensor_msgs/NavSatFix 相当）。
+struct GnssSample {
+  double t = 0.0;
+  double lat = 0.0;  ///< [deg]
+  double lon = 0.0;  ///< [deg]
+  double h = 0.0;    ///< 楕円体高 [m]
+  Mat3 cov_enu = Mat3::Zero();  ///< ENU の共分散 [m^2]
+  bool cov_known = false;
+  int raw_status = -1;  ///< NavSatStatus.status の値
+};
+
+/// GNSS の速度（任意入力）。
+struct GnssVelocitySample {
+  double t = 0.0;
+  Vec2 vel_en = Vec2::Zero();  ///< 東・北の速度 [m/s]
+  Mat2 cov = Mat2::Identity();
+};
+
+struct Pose2D {
+  double x = 0.0;
+  double y = 0.0;
+  double yaw = 0.0;
+};
+
+enum class LocalizationStatus {
+  INITIALIZING,
+  GNSS_AIDED,
+  LIDAR_AIDED,
+  GNSS_LIDAR_AIDED,
+  DEAD_RECKONING,
+  DEGRADED,
+  LOST
+};
+
+enum class RecoveryState { TRACKING, SUSPECT, REANCHOR, RELOCALIZE, LOST };
+
+inline const char* toString(LocalizationStatus s) {
+  switch (s) {
+    case LocalizationStatus::INITIALIZING: return "INITIALIZING";
+    case LocalizationStatus::GNSS_AIDED: return "GNSS_AIDED";
+    case LocalizationStatus::LIDAR_AIDED: return "LIDAR_AIDED";
+    case LocalizationStatus::GNSS_LIDAR_AIDED: return "GNSS_LIDAR_AIDED";
+    case LocalizationStatus::DEAD_RECKONING: return "DEAD_RECKONING";
+    case LocalizationStatus::DEGRADED: return "DEGRADED";
+    case LocalizationStatus::LOST: return "LOST";
+  }
+  return "UNKNOWN";
+}
+
+inline const char* toString(RecoveryState s) {
+  switch (s) {
+    case RecoveryState::TRACKING: return "TRACKING";
+    case RecoveryState::SUSPECT: return "SUSPECT";
+    case RecoveryState::REANCHOR: return "REANCHOR";
+    case RecoveryState::RELOCALIZE: return "RELOCALIZE";
+    case RecoveryState::LOST: return "LOST";
+  }
+  return "UNKNOWN";
+}
+
+/// Localizer の出力。
+struct LocalizationOutput {
+  double t = 0.0;
+  Pose2D pose;       ///< 出力整形後（map = UTM）
+  Pose2D raw_pose;   ///< フィルタの推定値
+  Mat3 cov = Mat3::Identity();      ///< 出力の共分散（Σ_w + o oᵀ、世界座標系の x, y, yaw）
+  Mat3 raw_cov = Mat3::Identity();  ///< フィルタの共分散 Σ_w
+  Vec3 offset = Vec3::Zero();       ///< 出力整形のオフセット
+  double v = 0.0;
+  double v_lat = 0.0;
+  double yaw_rate = 0.0;
+  double roll = 0.0;
+  double pitch = 0.0;
+  double gyro_bias = 0.0;
+  double odom_scale = 1.0;
+  LocalizationStatus status = LocalizationStatus::INITIALIZING;
+  RecoveryState recovery = RecoveryState::TRACKING;
+  std::string active_map_group;
+};
+
+}  // namespace gll

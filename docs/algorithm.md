@@ -426,7 +426,7 @@ update(state, meas, policy):
     return {accepted: true, gate_passed, d², residual_body: r, world_delta}
 ```
 
-`policy` は `SourceArbiter` が決める（12 章）。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートを通らなくても適用し、再アンカーの候補にする）。
+`policy` は `SourceArbiter` が決める（12 章）。RTK-FIX の GNSS は `DEFER_TO_RECOVERY`（ゲートを通らなければその場では適用せず、捨てずに再アンカーの候補にする。候補どうしが一致すれば再アンカーで適用される）。
 
 ### 10.2 GNSS 位置
 
@@ -498,7 +498,7 @@ applyDelayed(meas, estimator, gate, policy):
 
 ```text
 gatePolicy(meas, t):
-    GNSS 位置（RTK-FIX）     → NEVER_REJECT
+    GNSS 位置（RTK-FIX）     → DEFER_TO_RECOVERY
     GNSS 進行方位           → REJECT_ON_FAIL
     ZARU                    → REJECT_ON_FAIL
     LiDAR                   → classifyLidar の結果による
@@ -519,7 +519,9 @@ classifyLidar(Z, state, t):
 ```text
 onRejected(meas, res, history):                         // ゲート不通過のとき
     cand[meas.source].push(meas)
-    aligned = cand の各観測を history.relativeMotion で最新時刻にそろえる
+    // 各候補の「観測 − その時刻の推定から予測した値」を世界座標系で求める。
+    // 推定値がずれているなら、短い区間ではこのずれはほぼ一定になる
+    aligned = [ c.y − X̂(c.t)·c.lever  for c in cand ]
     if aligned の件数 ≥ N_source (GNSS 3 / LiDAR 5) and ばらつき ≤ (0.10 m, 1°):
         return REANCHOR(最新の観測, inflation = diag(e²) + Σ_reanchor)
     if source == LiDAR and GNSS FIX 無し and 連続棄却 ≥ 20:
@@ -530,7 +532,7 @@ onRejected(meas, res, history):                         // ゲート不通過の
 
 applyReanchor(meas, inflation):
     P[0:3,0:3] += inflation
-    update(state, meas, NEVER_REJECT)                   // 観測側へ強く寄る
+    update(state, meas, SKIP)                           // ゲートを通さずに適用し、観測側へ強く寄る
     候補とカウンタをクリア
 
 onRelocalizeResult(best, second):

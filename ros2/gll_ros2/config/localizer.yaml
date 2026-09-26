@@ -1,0 +1,77 @@
+# gll_localizer のパラメータ（既定値は設計書 8 章）
+gll_localizer:
+  ros__parameters:
+    map_frame: map            # UTM（設計書 4.1 節）
+    base_frame: base_link
+    publish_tf: true          # map -> base_link
+    output_rate: 50.0         # [Hz]
+    # map_local_origin: [450000.0, 3950000.0]  # 可視化用の map -> map_local のオフセット [E, N]（指定しなければ出さない）
+    debug_csv_path: ""        # 空でなければ出力を CSV に書く（docs/validation_i2nav.md 5.3 節）
+
+    estimator:
+      type: invariant_ekf     # invariant_ekf | esekf（比較用）
+      sigma_v: 0.05
+      sigma_v_lat: 0.02
+      sigma_omega: 0.01
+      sigma_bias_rw: 0.0001
+      sigma_scale_rw: 0.0001
+      estimate_odom_scale: true
+      history_length: 2.0
+      gate_alpha: 0.001
+
+    imu:
+      rotation_rpy_deg: [0.0, 0.0, 0.0]   # IMU 座標系 -> base_link の回転
+
+    gnss:
+      utm_zone: 54
+      utm_north: true
+      rtk_fix_status: 2                   # STATUS_GBAS_FIX を RTK-FIX とみなす（設計書 3.6 節）
+      max_stddev: 0.05
+      min_stddev: 0.02
+      fix_settle_time: 1.0
+      accept_unknown_covariance: false
+      default_stddev: 0.03
+      lever_arm: [0.0, 0.0, 0.0]          # base_link から見たアンテナ位置 [m]（未定。l_z <= 1 m）
+      attitude_stddev_deg: 0.5
+      use_velocity: false
+      cog_min_speed: 0.5
+      cog_max_yaw_rate_deg: 5.0
+      stamp_offset: 0.0                   # header.stamp が受信時刻なら負の値で遅延を補正
+
+    attitude:
+      kp: 1.0
+      ki: 0.0
+      static_init_time: 3.0               # 起動直後はこの時間だけ静止させる
+      accel_tolerance: 1.0
+
+    motion:
+      odom_hold_max: 0.1
+      imu_timeout: 0.1
+
+    stop:
+      v_threshold: 0.01
+      w_threshold: 0.02
+      min_duration: 1.0
+      zaru_stddev: 0.002
+
+    init:
+      heading_min_distance: 1.0
+      init_yaw_stddev_deg: 15.0
+      ready_yaw_stddev_deg: 2.0
+      ready_pos_stddev: 0.1
+
+    output:
+      max_rate_xy: 0.1
+      max_rate_yaw_deg: 2.0
+      offset_error_xy: 1.0
+      offset_error_yaw_deg: 5.0
+
+    monitor:
+      aid_timeout: 1.0
+      dr_max_stddev: 0.3
+      lost_stddev: 1.0
+
+    recovery:
+      reanchor_confirm_gnss: 3
+      reanchor_consistency_xy: 0.10
+      candidate_max_age: 5.0
