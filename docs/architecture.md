@@ -15,7 +15,7 @@
 | 時刻 | `core` 内の時刻はすべて、データに付いたタイムスタンプ（`double` 秒）で扱う。システム時計は参照しない |
 | 外部への口 | `core` が外部に依存する箇所は、インターフェース（`ILogger`、`ITileLoader`、`IScanMatcher`、`IStateEstimator`）で抽象化し、テストで差し替えられるようにする |
 | 推定器は状態を持たない | `IStateEstimator` は `FilterState` を受け取って返す純粋関数の集まりにする。状態は `StateHistory` が保持するので、遅延観測の再伝播（replay）が簡単になる |
-| 観測はデータ型 | 観測は `std::variant` のデータ型（`Measurement`）で表す。線形化（残差・H・R の計算）は推定器側で行う。IEKF と ESEKF で誤差の定義が異なり、H も変わるため |
+| 観測はデータ型 | 観測は `std::variant` のデータ型（`Measurement`）で表す。線形化（残差・H・R の計算）は推定器側で行う。Invariant EKF と ESEKF で誤差の定義が異なり、H も変わるため |
 | スレッド | `core` が持つスレッドはスキャンマッチング用と地図ロード用の 2 本だけ。フィルタの状態は `Localizer` 内の 1 つの mutex で保護する |
 
 ---
@@ -92,7 +92,7 @@ flowchart TB
   ITL{{"«interface»<br/>ITileLoader"}}
   ILG{{"«interface»<br/>ILogger"}}
 
-  IEKF["InvEkfSe2"]
+  INVEKF["InvEkfSe2"]
   ESEKF["EsEkf2D（比較用）"]
   GICP["GicpMatcher（small_gicp）"]
   BTL["BinaryTileLoader"]
@@ -105,7 +105,7 @@ flowchart TB
   LOC --> ILG
 
   EST --> ISE
-  ISE -.-> IEKF
+  ISE -.-> INVEKF
   ISE -.-> ESEKF
   MATCH --> ISM
   ISM -.-> GICP
@@ -128,7 +128,7 @@ flowchart TB
 |---|---|---|
 | `Localizer` | 外部 API の窓口。センサデータを受け取り、観測を作らせて推定器に渡し、出力を組み立てる。フィルタの状態の排他制御 | 全コンポーネント |
 | `measurement` | センサデータを「推定器の入力（`MotionInput`）」と「観測（`Measurement`）」に変換する。採用判定（RTK-FIX、精度、停止など）もここで行う | common |
-| `estimation` | 推定アルゴリズム（IEKF）、履歴と再伝播、外れ値ゲート、出力整形、状態監視、初期化。GNSS 優先の判断と LiDAR の食い違い判定（`SourceArbiter`）、再アンカー・再位置推定の状態遷移（`RecoveryManager`） | common |
+| `estimation` | 推定アルゴリズム（Invariant EKF）、履歴と再伝播、外れ値ゲート、出力整形、状態監視、初期化。GNSS 優先の判断と LiDAR の食い違い判定（`SourceArbiter`）、再アンカー・再位置推定の状態遷移（`RecoveryManager`） | common |
 | `matching` | LiDAR の前処理と位置合わせ。専用スレッドで非同期に実行する | small_gicp, common |
 | `map` | 地図グループとアンカー、タイルのロードとアンロード、位置合わせのターゲットの構築とダブルバッファ | common, matching（ターゲット構築） |
 | `common` | 型、設定、SE(2) 演算、測地変換、ロガーのインターフェース | Eigen, GeographicLib |
@@ -543,7 +543,7 @@ classDiagram
 
 - `MismatchStatsMap` は `std::map<std::string, MismatchStats>`、`OffsetNorm` は（並進 [m], yaw [rad]）の組の別名。
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
-- `linearize` は `std::visit` で観測の型ごとに分岐する。IEKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
+- `linearize` は `std::visit` で観測の型ごとに分岐する。Invariant EKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
 - `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
 - `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、`StateHistory::relativeMotion` で最新時刻にそろえて互いに一致するかを判定し、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
 - `correct` は注入（$`\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\xi)`$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。

@@ -7,7 +7,7 @@ docs/algorithm.md の 6 章で使う図と数値を生成する。
 - 初期 yaw 誤差を大きくした条件で、yaw の収束と共分散の整合性（NEES）を比べる
 
 使い方:
-    python3 tools/sim/compare_iekf_ekf.py [--runs 200] [--out docs/figures]
+    python3 tools/sim/compare_invariant_ekf_vs_esekf.py [--runs 200] [--out docs/figures]
 """
 import argparse
 import os
@@ -64,7 +64,7 @@ def true_inputs(t):
 # ----------------------------------------------------------------------------
 # Invariant EKF（左不変誤差: X = Xhat Exp(xi)）
 # ----------------------------------------------------------------------------
-class IEKF:
+class InvariantEKF:
     def __init__(self, p, th, b, s, P):
         self.R, self.p, self.b, self.s, self.P = rot(th), p.copy(), b, s, P.copy()
 
@@ -223,7 +223,7 @@ def main():
     summary = {}
     fig, axes = plt.subplots(2, len(cases), figsize=(13, 6.5), sharex=True)
     for ci, y0 in enumerate(cases):
-        for cls, name, color in [(ESEKF, "ESEKF", "#d62728"), (IEKF, "Invariant EKF", "#1f77b4")]:
+        for cls, name, color in [(ESEKF, "ESEKF", "#d62728"), (InvariantEKF, "Invariant EKF", "#1f77b4")]:
             Y, N, POS = [], [], []
             for r in range(args.runs):
                 ts, ye, pe, ne = run(cls, y0, 1000 + r)
@@ -254,7 +254,7 @@ def main():
     axes[1, 0].legend()
     fig.suptitle(f"GNSS 位置のみ（シングルアンテナ）での収束比較（Monte Carlo {args.runs} 回）")
     fig.tight_layout()
-    path = os.path.join(args.out, "iekf_vs_esekf.png")
+    path = os.path.join(args.out, "invariant_ekf_vs_esekf.png")
     fig.savefig(path, dpi=110)
     print("saved", path)
     print("| 初期 yaw σ | 手法 | yaw RMS @5s [deg] | yaw RMS @20s [deg] | 位置 RMS @20s [m] | 平均 NEES（5 s 以降） | 最大 NEES（5 s 以降） |")
