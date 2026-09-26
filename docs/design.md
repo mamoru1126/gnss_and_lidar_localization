@@ -1,6 +1,6 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
-- 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md)
+- 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md) / [検証計画: i2Nav-Robot](./validation_i2nav.md)
 - 状態: ドラフト（v0.7）
 
 | 版 | 変更内容 |
@@ -964,6 +964,8 @@ class Localizer {
 ---
 
 ## 9. 検証計画
+
+公開データセット i2Nav-Robot を使った具体的な検証手順（データの変換、地図の作成、評価の指標、シナリオ）は [検証計画: i2Nav-Robot](./validation_i2nav.md) にまとめた。
 
 | レベル | 内容 | 合格基準（案） |
 |---|---|---|
