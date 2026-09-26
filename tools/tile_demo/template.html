@@ -1,0 +1,307 @@
+<title>gll タイル読み込みデモ</title>
+<meta name="description" content="MapTileManager が自己位置の移動に合わせて点群地図のタイルを読み込み・破棄する様子">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000000;
+    --panel: #0b0e0d;
+    --line: #1d2622;
+    --text: #d9e2dd;
+    --muted: #7d8b84;
+    --map: #f4f6f5;
+    --loaded: #3fe07f;
+    --unload: #ff6b5a;
+    --pose: #ffb547;
+    --sans: "IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  html, body { background: var(--bg); color: var(--text); }
+  body { margin: 0; font-family: var(--sans); font-size: 14px; line-height: 1.6; padding-inline: 16px; padding-block: 20px 28px; }
+  .wrap { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+  h1 .code { font-family: var(--mono); font-weight: 500; color: var(--loaded); }
+  header p { margin: 0; color: var(--muted); max-width: 68ch; }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+  .stage { position: relative; border: 1px solid var(--line); background: var(--bg); }
+  .stage canvas { display: block; width: 100%; height: auto; }
+  .axes { position: absolute; left: 12px; bottom: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); pointer-events: none; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+  button, select { font: inherit; color: var(--text); background: #121816; border: 1px solid #2a3530; border-radius: 4px; padding: 5px 12px; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--loaded); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--loaded); outline-offset: 2px; }
+  #play { min-width: 84px; }
+  input[type=range] { flex: 1 1 200px; accent-color: var(--loaded); }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+  .time { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text); min-width: 7.5ch; text-align: right; }
+  aside { display: flex; flex-direction: column; gap: 14px; }
+  .box { border: 1px solid var(--line); background: var(--panel); padding: 12px 14px; }
+  .box h2 { margin: 0 0 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .big { font-family: var(--mono); font-size: 30px; font-weight: 500; color: var(--loaded); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .legend li { display: flex; align-items: center; gap: 10px; }
+  .sw { width: 22px; height: 12px; flex: none; }
+  .sw.map { background: repeating-linear-gradient(90deg, var(--map) 0 2px, transparent 2px 4px); opacity: .7; }
+  .sw.loaded { background: var(--loaded); }
+  .sw.ring { border: 1.5px dashed var(--loaded); border-radius: 50%; height: 14px; }
+  .sw.ring2 { border: 1.5px dashed var(--muted); border-radius: 50%; height: 14px; }
+  .sw.unl { border: 2px solid var(--unload); }
+  .sw.pose { width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 14px solid var(--pose); margin-inline: 2px; }
+  #chart { width: 100%; height: 110px; display: block; }
+  .note { color: var(--muted); font-size: 12.5px; }
+  .note a { color: var(--text); }
+  .flash { transition: color .6s; }
+  .flash.on { color: var(--loaded); }
+</style>
+
+<script>const DEMO=__DEMO_DATA__;</script>
+<div class="wrap">
+  <header>
+    <h1>タイル読み込みデモ <span class="code">MapTileManager</span></h1>
+    <p>自己位置が動くと、周り 60 m（と 3 秒先の先読み位置の周り 60 m）のタイルを読み込み、90 m より離れたタイルを捨てる。実際のコードを経路に沿って動かした記録を再生している。</p>
+  </header>
+
+  <div class="main">
+    <div>
+      <div class="stage">
+        <canvas id="view" aria-label="点群地図の上面図。白が地図全体、緑が読み込み中のタイル"></canvas>
+        <div class="axes">↓ 地図の x　→ 地図の y　（1 マス = タイル 20 m）</div>
+      </div>
+      <div class="controls">
+        <button id="play" type="button">一時停止</button>
+        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置">
+        <span class="time" id="time">0.0 s</span>
+        <select id="speed" aria-label="再生速度">
+          <option value="5">5 倍速</option>
+          <option value="10" selected>10 倍速</option>
+          <option value="20">20 倍速</option>
+        </select>
+        <label class="chk"><input id="follow" type="checkbox"> 自己位置を追う</label>
+      </div>
+    </div>
+
+    <aside>
+      <div class="box">
+        <h2>読み込み中のタイル</h2>
+        <div class="big"><span id="nTiles">0</span> <small>/ <span id="nAll">0</span> 枚</small></div>
+        <canvas id="chart" aria-label="読み込み中のタイル数の推移"></canvas>
+      </div>
+      <div class="box">
+        <h2>状態</h2>
+        <dl class="kv">
+          <dt>ターゲットの点数</dt><dd id="nPts">0</dd>
+          <dt>読み込んだ回数（累計）</dt><dd id="nLoads" class="flash">0</dd>
+          <dt>ターゲットの再構築</dt><dd id="nBuilds">0</dd>
+          <dt>自己位置 (x, y)</dt><dd id="pos">0, 0</dd>
+        </dl>
+      </div>
+      <div class="box">
+        <h2>凡例</h2>
+        <ul class="legend">
+          <li><span class="sw map"></span>点群地図の全体</li>
+          <li><span class="sw loaded"></span>読み込み中（照合のターゲット）</li>
+          <li><span class="sw unl"></span>いま捨てたタイル</li>
+          <li><span class="sw pose"></span>自己位置と先読み位置</li>
+          <li><span class="sw ring"></span>load_radius 60 m</li>
+          <li><span class="sw ring2"></span>unload_radius 90 m</li>
+        </ul>
+      </div>
+      <div class="box note">
+        <h2>条件</h2>
+        タイル 20 m、load 60 m / unload 90 m、先読み 3 s（既定値）。1.5 m/s で南の通路から広場を一周して戻る 200 s の経路。<code>MapTileManager</code> を同期モードで 0.1 s ごとに更新し、0.5 s ごとに記録した。<br>
+        点群: <a href="https://github.com/koide3/hdl_localization" target="_blank" rel="noopener">koide3/hdl_localization</a> の <code>data/map.pcd</code>（BSD-2-Clause）を <code>gll_map_tiler</code> でタイル化（表示は 0.2 m に間引き）。
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(() => {
+  const D = DEMO;
+  const T = D.tile_size, LR = D.load_radius, UR = D.unload_radius, LA = D.lookahead_time * D.speed;
+  const frames = D.frames, tiles = D.tiles;
+  const dtF = 0.5, duration = frames[frames.length - 1].t;
+  const css = getComputedStyle(document.documentElement);
+  const C = k => css.getPropertyValue(k).trim();
+  const COL = { loaded: C('--loaded'), unload: C('--unload'), pose: C('--pose'), muted: C('--muted'), line: C('--line') };
+
+  // --- 点の展開 ---
+  const bin = atob(D.points);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const dv = new DataView(bytes.buffer);
+  const N = D.n, px = new Float32Array(N), py = new Float32Array(N), pb = new Uint8Array(N);
+  for (let i = 0; i < N; i++) { px[i] = dv.getInt16(i * 5, true) * 0.05; py[i] = dv.getInt16(i * 5 + 2, true) * 0.05; pb[i] = dv.getUint8(i * 5 + 4); }
+
+  // 表示範囲（タイルの外枠）。画面の右 = 地図の +y、下 = 地図の +x
+  let xmin = 1e9, xmax = -1e9, ymin = 1e9, ymax = -1e9;
+  for (const [ix, iy] of tiles) { xmin = Math.min(xmin, ix * T); xmax = Math.max(xmax, (ix + 1) * T); ymin = Math.min(ymin, iy * T); ymax = Math.max(ymax, (iy + 1) * T); }
+  xmin -= 10; xmax += 10; ymin -= 10; ymax += 10;
+  const S = 8;  // レイヤーの解像度 [px/m]
+  const LW = Math.ceil((ymax - ymin) * S), LH = Math.ceil((xmax - xmin) * S);
+  const toL = (x, y) => [(y - ymin) * S, (x - xmin) * S];
+
+  function makeLayer(r, g, b, gain) {
+    const cv = document.createElement('canvas'); cv.width = LW; cv.height = LH;
+    const cx = cv.getContext('2d'); const img = cx.createImageData(LW, LH); const d = img.data;
+    for (let i = 0; i < N; i++) {
+      const [lx, ly] = toL(px[i], py[i]); const u = lx | 0, v = ly | 0; const a = Math.min(255, pb[i] * gain);
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const uu = u + dx, vv = v + dy; if (uu < 0 || vv < 0 || uu >= LW || vv >= LH) continue;
+        const o = (vv * LW + uu) * 4; if (d[o + 3] >= a) continue;
+        d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a;
+      }
+    }
+    cx.putImageData(img, 0, 0); return cv;
+  }
+  const white = makeLayer(244, 246, 245, 0.8);
+  const green = makeLayer(63, 224, 127, 1.25);
+
+  // --- 表示 ---
+  const view = document.getElementById('view'), ctx = view.getContext('2d');
+  const chart = document.getElementById('chart'), cctx = chart.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = view.clientWidth; H = Math.round(W * LH / LW);
+    view.width = Math.round(W * dpr); view.height = Math.round(H * dpr); view.style.height = H + 'px';
+    chart.width = Math.round(chart.clientWidth * dpr); chart.height = Math.round(chart.clientHeight * dpr);
+  }
+  new ResizeObserver(() => { resize(); draw(); }).observe(view);
+
+  let t = 0, playing = !reduce, speed = 10, follow = false, lastNow = null, seeking = false;
+  const flashes = new Map();  // タイル → {kind, start}
+  let lastFrame = -1;
+
+  const frameAt = tt => Math.max(0, Math.min(frames.length - 1, Math.floor(tt / dtF + 1e-9)));
+  function poseAt(tt) {
+    const i = frameAt(tt), a = frames[i], b = frames[Math.min(frames.length - 1, i + 1)];
+    const s = b.t > a.t ? Math.min(1, Math.max(0, (tt - a.t) / (b.t - a.t))) : 0;
+    const dyaw = Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw));
+    return { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s, yaw: a.yaw + dyaw * s };
+  }
+
+  function onFrameChange(i, now) {
+    if (lastFrame >= 0 && i === lastFrame + 1) {
+      const prev = new Set(frames[lastFrame].tiles), cur = new Set(frames[i].tiles);
+      for (const k of cur) if (!prev.has(k)) flashes.set(k, { kind: 'load', start: now });
+      for (const k of prev) if (!cur.has(k)) flashes.set(k, { kind: 'unload', start: now });
+      if (frames[i].loads > 0) { const el = document.getElementById('nLoads'); el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 500); }
+    } else if (i !== lastFrame) flashes.clear();
+    lastFrame = i;
+  }
+
+  function tileRect(k) { const [ix, iy] = tiles[k]; const [u0, v0] = toL(ix * T, iy * T); return [u0, v0, T * S, T * S]; }
+
+  function draw(now = performance.now()) {
+    if (!W) return;
+    const i = frameAt(t); onFrameChange(i, now);
+    const f = frames[i], p = poseAt(t);
+    const [pu, pv] = toL(p.x, p.y);
+    let k = W / LW, ox = 0, oy = 0;
+    if (follow) { k *= 2.4; ox = W / 2 - pu * k; oy = H / 2 - pv * k; ox = Math.min(0, Math.max(W - LW * k, ox)); oy = Math.min(0, Math.max(H - LH * k, oy)); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * ox, dpr * oy);
+    ctx.imageSmoothingEnabled = true;
+    const lw = 1 / k;
+
+    // タイルの格子
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = lw;
+    for (let q = 0; q < tiles.length; q++) { const r = tileRect(q); ctx.strokeRect(r[0], r[1], r[2], r[3]); }
+    // 地図の全体（白）
+    ctx.globalAlpha = 0.62; ctx.drawImage(white, 0, 0); ctx.globalAlpha = 1;
+    // 読み込み中のタイル（緑）
+    for (const q of f.tiles) {
+      const r = tileRect(q);
+      ctx.fillStyle = 'rgba(63,224,127,0.07)'; ctx.fillRect(r[0], r[1], r[2], r[3]);
+      ctx.drawImage(green, r[0], r[1], r[2], r[3], r[0], r[1], r[2], r[3]);
+      ctx.strokeStyle = 'rgba(63,224,127,0.45)'; ctx.lineWidth = lw; ctx.strokeRect(r[0] + lw / 2, r[1] + lw / 2, r[2] - lw, r[3] - lw);
+    }
+    // 読み込み・破棄したタイルを一瞬強調する
+    for (const [q, fl] of flashes) {
+      const age = (now - fl.start) / 900; if (age > 1) { flashes.delete(q); continue; }
+      const r = tileRect(q), a = 1 - age;
+      if (fl.kind === 'load') { ctx.fillStyle = `rgba(63,224,127,${0.35 * a})`; ctx.fillRect(r[0], r[1], r[2], r[3]); }
+      else { ctx.strokeStyle = `rgba(255,107,90,${a})`; ctx.lineWidth = 2.5 * lw; ctx.strokeRect(r[0], r[1], r[2], r[3]); }
+    }
+    // 走った跡
+    ctx.strokeStyle = 'rgba(255,181,71,0.55)'; ctx.lineWidth = 2 * lw; ctx.beginPath();
+    for (let j = 0; j <= i; j++) { const [u, v] = toL(frames[j].x, frames[j].y); j ? ctx.lineTo(u, v) : ctx.moveTo(u, v); }
+    ctx.lineTo(pu, pv); ctx.stroke();
+    // 半径
+    const ring = (u, v, r, col, dash, w) => { ctx.setLineDash(dash.map(d => d * lw)); ctx.strokeStyle = col; ctx.lineWidth = w * lw; ctx.beginPath(); ctx.arc(u, v, r * S, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); };
+    const [au, av] = toL(p.x + LA * Math.cos(p.yaw), p.y + LA * Math.sin(p.yaw));
+    ring(pu, pv, UR, 'rgba(125,139,132,0.8)', [6, 6], 1.2);
+    ring(au, av, LR, 'rgba(63,224,127,0.35)', [3, 5], 1);
+    ring(pu, pv, LR, 'rgba(63,224,127,0.95)', [8, 5], 1.6);
+    // 先読み位置と自己位置
+    ctx.fillStyle = COL.pose; ctx.beginPath(); ctx.arc(au, av, 3.2 * lw, 0, Math.PI * 2); ctx.fill();
+    const hx = Math.sin(p.yaw), hy = Math.cos(p.yaw), sz = 11 * lw;
+    ctx.beginPath(); ctx.moveTo(pu + hx * sz * 1.3, pv + hy * sz * 1.3);
+    ctx.lineTo(pu - hx * sz * 0.8 + hy * sz * 0.7, pv - hy * sz * 0.8 - hx * sz * 0.7);
+    ctx.lineTo(pu - hx * sz * 0.8 - hy * sz * 0.7, pv - hy * sz * 0.8 + hx * sz * 0.7);
+    ctx.closePath(); ctx.fillStyle = COL.pose; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = lw; ctx.stroke();
+
+    // 数値
+    document.getElementById('nTiles').textContent = f.tiles.length;
+    document.getElementById('nAll').textContent = tiles.length;
+    document.getElementById('nPts').textContent = f.points.toLocaleString('ja-JP');
+    document.getElementById('nLoads').textContent = frames.slice(0, i + 1).reduce((s, x) => s + x.loads, 0);
+    document.getElementById('nBuilds').textContent = f.builds;
+    document.getElementById('pos').textContent = `${p.x.toFixed(1)}, ${p.y.toFixed(1)} m`;
+    document.getElementById('time').textContent = `${t.toFixed(1)} s`;
+    if (!seeking) document.getElementById('seek').value = Math.round(t / duration * 1000);
+    drawChart(i);
+  }
+
+  // タイル数の推移（0〜ymaxC 枚、0〜duration s）
+  const ymaxC = Math.ceil(Math.max(...frames.map(x => x.tiles.length)) / 20) * 20;
+  function drawChart(i) {
+    const w = chart.width / dpr, h = chart.height / dpr; if (!w) return;
+    cctx.setTransform(dpr, 0, 0, dpr, 0, 0); cctx.clearRect(0, 0, w, h);
+    const L = 26, R = 6, Tp = 6, B = 18, cw = w - L - R, ch = h - Tp - B;
+    const X = tt => L + tt / duration * cw, Y = n => Tp + ch - n / ymaxC * ch;
+    cctx.font = '10px ' + C('--mono'); cctx.fillStyle = COL.muted; cctx.textAlign = 'right'; cctx.textBaseline = 'middle';
+    for (let n = 0; n <= ymaxC; n += 20) { cctx.strokeStyle = 'rgba(255,255,255,0.08)'; cctx.beginPath(); cctx.moveTo(L, Y(n)); cctx.lineTo(w - R, Y(n)); cctx.stroke(); cctx.fillText(n, L - 4, Y(n)); }
+    cctx.textAlign = 'center'; cctx.textBaseline = 'top';
+    for (let s = 50; s <= duration; s += 50) cctx.fillText(s + ' s', Math.min(w - R - 10, X(s)), h - B + 4);
+    cctx.beginPath(); frames.forEach((x, j) => { const u = X(x.t), v = Y(x.tiles.length); j ? cctx.lineTo(u, v) : cctx.moveTo(u, v); });
+    cctx.strokeStyle = 'rgba(63,224,127,0.35)'; cctx.lineWidth = 1.5; cctx.stroke();
+    cctx.beginPath(); frames.slice(0, i + 1).forEach((x, j) => { const u = X(x.t), v = Y(x.tiles.length); j ? cctx.lineTo(u, v) : cctx.moveTo(u, v); });
+    cctx.strokeStyle = COL.loaded; cctx.lineWidth = 2; cctx.stroke();
+    cctx.fillStyle = COL.loaded; cctx.beginPath(); cctx.arc(X(frames[i].t), Y(frames[i].tiles.length), 3.5, 0, Math.PI * 2); cctx.fill();
+  }
+
+  function tick(now) {
+    if (playing) {
+      if (lastNow !== null) { t += (now - lastNow) / 1000 * speed; if (t > duration) { t = 0; lastFrame = -1; flashes.clear(); } }
+      lastNow = now;
+    } else lastNow = null;
+    draw(now);
+    requestAnimationFrame(tick);
+  }
+
+  const playBtn = document.getElementById('play');
+  const setPlay = on => { playing = on; playBtn.textContent = on ? '一時停止' : '再生'; };
+  setPlay(playing);
+  playBtn.addEventListener('click', () => setPlay(!playing));
+  const seek = document.getElementById('seek');
+  seek.addEventListener('input', () => { seeking = true; t = seek.value / 1000 * duration; lastFrame = -1; flashes.clear(); });
+  seek.addEventListener('change', () => { seeking = false; });
+  document.getElementById('speed').addEventListener('change', e => { speed = +e.target.value; });
+  document.getElementById('follow').addEventListener('change', e => { follow = e.target.checked; });
+
+  t = reduce ? 60 : 0;
+  resize(); requestAnimationFrame(tick);
+})();
+</script>

@@ -13,7 +13,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(GLL_BUILD_TESTS "Build unit tests" ON)
-option(GLL_BUILD_TOOLS "Build offline tools (gll_map_tiler)" ON)
+option(GLL_BUILD_TOOLS "Build offline tools (gll_map_tiler, gll_tile_demo)" ON)
 
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
@@ -81,6 +81,9 @@ if(GLL_BUILD_TOOLS)
   add_executable(gll_map_tiler tools/map_tiler_main.cpp)
   target_link_libraries(gll_map_tiler PRIVATE gll_core)
   install(TARGETS gll_map_tiler RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  # タイル読み込みのデモ用の記録（tools/tile_demo/README.md）
+  add_executable(gll_tile_demo tools/tile_demo_main.cpp)
+  target_link_libraries(gll_tile_demo PRIVATE gll_core)
 endif()
 
 # ---------------------------------------------------------------------------

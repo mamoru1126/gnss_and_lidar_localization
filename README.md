@@ -10,6 +10,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [docs/explainer/index.html](docs/explainer/index.html)
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)
+- タイル読み込みのデモ（ダウンロードしてブラウザで開く）: [docs/demo/tile_loading.html](docs/demo/tile_loading.html)（作り方は [tools/tile_demo](tools/tile_demo/README.md)）
 
 ## 実装の状況
 
@@ -27,6 +28,7 @@ core/                  gll_core: ROS に依存しないコアライブラリ（C
 ros2/gll_ros2/         ROS 2 Jazzy のインターフェース（LocalizerNode, launch, パラメータ）
 docker/                Dockerfile（dev / runtime）と compose.yaml
 tools/sim/             Invariant EKF と ESEKF の比較シミュレーション（Python）
+tools/tile_demo/       タイル読み込みのデモページを作るスクリプト
 docs/                  設計ドキュメント
 ```
 
