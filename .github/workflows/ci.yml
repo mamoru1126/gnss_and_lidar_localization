@@ -10,7 +10,7 @@ jobs:
   core:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -27,7 +27,7 @@ jobs:
   ros2:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build dev image
         run: docker build -f docker/Dockerfile --target dev -t gll:dev .
       - name: colcon build and test
