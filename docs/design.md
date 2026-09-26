@@ -1,18 +1,20 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md)
-- 状態: ドラフト（v0.2）
+- 状態: ドラフト（v0.3）
 
 | 版 | 変更内容 |
 |---|---|
 | v0.1 | 初版 |
 | v0.2 | 確定したハードウェア前提（u-blox F9P シングルアンテナ、6 軸 IMU、最高速度 6 km/h）を反映。スキャンマッチングを small_gicp に変更。推定器の代替候補として Invariant EKF を追記 |
+| v0.3 | 推定器を **Invariant EKF（SE(2)、左不変誤差）に変更**。GNSS 入力を独自ドライバの `ublox_gps/NavPVT` に確定。地図の統合は外部ツールで行い、本システムは統合済みの地図を入力とする前提に変更 |
 
-### 前提ハードウェア・運用条件（v0.2 で確定）
+### 前提ハードウェア・運用条件（v0.2〜v0.3 で確定）
 
 | 項目 | 内容 | 設計への主な影響 |
 |---|---|---|
-| GNSS | u-blox ZED-F9P、**シングルアンテナ** | GNSS から直接ヨーは得られない。初期ヨーは走行中の軌跡から決め、走行中は GNSS 速度の進行方位（course over ground）で補う（3.6 節）。RTK-FIX の判定は UBX-NAV-PVT の `carrSoln` を使う |
+| GNSS | u-blox ZED-F9P、**シングルアンテナ** | GNSS から直接ヨーは得られない。初期ヨーは走行中の軌跡から決め、走行中は GNSS 速度の進行方位（course over ground）で補う（3.6 節）。RTK-FIX の判定は UBX-NAV-PVT の `carrSoln` を使う。ドライバは独自実装で、メッセージ型は `ublox_gps/NavPVT` |
+| 点群地図 | **統合は外部ツールで行う**。本システムには、地図グループごとに統合済みの点群が入力される | 地図の統合・作成は本システムの範囲外（5.1 節） |
 | IMU | **加速度と角速度のみ**（姿勢は出力しない） | roll / pitch を自前で推定する姿勢推定器が必要（3.9 節）。ジャイロバイアスは停止中に推定する |
 | 車速 | **最高 6 km/h（約 1.7 m/s）** | タイルの先読みは余裕がある。スキャン中の並進による歪みは小さい（0.1 s で 0.17 m 以下）が、旋回時の回転による歪みは残る（6.1 節）。出力整形のレートは車速に合わせて低めに設定する |
 | LiDAR マッチング | **small_gicp** | コア層に置ける（ROS 非依存、Eigen ベース）。タイル単位でのターゲット更新は、ロード済みタイルを結合して再構築する方式にする（6 章） |
@@ -24,7 +26,7 @@
 | # | 論点 | 決定 | 主な理由 |
 |---|---|---|---|
 | D-1 | 推定器の構成（要件③） | **単一の推定器で全センサを融合する**（推定器の切り替えは行わない） | 出力の連続性（FR-4）を構造的に確保しやすい。GNSS と LiDAR が同時に有効な区間では両方を重み付きで使える |
-| D-2 | 推定アルゴリズム | **Error-State EKF（ESEKF）** | 計算が軽く決定的で、ROS に依存しない形で実装しやすい。将来の 3D 化（姿勢を SO(3) で扱う 15 状態 INS）へそのまま拡張できる |
+| D-2 | 推定アルゴリズム | **Invariant EKF（SE(2) 上の左不変誤差）**（v0.3 で ESEKF から変更） | 計算量は EKF と同等で、ROS に依存しない形で実装しやすい。遷移行列と GNSS の観測行列が推定中の姿勢に依存しないため、シングルアンテナで yaw の誤差が大きくなる場面でも収束と共分散の整合性を保ちやすい。3D 化では SE₂(3) に拡張できる |
 | D-3 | 状態の自由度 | **Phase 1 は平面 2D（x, y, yaw）+ バイアス類**。roll / pitch / z はフィルタ外の補助推定で扱う | 出力要件が x, y, yaw のため。3D 化は Phase 4 の拡張として設計上の余地を残す（3.2 節） |
 | D-4 | 推定器の座標系 | **状態は常に UTM**（地図座標系ではない） | 地図を切り替えても状態の座標系が変わらないため、地図の切り替えが「観測の座標変換の切り替え」に帰着し、状態は飛ばない |
 | D-5 | スキャンマッチング | **small_gicp（GICP）**。`IScanMatcher` インターフェースで抽象化し、ほかの手法にも差し替えられるようにする | ROS 非依存でコア層に置ける。高速で、ヘッセ行列から観測共分散を得られる |
@@ -53,7 +55,7 @@ flowchart LR
 
   subgraph Core["コア層（gll_core, ROS 非依存）"]
     ATT[姿勢推定器<br/>roll / pitch]
-    EKF[ESEKF 2D<br/>x, y, yaw, b_g, s]
+    EKF[Invariant EKF<br/>SE(2) + b_g, s]
     HIST[状態履歴バッファ<br/>遅延観測の再適用]
     GM[GNSS 観測モデル<br/>RTK-FIX 判定・レバーアーム]
     LM[LiDAR 観測モデル<br/>地図座標 → UTM]
@@ -96,28 +98,22 @@ flowchart LR
 | 方式 | 連続性 | 計算コスト | 遅延観測 | 実装・保守 | 評価 |
 |---|---|---|---|---|---|
 | (A) GNSS localizer と LiDAR localizer の切り替え | × 切り替え時の差分を別途吸収する仕組みが必要 | ○ | △ | △ 切り替えロジックが肥大化しやすい | 不採用 |
-| (B-1) EKF | ○ | ◎ | △（履歴バッファで対応） | ◎ | 2D なら ESEKF と実質同等 |
-| **(B-2) ESEKF** | ○ | ◎ | △（履歴バッファで対応） | ◎ | **採用** |
+| (B-1) EKF | ○ | ◎ | △（履歴バッファで対応） | ◎ | 2D では (B-2) と実質同等 |
+| (B-2) ESEKF | ○ | ◎ | △（履歴バッファで対応） | ◎ | v0.2 までの採用案 |
 | (B-3) UKF | ○ | ○ | △ | ○ | 非線形性が弱く、利点が小さい |
 | (B-4) ファクターグラフ（iSAM2 / 固定ラグ平滑化） | ◎ | △ | ◎ | △ GTSAM 等への依存が重い | 計算負荷の理由で採用外 |
-| (B-5) Invariant EKF（SE(2)、3D 化時は SE₂(3)） | ○ | ◎（EKF と同等） | △（履歴バッファで対応） | ○ リー群の実装が必要 | **代替候補（検討中）**。ヨーの初期誤差が大きいときの収束性と、共分散の整合性で ESEKF より有利 |
+| **(B-5) Invariant EKF（SE(2)、3D 化時は SE₂(3)）** | ○ | ◎（EKF と同等） | △（履歴バッファで対応） | ○ SE(2) の演算の実装が必要 | **採用（v0.3）** |
 
-ESEKF を選ぶ理由:
+**Invariant EKF（IEKF）を選ぶ理由**:
 
-- 誤差状態は常に 0 付近にあり小さいため、線形化誤差が小さい。
-- 姿勢を 3D に拡張したとき（SO(3)）、誤差状態を 3 次元の回転ベクトルで扱えるため、クォータニオンの正規化制約をフィルタに持ち込まずに済む。
-- 補足: **Phase 1 の 2D では yaw が 1 次元のため、ESEKF と通常の EKF は数式上ほぼ一致する**。それでも ESEKF の構造（名目状態・誤差状態・注入・リセット）で実装しておけば、Phase 4 で 3D 15 状態 INS に拡張するときに枠組みを作り直さずに済む。
-
-**Invariant EKF（B-5）について**: 誤差を $\eta = \hat{X}X^{-1}$（または $X^{-1}\hat{X}$）のようにリー群 SE(2) 上で定義する EKF。
-
-- 利点:
-  - 位置誤差をヨーと結合した形で扱うため、誤差の伝播が推定値そのものにほとんど依存しない。そのため、**ヨーの初期誤差が大きくても**線形化が破綻しにくい。シングルアンテナで初期ヨーが不確かな本構成に合う。
-  - EKF で知られている「観測できないはずのヨーに、偽の情報が入って共分散が過小になる」問題が起きにくい。
-  - 計算量は EKF と同等。
-- 注意点:
-  - バイアス（$b_\omega$、$s$）を状態に含めると不変性が崩れる（いわゆる imperfect IEKF）。ただし実用上の利点は残る。
-  - 観測の形（世界座標系での位置・姿勢か、機体座標系での観測か）に合わせて、左不変と右不変のどちらの誤差を使うかを選ぶ必要がある。
-- 方針: コアの `estimation/` は、フィルタを差し替えられるように `IStateEstimator` の背後に隠す。Phase 1 は ESEKF で実装し、初期ヨーの収束性に課題が出た場合は IEKF 版を比較・評価する。
+- 本構成は **GNSS がシングルアンテナ**で、起動直後や長いデッドレコニングの後は yaw の誤差が大きくなりうる。通常の EKF / ESEKF は、位置と yaw を別々の誤差として扱う。そのため、遷移行列や GNSS の観測行列が推定中の yaw（$\hat\theta$）に依存し、yaw の誤差が大きいと線形化が崩れて、収束の遅れや共分散の過小評価（不整合）が起きやすい。
+- IEKF は、姿勢 $X = (\mathbf{R}(\theta), \mathbf{p}) \in SE(2)$ の誤差を**群の上で**定義する。本設計の組み合わせ（機体座標系の速度入力による運動と、世界座標系で表される観測）では、次の性質が成り立つ（3.4〜3.7 節）。
+  - **遷移行列は入力だけに依存し、推定中の姿勢には依存しない**。
+  - **GNSS 位置観測の観測行列は定数になる**。
+- その結果、yaw の誤差が大きい状態からでも収束が安定し、共分散の整合性も保ちやすい。計算量は EKF と同じである。
+- 注意点: ジャイロバイアス $b_\omega$ と ODOM スケール $s$ を状態に加えると、厳密な不変性は崩れる（imperfect IEKF）。ただし姿勢の部分の利点はそのまま残る。これは実用上の標準的な構成である。
+- 3D 化（Phase 4）では、SE₂(3)（姿勢・速度・位置）上の IEKF に IMU バイアスを加えた構成に拡張する。
+- 推定器は `IStateEstimator` インターフェースの背後に置く。比較評価用に ESEKF 版も差し替えられるようにする（10 章 Phase 1 の評価項目）。
 
 ### 3.2 状態の自由度と roll / pitch について
 
@@ -128,32 +124,47 @@ ESEKF を選ぶ理由:
   - IMU の角速度を鉛直軸まわりのヨーレートに射影する（傾斜補正）。
   - ODOM の速度を水平成分に射影する（坂道で v·cos(pitch)）。
   - スキャンマッチングの 6 自由度初期値に使う。
-- 急な坂が多い、または z / roll / pitch も出力が必要になった場合は、Phase 4 で 15 状態 ESEKF（p, v, q, b_a, b_g）に拡張する。
+- 急な坂が多い、または z / roll / pitch も出力が必要になった場合は、Phase 4 で SE₂(3) の IEKF に拡張する。
 
-### 3.3 状態ベクトル
+### 3.3 状態と誤差の定義
 
-名目状態:
+**推定状態**:
 
 $$
-\mathbf{x} = \begin{bmatrix} p_x & p_y & \theta & b_\omega & s \end{bmatrix}^\top
+\hat{X} = \begin{bmatrix} \mathbf{R}(\hat\theta) & \hat{\mathbf{p}} \\ \mathbf{0}^\top & 1 \end{bmatrix} \in SE(2),\qquad \hat b_\omega,\ \hat s
 $$
 
 | 記号 | 意味 | 単位 |
 |---|---|---|
-| $p_x, p_y$ | base_link 原点の UTM 座標（Easting, Northing） | m |
-| $\theta$ | UTM グリッド座標系での yaw（x 軸 = East から反時計回り） | rad |
-| $b_\omega$ | ジャイロの鉛直軸バイアス | rad/s |
-| $s$ | ODOM 速度のスケール係数（名目値 1.0） | - |
+| $\hat{\mathbf{p}} = (\hat p_x, \hat p_y)$ | base_link 原点の UTM 座標（Easting, Northing） | m |
+| $\hat\theta$ | UTM グリッド座標系での yaw（x 軸 = East から反時計回り） | rad |
+| $\hat b_\omega$ | ジャイロの鉛直軸バイアス | rad/s |
+| $\hat s$ | ODOM 速度のスケール係数（名目値 1.0） | - |
 
-誤差状態:
+**誤差の定義**（左不変誤差。誤差は機体座標系側で定義する）:
 
 $$
-\delta\mathbf{x} = \begin{bmatrix} \delta p_x & \delta p_y & \delta\theta & \delta b_\omega & \delta s \end{bmatrix}^\top,\quad \mathbf{P} = \mathrm{Cov}(\delta\mathbf{x}) \in \mathbb{R}^{5\times5}
+X = \hat{X}\,\mathrm{Exp}(\boldsymbol{\xi}),\quad \boldsymbol{\xi} = \begin{bmatrix} \rho_x & \rho_y & \varphi \end{bmatrix}^\top,\qquad b_\omega = \hat b_\omega + \delta b,\quad s = \hat s + \delta s
 $$
 
-真値 = 名目状態 ⊕ 誤差状態（2D では、θ を $[-\pi, \pi)$ に正規化する以外は加算）。
+$$
+\delta\mathbf{x} = \begin{bmatrix} \rho_x & \rho_y & \varphi & \delta b & \delta s \end{bmatrix}^\top,\qquad \mathbf{P} = \mathrm{Cov}(\delta\mathbf{x}) \in \mathbb{R}^{5\times5}
+$$
 
-$s$ は初期段階では推定を無効にできる設定とする（推定する量が増えると、GNSS と LiDAR が両方無い区間での振る舞いが不安定になりうるため）。
+**SE(2) の基本演算**（$\mathbf{J} = \begin{bmatrix} 0 & -1 \\ 1 & 0 \end{bmatrix}$）:
+
+$$
+\mathrm{Exp}(\boldsymbol\rho, \varphi) = \big(\mathbf{R}(\varphi),\ \mathbf{V}(\varphi)\boldsymbol\rho\big),\quad
+\mathbf{V}(\varphi) = \frac{\sin\varphi}{\varphi}\mathbf{I} + \frac{1-\cos\varphi}{\varphi}\mathbf{J}
+$$
+
+$$
+\mathrm{Ad}_{(\mathbf{R},\mathbf{t})} = \begin{bmatrix} \mathbf{R} & -\mathbf{J}\mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}
+$$
+
+$\mathrm{Log}$ は $\mathrm{Exp}$ の逆写像で、$\varphi \to 0$ ではテイラー展開で評価する。これらは `gll/common/se2.hpp` に自前で実装する（数十行程度。単体テストで数値微分と照合する）。外部ライブラリ（manif 等）には依存しない。
+
+$s$ の推定は、設定で無効にできるようにする（推定する量が増えると、GNSS と LiDAR が両方無い区間での振る舞いが不安定になりうるため）。
 
 ### 3.4 予測（IMU・ODOM 駆動）
 
@@ -164,116 +175,126 @@ $s$ は初期段階では推定を無効にできる設定とする（推定す�
 
 予測は IMU のタイムスタンプで駆動する（100〜200 Hz）。ODOM の速度は、最新 2 サンプルの線形補間（外挿は最大 `odom_hold_max` 秒まで）で IMU の時刻にそろえる。IMU が途切れた場合は、ODOM のヨーレートで代替する（診断で WARN を出す）。
 
-名目状態の伝播（中点法）:
+**推定状態の伝播**（機体座標系の移動量を群の上で積算する。数値積分の誤差が出ない）:
 
 $$
-\bar\theta = \theta_k + \tfrac{1}{2}(\omega_m - b_\omega)\Delta t
+\Delta\varphi = (\omega_m - \hat b_\omega)\Delta t,\quad \Delta\boldsymbol\rho = \begin{bmatrix} \hat s\,v_o\,\Delta t \\ 0 \end{bmatrix},\quad
+\hat X_{k+1} = \hat X_k\,\mathrm{Exp}(\Delta\boldsymbol\rho, \Delta\varphi),\quad \hat b_{\omega,k+1} = \hat b_{\omega,k},\ \hat s_{k+1} = \hat s_k
 $$
 
-$$
-\begin{aligned}
-p_{x,k+1} &= p_{x,k} + s\,v_o\,\Delta t \cos\bar\theta \\
-p_{y,k+1} &= p_{y,k} + s\,v_o\,\Delta t \sin\bar\theta \\
-\theta_{k+1} &= \theta_k + (\omega_m - b_\omega)\Delta t \\
-b_{\omega,k+1} &= b_{\omega,k},\quad s_{k+1} = s_k
-\end{aligned}
-$$
-
-誤差状態の遷移行列（$c = \cos\bar\theta,\ \sigma = \sin\bar\theta$）:
+**誤差の遷移行列**: $\mathrm{Exp}(\Delta\boldsymbol\rho, \Delta\varphi) = (\mathbf{R}_\Delta, \mathbf{t}_\Delta)$ とおくと
 
 $$
 \mathbf{F} = \begin{bmatrix}
-1 & 0 & -s v_o \Delta t\,\sigma & \tfrac{1}{2} s v_o \Delta t^2 \sigma & v_o \Delta t\, c \\
-0 & 1 & \ \ s v_o \Delta t\, c & -\tfrac{1}{2} s v_o \Delta t^2 c & v_o \Delta t\, \sigma \\
-0 & 0 & 1 & -\Delta t & 0 \\
-0 & 0 & 0 & 1 & 0 \\
-0 & 0 & 0 & 0 & 1
+\mathbf{R}_\Delta^\top & \mathbf{R}_\Delta^\top \mathbf{J}\,\mathbf{t}_\Delta & \mathbf{0} & \begin{bmatrix} v_o\Delta t \\ 0 \end{bmatrix} \\
+\mathbf{0}^\top & 1 & -\Delta t & 0 \\
+\mathbf{0}^\top & 0 & 1 & 0 \\
+\mathbf{0}^\top & 0 & 0 & 1
 \end{bmatrix}
 $$
 
-プロセスノイズ（入力ノイズ $\sigma_v, \sigma_\omega$ と、ランダムウォーク $\sigma_{b}, \sigma_{s}$）:
+（左上の 3×3 は $\mathrm{Ad}_{\mathrm{Exp}(\Delta\boldsymbol\rho,\Delta\varphi)^{-1}}$。バイアスの列では、右ヤコビアン $\mathbf{J}_r(\Delta) \approx \mathbf{I}$ と近似している。IMU の周期が短いので $|\Delta\varphi| \ll 1$ となり、この近似は十分成り立つ）
+
+- **$\mathbf{F}$ には推定中の姿勢 $\hat\theta, \hat{\mathbf{p}}$ が現れない**（入力 $v_o, \omega_m$ とバイアス推定値だけで決まる）。これが ESEKF との本質的な違いである。
+- 例: 直進中（$\mathbf{t}_\Delta = (d, 0)$）は、yaw の誤差 $\varphi$ が機体の横方向の誤差 $\rho_y$ に $d\varphi$ だけ移る。これは直感とも一致する。
+
+**プロセスノイズ**（入力ノイズ $\sigma_v, \sigma_\omega$ と、ランダムウォーク $\sigma_b, \sigma_s$）:
 
 $$
 \mathbf{G} = \begin{bmatrix}
-s\Delta t\, c & -\tfrac{1}{2} s v_o \Delta t^2 \sigma \\
-s\Delta t\, \sigma & \ \ \tfrac{1}{2} s v_o \Delta t^2 c \\
+\hat s\,\Delta t & 0 \\
+0 & 0 \\
 0 & \Delta t \\
 0 & 0 \\
 0 & 0
 \end{bmatrix},\quad
-\mathbf{Q} = \mathbf{G}\,\mathrm{diag}(\sigma_v^2, \sigma_\omega^2)\,\mathbf{G}^\top + \mathrm{diag}(0,0,0,\sigma_b^2\Delta t, \sigma_s^2\Delta t)
-$$
-
-$$
+\mathbf{Q} = \mathbf{G}\,\mathrm{diag}(\sigma_v^2, \sigma_\omega^2)\,\mathbf{G}^\top + \mathrm{diag}(0,0,0,\sigma_b^2\Delta t, \sigma_s^2\Delta t),\qquad
 \mathbf{P} \leftarrow \mathbf{F}\mathbf{P}\mathbf{F}^\top + \mathbf{Q}
 $$
 
-停止中（|v_o| と |ω| が閾値未満の状態が一定時間続いたとき）は、ゼロ速度・ゼロ角速度の擬似観測（ZUPT / ZARU）で $b_\omega$ を推定する。これにより、停止中にヨーがドリフトしなくなる。
+横すべりを許容したい場合は、$\rho_y$ に横方向の速度ノイズ $\sigma_{v,lat}$ を加える（既定 0.02 m/s。非ホロノミック拘束の不確かさに相当する）。
+
+**停止中**（|v_o| と |ω| が閾値未満の状態が一定時間続いたとき）: ODOM の速度が 0 なので位置は動かない。ゼロ角速度の擬似観測（ZARU）$z = \bar\omega_m$（停止中の平均）、$h = \hat b_\omega$、$\mathbf{H} = [0\ 0\ 0\ 1\ 0]$ で $b_\omega$ を推定し、停止中の yaw のドリフトを抑える。
 
 ### 3.5 観測更新（共通手順）
 
-すべての観測に共通の手順:
+すべての観測で、**残差を機体座標系（誤差 $\boldsymbol\xi$ と同じ座標系）で表す**のが IEKF の要点である。
 
 1. 観測時刻 $t_z$ の状態を履歴バッファから取り出す（3.8 節）。
-2. 残差 $\mathbf{r} = \mathbf{z} - h(\mathbf{x})$ を計算する（yaw 成分は $[-\pi, \pi)$ に正規化）。
-3. $\mathbf{S} = \mathbf{H}\mathbf{P}\mathbf{H}^\top + \mathbf{R}$ から Mahalanobis 距離 $d^2 = \mathbf{r}^\top \mathbf{S}^{-1}\mathbf{r}$ を求める。$d^2 > \chi^2_{\mathrm{dof}}(1-\alpha)$ なら棄却する（既定 α = 0.001 → 2 自由度: 13.8、3 自由度: 16.3）。
-   - ただし棄却が `max_consecutive_rejects` 回続いた場合は、フィルタ側が間違っている可能性がある。この場合は観測を採用せず、状態監視に通知して共分散を膨らませる（4 章の再収束手順へ）。
-4. $\mathbf{K} = \mathbf{P}\mathbf{H}^\top\mathbf{S}^{-1}$、$\delta\mathbf{x} = \mathbf{K}\mathbf{r}$
-5. 注入: $\mathbf{x} \leftarrow \mathbf{x} \oplus \delta\mathbf{x}$
+2. 観測ごとの式（3.6、3.7 節）で残差 $\mathbf{r}$、観測行列 $\mathbf{H}$、観測共分散 $\mathbf{R}$ を求める。
+3. $\mathbf{S} = \mathbf{H}\mathbf{P}\mathbf{H}^\top + \mathbf{R}$ から Mahalanobis 距離 $d^2 = \mathbf{r}^\top \mathbf{S}^{-1}\mathbf{r}$ を求める。$d^2 > \chi^2_{\mathrm{dof}}(1-\alpha)$ なら棄却する（既定 α = 0.001 → 1 自由度: 10.8、2 自由度: 13.8、3 自由度: 16.3）。
+   - ただし棄却が `max_consecutive_rejects` 回続いた場合は、フィルタ側が間違っている可能性がある。この場合は観測を採用せず、状態監視に通知して共分散を膨らませる（3.12 節）。
+4. $\mathbf{K} = \mathbf{P}\mathbf{H}^\top\mathbf{S}^{-1}$、$\delta\mathbf{x} = \mathbf{K}\mathbf{r} = (\delta\boldsymbol\xi, \delta b, \delta s)$
+5. 注入: $\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$、$\hat b_\omega \leftarrow \hat b_\omega + \delta b$、$\hat s \leftarrow \hat s + \delta s$
 6. 共分散（Joseph 形式）: $\mathbf{P} \leftarrow (\mathbf{I}-\mathbf{K}\mathbf{H})\mathbf{P}(\mathbf{I}-\mathbf{K}\mathbf{H})^\top + \mathbf{K}\mathbf{R}\mathbf{K}^\top$
-7. リセット: 2D ではリセットのヤコビアンは単位行列（3D 化したときに $\mathbf{G}_{reset}$ を入れる場所として関数を分けておく）。
+7. リセット: 厳密には $\mathbf{P} \leftarrow \mathbf{J}_r(\delta\boldsymbol\xi)\,\mathbf{P}\,\mathbf{J}_r(\delta\boldsymbol\xi)^\top$ だが、$\delta\boldsymbol\xi$ は小さいので単位行列で近似する（関数は分けておき、必要なら後で有効化する）。
 8. $t_z$ 以降の入力を再適用して、現在時刻まで伝播し直す。
-9. 注入した補正量 $\delta\mathbf{x}$ を出力整形層に通知する（3.10 節）。
+9. 更新前後の出力姿勢の差（世界座標系の $\Delta x, \Delta y, \Delta\theta$）を出力整形層に通知する（3.10 節）。
 
-### 3.6 GNSS 観測
+**出力の共分散**（世界座標系の x, y, yaw）: $\boldsymbol\Sigma_w = \mathbf{T}\,\mathbf{P}_{1:3,1:3}\,\mathbf{T}^\top$、$\mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)$
+
+### 3.6 GNSS 観測（u-blox F9P, UBX-NAV-PVT）
 
 **採用条件**（すべて満たすときだけ更新に使う）:
 
-- 受信機が報告する解の種別が `RTK_FIX` である。F9P では UBX-NAV-PVT の `flags.carrSoln == 2`（fixed）で判定する（`gnssFixOK` も合わせて確認）。ドライバのメッセージ型の違いは IF 層で吸収し、コアでは `GnssFixType` 列挙型で扱う。
-- 報告された水平標準偏差が `gnss_max_stddev`（既定 0.05 m）以下。
+- `flags` の carrier solution が fixed（`carrSoln == 2`）で、`gnssFixOK` が立っている（`fixType` は 3D fix 以上）。IF 層で `GnssFixType::RTK_FIX` に変換する。
+- `hAcc` が `gnss_max_stddev`（既定 0.05 m）以下。
 - FIX に遷移してから `gnss_fix_settle_time`（既定 1.0 s）が経過している（FIX 直後の誤 FIX 対策）。
 - FLOAT / DGPS / SINGLE は既定では使わない（設定で、大きな共分散を付けて使えるようにする余地を残す）。
 
-**位置観測**: 緯度経度を、サイトで固定した 1 つの UTM ゾーンの (E, N) に変換する。ゾーンは設定値で固定し、ゾーン境界をまたいでも切り替えない。アンテナのレバーアーム $\mathbf{l} = (l_x, l_y)$（base_link 座標系）を考慮する:
+**位置観測**:
+
+- 緯度経度を、サイトで固定した 1 つの UTM ゾーンの $\mathbf{y} = (E, N)$ に変換する。ゾーンは設定値で固定し、ゾーン境界をまたいでも切り替えない。
+- アンテナのレバーアームを $\mathbf{l} = (l_x, l_y)$（base_link 座標系）とする。
+- 観測モデルは $\mathbf{y} = \mathbf{p} + \mathbf{R}(\theta)\mathbf{l} + \mathbf{n}$ で、これは $\mathbf{y} = X\,(\mathbf{l}, 1)$ という**左不変観測**の形になる。そのため、残差を機体座標系で取ると観測行列が定数になる。
 
 $$
-h(\mathbf{x}) = \begin{bmatrix} p_x \\ p_y \end{bmatrix} + \mathbf{R}(\theta)\,\mathbf{l},\qquad
-\mathbf{H} = \begin{bmatrix} 1 & 0 & -l_x\sin\theta - l_y\cos\theta & 0 & 0 \\ 0 & 1 & \ \ l_x\cos\theta - l_y\sin\theta & 0 & 0 \end{bmatrix}
+\mathbf{r} = \mathbf{R}(\hat\theta)^\top\big(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\mathbf{l}\big),\qquad
+\mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\mathbf{l} & \mathbf{0} & \mathbf{0} \end{bmatrix} = \begin{bmatrix} 1 & 0 & -l_y & 0 & 0 \\ 0 & 1 & \ \ l_x & 0 & 0 \end{bmatrix}
 $$
 
-$\mathbf{R}$ は受信機が報告する共分散を下限値 `gnss_min_stddev` でクリップして使う（受信機が報告する値は楽観的なことが多いため）。
+$$
+\mathbf{R} = \mathbf{R}(\hat\theta)^\top\,\boldsymbol\Sigma_{\mathrm{gnss}}\,\mathbf{R}(\hat\theta),\qquad \boldsymbol\Sigma_{\mathrm{gnss}} = \max(\mathrm{hAcc}, \sigma_{\min})^2\,\mathbf{I}_2
+$$
+
+- $\sigma_{\min}$ = `gnss_min_stddev`（既定 0.02 m）。`hAcc` は楽観的なことが多いので下限を設ける。
+- 導出: $X\,\mathrm{Exp}(\boldsymbol\xi)\cdot\mathbf{l} \approx \hat X\cdot(\mathbf{l} + \boldsymbol\rho + \varphi\mathbf{J}\mathbf{l})$ より、$\mathbf{R}(\hat\theta)^\top(\mathbf{y}-\hat{\mathbf{y}}) \approx \boldsymbol\rho + \varphi\mathbf{J}\mathbf{l} + \text{noise}$。
+- ESEKF では $\mathbf{H}$ が $\hat\theta$ に依存していた。IEKF では yaw の推定誤差が大きくても、観測行列そのものは誤らない。
 
 **ヨーの観測**（F9P はシングルアンテナのため、ヘディングを直接は得られない）:
 
-- 位置観測の系列: 走行中は、位置観測とレバーアームの項（$\partial h/\partial\theta$）を通して、ヨーがフィルタ内で間接的に推定される。停止中は観測されない（ZARU でドリフトだけを抑える）。
-- 進行方位（course over ground）の観測: UBX-NAV-PVT の地上速度 `gSpeed`、進行方位 `headMot`、精度 `sAcc` / `headAcc` を使い、次の条件をすべて満たすときに 1 自由度の観測として追加する。
+- 位置観測の系列: 走行中は、$\mathbf{F}$ の結合項（yaw 誤差 → 横方向誤差）を通して、位置観測からヨーが推定される。停止中は観測されない（ZARU でドリフトだけを抑える）。
+- 進行方位（course over ground）の観測: NAV-PVT の地上速度 `gSpeed`、進行方位 `headMot`、精度 `sAcc` / `headAcc` を使い、次の条件をすべて満たすときに 1 自由度の観測として追加する。
   - 条件: RTK-FIX 中で、`gSpeed` > `cog_min_speed`（既定 0.5 m/s）、|ヨーレート| < `cog_max_yaw_rate`（既定 5 deg/s。レバーアームによる速度成分の影響を避けるため）、かつ前進中。
-  - 観測式: $h = \theta$。$z = \pi/2 - (\mathrm{headMot} - \gamma)$（真北基準の方位をグリッドの ENU 角に変換）
+  - $z = \pi/2 - (\mathrm{headMot} - \gamma)$（真北基準の方位をグリッドの ENU 角に変換。$\gamma$ は子午線収差）
+  - $r = \mathrm{wrap}(z - \hat\theta)$、$\mathbf{H} = [0\ 0\ 1\ 0\ 0]$
   - 分散: $\sigma_\psi \approx \max(\mathrm{headAcc},\ \mathrm{sAcc}/\mathrm{gSpeed})$。最高速の 1.7 m/s でも、sAcc = 0.05 m/s なら約 1.7°。**補助的な観測**と位置付ける。
-- 後退中は $z$ に π を加えるか、観測を使わない（既定: 使わない）。
+- 後退中は使わない。
+
+**時刻**: NAV-PVT のメッセージ定義にヘッダ（時刻）が無い場合、IF 層で「受信時刻 − `gnss_latency`（既定 0.05 s。実測して調整する）」を観測時刻とする。`iTOW`（GPS 時刻）とシステム時刻の対応が取れる構成なら、そちらを優先する。
 
 ### 3.7 LiDAR 観測
 
-スキャンマッチング（6 章）の結果として、地図グループ $g$ の座標系での base_link の 6 自由度姿勢 $\mathbf{T}^{g}_{\mathrm{base}}$ とその共分散が得られる。
+スキャンマッチング（6 章）の結果として、地図グループ $g$ の座標系での base_link の 6 自由度姿勢 $\mathbf{T}^{g}_{\mathrm{base}}$ と、その共分散が得られる。共分散は機体座標系側の摂動に対するもので、small_gicp の定義による。
 
 1. 地図 → UTM 変換 $\mathbf{T}^{\mathrm{utm}}_{g}$（4.2 節）で UTM に変換する。
-2. x, y, yaw を取り出して 3 自由度の観測 $\mathbf{z} = (x, y, \psi)$ とする。
+2. x, y, yaw を取り出して、SE(2) の観測 $Z = (\mathbf{R}(\psi_z), \mathbf{p}_z)$ とする。
 
 $$
-h(\mathbf{x}) = \begin{bmatrix} p_x & p_y & \theta \end{bmatrix}^\top,\qquad
-\mathbf{H} = \begin{bmatrix} \mathbf{I}_3 & \mathbf{0}_{3\times2} \end{bmatrix}
+\mathbf{r} = \mathrm{Log}\big(\hat X^{-1} Z\big) \in \mathbb{R}^3,\qquad \mathbf{H} = \begin{bmatrix} \mathbf{I}_3 & \mathbf{0}_{3\times2} \end{bmatrix}
 $$
 
-観測共分散:
+（$\mathrm{Log}$ のヤコビアンは $\mathbf{I}$ で近似する）
+
+観測共分散（すべて機体座標系で表す）:
 
 $$
-\mathbf{R} = \mathbf{J}\,\boldsymbol{\Sigma}_{\mathrm{reg}}\,\mathbf{J}^\top + \boldsymbol{\Sigma}_{\mathrm{anchor}} + \boldsymbol{\Sigma}_{\mathrm{floor}}
+\mathbf{R} = \boldsymbol\Sigma_{\mathrm{reg}} + \mathbf{T}^\top\boldsymbol\Sigma_{\mathrm{anchor}}\mathbf{T} + \boldsymbol\Sigma_{\mathrm{floor}},\qquad \mathbf{T} = \mathrm{blkdiag}(\mathbf{R}(\hat\theta), 1)
 $$
 
-- $\boldsymbol{\Sigma}_{\mathrm{reg}}$: スキャンマッチングのヘッセ行列から求めた共分散（6.2 節）。
-- $\mathbf{J}$: 地図座標から UTM への回転（とスケール）。
-- $\boldsymbol{\Sigma}_{\mathrm{anchor}}$: アンカーの不確かさ。
-- $\boldsymbol{\Sigma}_{\mathrm{floor}}$: 下限値。
+- $\boldsymbol\Sigma_{\mathrm{reg}}$: スキャンマッチングの共分散（6.2 節）から、(x, y, yaw) の成分を取り出したもの。small_gicp の共分散はもともと機体座標系側の摂動で表されているので、**座標変換をせずにそのまま使える**。これも左不変誤差を選んだ利点である（roll / pitch が小さいことを前提に、SE(3) → SE(2) の射影として近似する）。
+- $\boldsymbol\Sigma_{\mathrm{anchor}}$: アンカーの不確かさ（世界座標系で与える）。
+- $\boldsymbol\Sigma_{\mathrm{floor}}$: 下限値。
 
 **注意**: アンカー誤差は時間的に相関するバイアスで、白色雑音ではない。上の式はそれを保守的に近似しているだけである。GNSS と LiDAR が両方有効な区間で、両者の差からアンカー誤差をオンライン推定する拡張（状態に地図グループごとのオフセットを追加する）は Phase 4 の検討事項とする。
 
@@ -305,14 +326,14 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 **姿勢推定器 `AttitudeEstimator`**（IMU が姿勢を出力しないため自前で実装）:
 
-- 方式: Mahony 型の相補フィルタ。ジャイロ 3 軸で姿勢を積分し、加速度計から推定した重力方向で roll / pitch を補正する。ヨーはこの推定器では扱わない（ESEKF 側で扱う）。
+- 方式: Mahony 型の相補フィルタ。ジャイロ 3 軸で姿勢を積分し、加速度計から推定した重力方向で roll / pitch を補正する。ヨーはこの推定器では扱わない（IEKF 側で扱う）。
 - 運動加速度の補償: 加速度計の値から、車両の運動による加速度を差し引いてから重力方向を求める。機体座標系で次のように近似する（低速なので十分）。
   $$
   \mathbf{a}_{\mathrm{lin}} \approx \begin{bmatrix} \dot v_o & v_o\,\omega_z & 0 \end{bmatrix}^\top,\qquad \mathbf{g}_b \approx \mathbf{a}_m - \mathbf{a}_{\mathrm{lin}}
   $$
   （$\dot v_o$ は ODOM 速度の差分を平滑化したもの。$v_o\omega_z$ は向心加速度）
 - 補正ゲインの調整: $\big|\|\mathbf{g}_b\| - g\big|$ が大きいとき（段差や衝撃）は補正ゲインを下げる。
-- ジャイロバイアス: 起動時に静止状態で `imu_static_init_time`（既定 3 s）の平均から 3 軸のバイアスを求める。以後は停止を検出するたびに更新する（鉛直軸のバイアスは ESEKF の $b_\omega$ でも推定する）。
+- ジャイロバイアス: 起動時に静止状態で `imu_static_init_time`（既定 3 s）の平均から 3 軸のバイアスを求める。以後は停止を検出するたびに更新する（鉛直軸のバイアスは IEKF の $b_\omega$ でも推定する）。
 
 傾斜補正:
 
@@ -325,7 +346,7 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 1. **ゲートと共分散**（3.5 節）: 外れ値は取り込まない。共分散が妥当なら、1 回の補正量はもともと小さい。
 2. **出力整形層（補正オフセット吸収方式）**:
-   - 観測更新で名目状態が $\delta\mathbf{x}$ だけ動いたら、出力側のオフセット $\mathbf{o}$ に $-\delta\mathbf{x}_{(x,y,\theta)}$ を加える。
+   - 観測更新で推定姿勢が世界座標系で $(\Delta x, \Delta y, \Delta\theta)$ だけ動いたら（3.5 節の手順 9）、出力側のオフセット $\mathbf{o}$ からその分を引く。
    - 出力は $\mathbf{y} = \mathbf{x}_{(x,y,\theta)} + \mathbf{o}$ とする。
    - $\mathbf{o}$ は毎周期、最大 `max_correction_rate_xy`（既定 0.1 m/s）と `max_correction_rate_yaw`（既定 2 deg/s）の速さで 0 に近づける。
    - これにより、出力の変化は「デッドレコニングによる滑らかな移動 + レート制限された補正」だけになる。
@@ -338,7 +359,7 @@ LiDAR 観測は「スキャン時刻 + マッチングの処理時間（数十 m
 
 | 開始地点 | 手順 |
 |---|---|
-| GNSS 区間 | RTK-FIX を待つ → 位置を初期化する（yaw の分散は大きく設定する） → 直進時の GNSS 軌跡（`init_heading_min_distance` 既定 3 m、6 km/h なら約 2 秒）から yaw を決め、初期化を完了する。外部から初期姿勢が与えられた場合はそれを優先する（シングルアンテナのため、停止したままでは yaw を決められない） |
+| GNSS 区間 | ① RTK-FIX を待つ → 位置を初期化する。② 走行して `init_heading_min_distance`（既定 1 m）進んだら、GNSS の変位の向きから粗い yaw を決め、$\sigma_\varphi$ = `init_yaw_stddev`（既定 15°）でフィルタを始動する。③ 以後は IEKF が位置観測と進行方位の観測で yaw を詰める。$\sigma_\varphi$ < `ready_yaw_stddev`（既定 2°）かつ位置の σ < `ready_pos_stddev`（既定 0.1 m）になったら初期化完了とする。外部から初期姿勢が与えられた場合はそれを優先する。シングルアンテナのため、停止したままでは yaw を決められない。IEKF は yaw の誤差が大きくても線形化が崩れにくいので、粗い yaw から始めても安定して収束する |
 | 地図区間 | 外部から初期姿勢を与えるか、前回終了時の姿勢を保存しておいて使う → その周辺で、yaw を N 通り（既定 12 通り）× 位置格子 の初期値からスキャンマッチングを試し、最良の結果で初期化する。GICP は収束する範囲が狭いので、粗い VGICP（ボクセル 2.0 m）で候補を絞ってから GICP で詰める 2 段階にする |
 | 共通 | 初期化が完了するまでは、出力を `INITIALIZING` として下流に使わせない |
 
@@ -409,7 +430,8 @@ UTM 座標は $10^5$〜$10^6$ m のオーダーになる。`float32` では有�
 ### 5.1 地図グループ
 
 - **地図グループ** = 1 つの座標系と 1 つのアンカーを持つ、統合済みの点群地図。
-- 直接つながる（間に GNSS 区間を挟まない）地図は、**オフライン工程で 1 つのグループに統合**する。例えば、重なり領域を含めて 1 回の SLAM で作る、または重なり領域で位置合わせしてからポーズグラフで全体を最適化する。これが要件の「部分展開」（動的ロード）の前提になる。
+- 直接つながる（間に GNSS 区間を挟まない）地図は、1 つのグループに統合されている必要がある。**統合は外部ツールで行い、本システムは統合済みの地図グループを入力として受け取る**（v0.3）。これが要件の「部分展開」（動的ロード）の前提になる。
+- 本システムへの入力は、地図グループごとの「統合済みの点群ファイル（地図座標系）」と「アンカー」（4.2 節）である。
 - GNSS 区間で隔てられた地図は別のグループとし、それぞれが GNSS 区間に接する位置でアンカーを持つ。
 
 要件の例との対応:
@@ -422,13 +444,13 @@ UTM 座標は $10^5$〜$10^6$ m のオーダーになる。`float32` では有�
 補足: 統合した地図の内部にも SLAM のドリフトは残る。アンカーから遠い部分ほど UTM とのずれが大きくなりうるのは、連鎖方式と同じである。ただし、次の点で連鎖方式より有利になる。
 
 - アンカーを 1 回だけ使うので、アンカー誤差が掛け算で増幅されない。
-- 地図の作成時に GNSS（RTK-FIX 区間）の位置を拘束条件としてポーズグラフに入れれば、グループ内のドリフトそのものを抑えられる。
+- 地図の作成時に GNSS（RTK-FIX 区間）の位置を拘束条件としてポーズグラフに入れれば、グループ内のドリフトそのものを抑えられる（外部ツール側で対応できるなら推奨）。
 
-地図作成手順の詳細は本書の範囲外とし、11 章で扱う。
+地図の作成・統合の手順は本書の範囲外とする。
 
 ### 5.2 タイル化とメタデータ
 
-オフラインツール `gll_map_tiler` で、グループの点群を正方形のタイルに分割する。
+オフラインツール `gll_map_tiler` で、外部ツールが出力した統合済みの点群を正方形のタイルに分割する。
 
 - タイルサイズ: 既定 20 m（地図座標系、xy 平面）
 - 前処理: ボクセルダウンサンプリング（既定 0.2 m）と外れ値除去
@@ -509,7 +531,7 @@ sequenceDiagram
   participant V as 車両位置（UTM）
   participant MTM as 地図タイルマネージャ
   participant SM as スキャンマッチャ
-  participant EKF as ESEKF
+  participant EKF as IEKF
   participant G as GNSS
 
   Note over V: グループ A の中を走行
@@ -601,7 +623,7 @@ flowchart TB
   end
   subgraph CORE["コア層（ROS 非依存, C++17）"]
     API[Localizer（ファサード）]
-    EST[estimation/<br/>EsEkf2D, StateHistory, OutputSmoother]
+    EST[estimation/<br/>InvEkfSe2, StateHistory, OutputSmoother]
     MEAS[measurement/<br/>GnssModel, LidarModel, AttitudeEstimator]
     MAP[map/<br/>MapAnchor, MapTileManager, ITileLoader]
     MATCH[matching/<br/>IScanMatcher, GicpMatcher]
@@ -625,8 +647,8 @@ gnss_and_lidar_localization/
 ├── core/                       # gll_core（純粋な CMake。colcon / catkin からも plain CMake でビルド可能）
 │   ├── CMakeLists.txt
 │   ├── include/gll/
-│   │   ├── common/             # types.hpp, logger.hpp, config.hpp, geodesy.hpp
-│   │   ├── estimation/         # es_ekf_2d.hpp, state_history.hpp, output_smoother.hpp
+│   │   ├── common/             # types.hpp, logger.hpp, config.hpp, geodesy.hpp, se2.hpp
+│   │   ├── estimation/         # state_estimator.hpp, inv_ekf_se2.hpp, state_history.hpp, output_smoother.hpp
 │   │   ├── measurement/        # gnss_model.hpp, lidar_model.hpp, attitude_estimator.hpp
 │   │   ├── map/                # map_anchor.hpp, map_tile_manager.hpp, tile_loader.hpp
 │   │   ├── matching/           # scan_matcher.hpp, gicp_matcher.hpp
@@ -705,11 +727,23 @@ class Localizer {
 |---|---|---|
 | `~/input/imu` | `sensor_msgs/Imu` | |
 | `~/input/odom` | `nav_msgs/Odometry` または `geometry_msgs/TwistWithCovarianceStamped` | パラメータで選択 |
-| `~/input/gnss/navpvt` | u-blox ドライバの NAV-PVT メッセージ（`ublox_msgs/NavPVT` または `ublox_ubx_msgs/UBXNavPVT`。使うドライバに合わせて選ぶ） | 位置・精度・`carrSoln`・地上速度・進行方位を 1 つのメッセージから取れる |
+| `~/input/gnss/navpvt` | `ublox_gps/NavPVT`（独自ドライバ） | 位置・精度・`carrSoln`・地上速度・進行方位を 1 つのメッセージから取れる |
 | `~/input/points` | `sensor_msgs/PointCloud2` | |
 | `~/input/initial_pose` | `geometry_msgs/PoseWithCovarianceStamped` | |
 
-**RTK-FIX 判定の注意**: `NavSatStatus` には RTK FIX / FLOAT を区別する標準の値が無い。そこで IF 層に `GnssStatusAdapter` を置き、受信機ドライバ固有のメッセージ（F9P では NAV-PVT の `carrSoln`）から `GnssFixType` を作る。
+**NavPVT の変換**（IF 層の `NavPvtConverter`）: `NavSatStatus` には RTK FIX / FLOAT を区別する標準の値が無いため、NavPVT から直接コアの `GnssSample` を作る。フィールド名と単位は UBX-NAV-PVT の仕様（`ublox_msgs/NavPVT` 準拠）を仮定している。**独自ドライバのため、実装時にメッセージ定義ファイルで確認する**。
+
+| NavPVT のフィールド（仮定） | 単位 | コアの `GnssSample` |
+|---|---|---|
+| `lat`, `lon` | 1e-7 deg | `lat`, `lon` [deg] |
+| `height`（楕円体高） | mm | `h` [m] |
+| `hAcc`, `vAcc` | mm | `cov`（対角、[m²]） |
+| `flags`（`gnssFixOK`、`carrSoln`）、`fixType` | ビット / 列挙 | `fix`（`GnssFixType`） |
+| `gSpeed`, `sAcc` | mm/s | 地上速度と精度 [m/s] |
+| `heading`（headMot）, `headAcc` | 1e-5 deg | 進行方位と精度 [rad] |
+| `velN`, `velE`, `velD` | mm/s | 速度ベクトル（診断用） |
+| `iTOW` | ms | 時刻の対応付けに使う（3.6 節「時刻」） |
+| （ヘッダ） | | あれば `stamp` を使う。無ければ受信時刻 − `gnss_latency` |
 
 配信:
 
@@ -760,6 +794,11 @@ class Localizer {
 | | `max_correspondence_distance` | 1.0 m | |
 | | `gicp_max_jump` | 1.0 m / 5 deg | |
 | 姿勢推定 | `imu_static_init_time` | 3 s | 起動時のジャイロバイアス推定 |
+| 予測 | `sigma_v_lat` | 0.02 m/s | 横すべり（非ホロノミック拘束の不確かさ） |
+| GNSS | `gnss_latency` | 0.05 s | NavPVT にヘッダが無い場合の受信遅延。実測して調整する |
+| 初期化 | `init_heading_min_distance` | 1.0 m | 粗い yaw を決めるための走行距離 |
+| | `init_yaw_stddev` | 15 deg | フィルタ始動時の yaw の σ |
+| | `ready_yaw_stddev` / `ready_pos_stddev` | 2 deg / 0.1 m | 初期化完了の条件 |
 | ゲート | `gate_alpha` | 0.001 | |
 | | `max_consecutive_rejects` | 10 | |
 | 出力整形 | `max_correction_rate_xy` | 0.1 m/s | 最高速 1.7 m/s に対して控えめに設定。経路追従の挙動を見て調整する |
@@ -779,7 +818,7 @@ class Localizer {
 
 | レベル | 内容 | 合格基準（案） |
 |---|---|---|
-| 単体テスト（コア、ROS 無し） | ESEKF のヤコビアンを数値微分と比較する。アンカー変換を往復させる（UTM → 地図 → UTM）。遅延観測の再適用の結果が、時系列順に適用した結果と一致することを確認する | 誤差 1e-9 以内 |
+| 単体テスト（コア、ROS 無し） | SE(2) の Exp / Log / Ad の恒等式、IEKF の遷移行列・観測行列を数値微分と比較する。アンカー変換を往復させる（UTM → 地図 → UTM）。遅延観測の再適用の結果が、時系列順に適用した結果と一致することを確認する | 誤差 1e-9 以内 |
 | シミュレーション | 合成軌跡とノイズで、GNSS 区間 → デッドレコニング → 地図区間の遷移を再現する。NEES / NIS で共分散の整合性を確認する | NEES が χ² の 95% 区間内 |
 | rosbag 再生 | 実走行データで、RTK-FIX 区間の GNSS を意図的に外して LiDAR のみで推定し、GNSS を真値として比較する | 横方向 RMS < 0.10 m（仮） |
 | 連続性 | 出力の周期間差分から、速度・ヨーレートに相当する成分を除いた「補正ステップ」の最大値を評価する | 1 周期あたり < 0.02 m（仮） |
@@ -792,21 +831,21 @@ class Localizer {
 
 | Phase | 内容 |
 |---|---|
-| 1 | コアの骨格（型、設定、ロガー）、ESEKF 2D、状態履歴バッファ、GNSS 観測、補助姿勢推定、出力整形、状態監視 / ROS 2 IF（IMU・ODOM・GNSS） / 単体テスト。**GNSS + デッドレコニングで動く状態** |
+| 1 | コアの骨格（型、設定、ロガー）、SE(2) 演算、Invariant EKF、状態履歴バッファ、GNSS 観測、補助姿勢推定、出力整形、状態監視 / ROS 2 IF（IMU・ODOM・GNSS） / 単体テスト。**GNSS + デッドレコニングで動く状態**。シミュレーションで yaw の初期誤差に対する収束を ESEKF 版と比較し、IEKF の優位を確認する |
 | 2 | アンカー変換、タイルツール、地図タイルマネージャ（非同期ロード・ダブルバッファ）、GICP の実装と LiDAR 観測、回転の歪み補正、地図区間での初期化 |
 | 3 | 地図グループの切り替え、アンカー較正ツール、診断の充実、実走行データでのパラメータ調整 |
-| 4（拡張） | 3D 15 状態 ESEKF（z / roll / pitch の出力）、スキャンのデスキュー、地図アンカーオフセットのオンライン推定、ROS 1 IF |
+| 4（拡張） | SE₂(3) 上の 3D IEKF + IMU バイアス（z / roll / pitch の出力）、スキャンのデスキュー、地図アンカーオフセットのオンライン推定、ROS 1 IF |
 
 ---
 
 ## 11. 未決事項・確認事項
 
-1. ~~GNSS 受信機~~ → u-blox F9P、シングルアンテナ（v0.2 で確定）。**残り**: 使う ROS ドライバ（`ublox` か `ublox_dgnss` か）と、NAV-PVT の出力レート。
+1. ~~GNSS 受信機~~ → u-blox F9P、シングルアンテナ、独自ドライバ（`ublox_gps/NavPVT`）（v0.3 で確定）。**残り**: NavPVT のメッセージ定義（ヘッダの有無、フィールド名・単位）、出力レート、受信遅延。
 2. **ODOM の形式**: 車輪速のみか、ヨーレートも出すか。メッセージ型は何か。
 3. ~~IMU~~ → 加速度と角速度のみ（v0.2 で確定）。
 4. **LiDAR**: 機種、スキャン時刻の定義、点ごとのタイムスタンプの有無。
 5. ~~車速の範囲~~ → 最高 6 km/h（v0.2 で確定）。
-6. **地図の作り方**: 地図グループの統合（例2 の地図1 + 地図2）をどのツールで行うか。地図作成時に GNSS の拘束を入れられるか。
+6. ~~地図の作り方~~ → 外部ツールで統合済みの地図が入力される（v0.3 で確定）。**残り**: 入力の点群ファイル形式（PCD を想定）と、アンカー情報の受け渡し形式。
 7. **アンカーの高さ**: 楕円体高を与えられるか（地図区間に入るときのスキャンマッチングの z 初期値に使う）。
 8. **地図グループの範囲**: 東西の広がりが数 km を超えるグループがあるか（縮尺係数の変化を無視できるか）。
 9. **計算機**: CPU のコア数と、ほかに動かす処理の負荷（GICP のスレッド数の配分）。
