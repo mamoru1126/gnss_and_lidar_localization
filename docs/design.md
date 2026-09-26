@@ -1,6 +1,6 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
-- 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md)
+- 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（IEKF の解説を含む）](./algorithm.md)
 - 状態: ドラフト（v0.5）
 
 | 版 | 変更内容 |
