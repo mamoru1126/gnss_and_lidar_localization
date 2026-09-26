@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GNSS・LiDAR 融合アルゴリズム</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F3F6F5; --surface:#FFFFFF; --ink:#15201F; --muted:#586664; --line:#D3DCDA;
+  --gnss:#A8680F; --gnss-soft:#F4E4C6;
+  --lidar:#1D6A86; --lidar-soft:#D2E7EF;
+  --dr:#56733F; --dr-soft:#DEE9D4;
+  --warn:#B0412B; --warn-soft:#F4D8CF;
+  --code-bg:#EAF0EE;
+  --display:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --body:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F1515; --surface:#162020; --ink:#E3ECEA; --muted:#9AAAA7; --line:#2C3A38;
+    --gnss:#E3AA4E; --gnss-soft:#3A2D14;
+    --lidar:#62B6D3; --lidar-soft:#12313B;
+    --dr:#9CC07F; --dr-soft:#223020;
+    --warn:#E68068; --warn-soft:#3C221C;
+    --code-bg:#1C2828;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0F1515; --surface:#162020; --ink:#E3ECEA; --muted:#9AAAA7; --line:#2C3A38;
+  --gnss:#E3AA4E; --gnss-soft:#3A2D14;
+  --lidar:#62B6D3; --lidar-soft:#12313B;
+  --dr:#9CC07F; --dr-soft:#223020;
+  --warn:#E68068; --warn-soft:#3C221C;
+  --code-bg:#1C2828;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15.5px;line-height:1.8;padding-inline:16px;padding-block:28px 64px}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+header{display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,6vw,40px);line-height:1.3;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.4;margin:0;text-wrap:balance}
+h3{font-family:var(--display);font-weight:700;font-size:17px;margin:0}
+p{margin:0;max-width:65ch}
+.lead{font-size:16.5px;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:12.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);line-height:1.6}
+.chip b{color:var(--ink);font-weight:500}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:0}
+.sw.g{background:var(--gnss)} .sw.l{background:var(--lidar)} .sw.d{background:var(--dr)} .sw.w{background:var(--warn)}
+nav{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-block:12px}
+nav ol{margin:0;padding-left:1.4em;columns:2;column-gap:28px;font-size:14px}
+nav a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+nav a:hover,nav a:focus-visible{border-color:var(--lidar);outline:none}
+section{display:flex;flex-direction:column;gap:16px;scroll-margin-top:16px}
+.secno{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em}
+figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 12px 10px;display:flex;flex-direction:column;gap:8px}
+figure svg{width:100%;height:auto;display:block;max-width:560px;margin:0 auto}
+figcaption{font-size:13px;color:var(--muted);line-height:1.6}
+.scroll{overflow-x:auto}
+.scroll img{max-width:none;width:760px;display:block;border-radius:6px;background:#fff}
+.math{overflow-x:auto;padding:4px 0;font-size:15px}
+.callout{border-left:3px solid var(--lidar);background:var(--surface);padding:10px 14px;border-radius:0 8px 8px 0;font-size:14.5px}
+.callout.w{border-color:var(--warn)}
+table{border-collapse:collapse;font-size:13.5px;width:100%;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:12.5px}
+td.n{text-align:right;font-family:var(--mono);font-size:13px}
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px 6px}
+code{font-family:var(--mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+ul.tight{margin:0;padding-left:1.2em}
+ul.tight li{margin:2px 0}
+.good{color:var(--dr);font-weight:500}.bad{color:var(--warn);font-weight:500}
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;margin:0;overflow-x:auto;font-size:13px}
+footer{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--lidar)}
+/* SVG tokens */
+.s-box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+.s-g{fill:var(--gnss-soft);stroke:var(--gnss);stroke-width:1.2}
+.s-l{fill:var(--lidar-soft);stroke:var(--lidar);stroke-width:1.2}
+.s-d{fill:var(--dr-soft);stroke:var(--dr);stroke-width:1.2}
+.s-w{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.2}
+.s-core{fill:var(--ink);stroke:none}
+.t{fill:var(--ink);font-family:var(--body);font-size:13px}
+.tb{fill:var(--ink);font-family:var(--body);font-size:13.5px;font-weight:700}
+.tm{fill:var(--muted);font-family:var(--body);font-size:11.5px}
+.tinv{fill:var(--bg);font-family:var(--body);font-size:13px}
+.tinvb{fill:var(--bg);font-family:var(--body);font-size:14px;font-weight:700}
+.tg{fill:var(--gnss);font-family:var(--body);font-size:12px;font-weight:500}
+.tl{fill:var(--lidar);font-family:var(--body);font-size:12px;font-weight:500}
+.tw{fill:var(--warn);font-family:var(--body);font-size:12px;font-weight:500}
+.td{fill:var(--dr);font-family:var(--body);font-size:12px;font-weight:500}
+.ln{stroke:var(--muted);stroke-width:1.4;fill:none}
+.ln-ink{stroke:var(--ink);stroke-width:1.6;fill:none}
+.ln-g{stroke:var(--gnss);stroke-width:2;fill:none}
+.ln-l{stroke:var(--lidar);stroke-width:2;fill:none}
+.ln-w{stroke:var(--warn);stroke-width:2;fill:none}
+.ln-d{stroke:var(--dr);stroke-width:2;fill:none}
+.dash{stroke-dasharray:5 4}
+.grid{stroke:var(--line);stroke-width:1;fill:none}
+.ah{fill:var(--muted)} .ah-ink{fill:var(--ink)} .ah-g{fill:var(--gnss)} .ah-l{fill:var(--lidar)} .ah-w{fill:var(--warn)} .ah-d{fill:var(--dr)}
+.dot-w{fill:var(--warn)} .dot-l{fill:var(--lidar)} .dot-ink{fill:var(--ink)}
+.car{fill:var(--ink)} .car-ghost{fill:none;stroke:var(--warn);stroke-width:1.5;stroke-dasharray:3 3}
+.fill-g{fill:var(--gnss)} .fill-gs{fill:var(--gnss-soft)} .fill-l{fill:var(--lidar)} .fill-ls{fill:var(--lidar-soft)}
+.hatch-l{fill:url(#hl)} .hatch-g{fill:url(#hg)}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
+@media (max-width:520px){nav ol{columns:1}}
+</style>
+
+<script>
+window.MathJax={tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},svg:{fontCache:'global'},options:{enableMenu:false}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+const dark = document.documentElement.dataset.theme === "dark" ||
+  (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "default" });
+</script>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">gnss_and_lidar_localization ・ 設計書 v0.7 対応</span>
+  <h1>GNSS・LiDAR 融合アルゴリズム</h1>
+  <p class="lead">RTK-FIX の区間は GNSS、それ以外は点群地図と LiDAR の照合で、途切れない自己位置を出す仕組みを図で説明します。推定器は <b>Invariant EKF</b> 1 つだけで、モードの切り替えはありません。</p>
+  <div class="chips">
+    <span class="chip"><span class="sw g"></span><b>GNSS</b> u-blox F9P・RTK</span>
+    <span class="chip"><span class="sw l"></span><b>LiDAR</b> small_gicp × 点群地図</span>
+    <span class="chip"><span class="sw d"></span><b>IMU・ODOM</b> 予測（デッドレコニング）</span>
+    <span class="chip"><b>出力</b> UTM の x, y, yaw</span>
+    <span class="chip"><b>最高速度</b> 6 km/h</span>
+  </div>
+</header>
+
+<nav aria-label="目次">
+  <ol>
+    <li><a href="#overview">全体の仕組み</a></li>
+    <li><a href="#state">状態と誤差の持ち方</a></li>
+    <li><a href="#why">なぜ Invariant EKF か</a></li>
+    <li><a href="#update">観測の取り込み</a></li>
+    <li><a href="#delay">遅れて届く観測</a></li>
+    <li><a href="#switch">GNSS と LiDAR の切り替わり</a></li>
+    <li><a href="#recovery">ずれたときの復帰</a></li>
+    <li><a href="#smoother">出力整形</a></li>
+  </ol>
+</nav>
+
+<!-- 1 -->
+<section id="overview">
+  <span class="secno">1 / 8</span>
+  <h2>全体の仕組み</h2>
+  <p>IMU と ODOM で「どれだけ動いたか」を積み上げて予測し（100〜200 Hz）、GNSS と LiDAR が届くたびに位置を補正します。どの観測も同じ 1 つの推定器に入るので、「GNSS モード」「LiDAR モード」の切り替えはありません。</p>
+  <figure>
+    <svg viewBox="0 0 400 436" role="img" aria-label="センサから推定器、出力整形、経路追従までの流れ">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <rect class="s-d" x="10" y="10" width="180" height="52" rx="8"/>
+      <text class="tb" x="24" y="32">IMU</text><text class="tm" x="24" y="51">角速度 100〜200 Hz</text>
+      <rect class="s-d" x="10" y="72" width="180" height="52" rx="8"/>
+      <text class="tb" x="24" y="94">ODOM</text><text class="tm" x="24" y="113">前進速度</text>
+      <rect class="s-g" x="210" y="10" width="180" height="52" rx="8"/>
+      <text class="tb" x="224" y="32">GNSS（RTK-FIX）</text><text class="tm" x="224" y="51">位置 〜10 Hz</text>
+      <rect class="s-l" x="210" y="72" width="180" height="52" rx="8"/>
+      <text class="tb" x="224" y="94">LiDAR × 点群地図</text><text class="tm" x="224" y="113">GICP で姿勢 10 Hz</text>
+      <text class="td" x="100" y="150" text-anchor="middle">予測の入力</text>
+      <text class="tl" x="300" y="150" text-anchor="middle">観測（補正）</text>
+      <path class="ln" d="M100 158V206" marker-end="url(#a1)"/>
+      <path class="ln" d="M300 158V206" marker-end="url(#a1)"/>
+      <rect class="s-core" x="20" y="210" width="360" height="76" rx="10"/>
+      <text class="tinvb" x="200" y="238" text-anchor="middle">Invariant EKF</text>
+      <text class="tinv" x="200" y="260" text-anchor="middle">姿勢 X ∈ SE(2)・ジャイロバイアス・ODOM スケール</text>
+      <text class="tinv" x="200" y="278" text-anchor="middle" style="font-size:11.5px;opacity:.8">状態は常に UTM 座標</text>
+      <path class="ln" d="M200 286V314" marker-end="url(#a1)"/>
+      <rect class="s-box" x="20" y="318" width="360" height="46" rx="8"/>
+      <text class="tb" x="200" y="339" text-anchor="middle">出力整形</text>
+      <text class="tm" x="200" y="356" text-anchor="middle">補正を 0.1 m/s・2°/s までに制限して、出力を飛ばさない</text>
+      <path class="ln" d="M200 364V392" marker-end="url(#a1)"/>
+      <rect class="s-box" x="20" y="396" width="360" height="36" rx="8"/>
+      <text class="t" x="200" y="419" text-anchor="middle">UTM の x, y, yaw ＋ 共分散 → 経路追従</text>
+    </svg>
+    <figcaption>緑は予測の入力、橙と青は補正に使う観測。推定器の状態は常に UTM 座標なので、地図が切り替わっても状態の座標系は変わらない。</figcaption>
+  </figure>
+</section>
+
+<!-- 2 -->
+<section id="state">
+  <span class="secno">2 / 8</span>
+  <h2>状態と誤差の持ち方</h2>
+  <p>車両の姿勢（向きと位置）を、ばらばらの数値ではなく 1 つの「平面の剛体運動」として持ちます。数学的にはリー群 SE(2) の要素です。</p>
+  <div class="math">\[ X = \begin{bmatrix} \mathbf{R}(\theta) & \mathbf{p} \\ \mathbf{0}^\top & 1 \end{bmatrix} \in SE(2) \]</div>
+  <figure>
+    <svg viewBox="0 0 400 268" role="img" aria-label="左：円弧に沿った予測。右：推定した機体座標系で見た誤差">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-ink" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="a2m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <text class="tb" x="10" y="22">予測：群の上で進む</text>
+      <path class="ln-d" d="M30 200 Q 115 200 160 110"/>
+      <g transform="translate(30 200)"><polygon class="car" points="12,0 -8,-7 -8,7"/></g>
+      <g transform="translate(160 110) rotate(-63)"><polygon class="car" points="12,0 -8,-7 -8,7"/></g>
+      <text class="t" x="22" y="228">Xₖ</text>
+      <text class="t" x="108" y="94">Xₖ₊₁</text>
+      <text class="tm" x="10" y="246">円弧に沿った移動を</text><text class="tm" x="10" y="262">誤差なく積み上げる</text>
+
+      <line class="grid" x1="200" y1="30" x2="200" y2="236"/>
+
+      <text class="tb" x="214" y="22">誤差：推定した機体から見る</text>
+      <path class="ln" d="M240 190H330" marker-end="url(#a2m)"/>
+      <path class="ln" d="M240 190V112" marker-end="url(#a2m)"/>
+      <text class="tm" x="334" y="194">前</text>
+      <text class="tm" x="228" y="108">左</text>
+      <g transform="translate(240 190)"><polygon class="car" points="12,0 -8,-7 -8,7" style="opacity:.55"/></g>
+      <text class="t" x="214" y="216">推定 X̂</text>
+      <path class="ln-w dash" d="M240 190H310"/>
+      <path class="ln-w dash" d="M310 190V142"/>
+      <text class="tw" x="268" y="206">ρₓ</text>
+      <text class="tw" x="316" y="170">ρ_y</text>
+      <g transform="translate(310 140) rotate(-28)"><polygon class="car" points="12,0 -8,-7 -8,7"/></g>
+      <path class="grid dash" d="M310 140H370"/>
+      <path class="ln-w" d="M352 140 A 42 42 0 0 0 347 121"/>
+      <text class="tw" x="358" y="130">φ</text>
+      <text class="t" x="322" y="126" text-anchor="end">真値 X</text>
+      <text class="tm" x="214" y="246">前後・左右のずれ ρ と</text><text class="tm" x="214" y="262">向きのずれ φ</text>
+    </svg>
+    <figcaption>左：予測は「一定の速度で進んだときの移動 Exp(u Δt)」を右から掛けるだけなので、回りながら進む動きも誤差なく積み上がる。右：誤差 ξ = (ρₓ, ρ_y, φ) は、推定した機体から見て真値がどれだけ前後・左右・回転しているかで表す。</figcaption>
+  </figure>
+  <div class="math">\[ X = \hat X\,\mathrm{Exp}(\xi),\qquad \hat X_{k+1} = \hat X_k\,\mathrm{Exp}\big(\hat s\,v_o\Delta t,\ 0,\ (\omega_m - \hat b_\omega)\Delta t\big) \]</div>
+  <p>誤差 ξ に加えて、ジャイロのバイアス \(b_\omega\) と ODOM のスケール \(s\) も推定します（合わせて 5 次元）。</p>
+</section>
+
+<!-- 3 -->
+<section id="why">
+  <span class="secno">3 / 8</span>
+  <h2>なぜ Invariant EKF か</h2>
+  <p>F9P はシングルアンテナなので、yaw を直接は測れません。起動直後や長いデッドレコニングの後は、yaw が大きくずれた状態から推定を始めることになります。このとき、通常の EKF は「yaw のずれが位置のどちら向きに出るか」を<b>推定中の yaw</b> を基準に計算してしまいます。</p>
+  <figure>
+    <svg viewBox="0 0 400 250" role="img" aria-label="yaw が 60 度ずれているとき、EKF が想定するずれの向きと実際のずれの向きが 60 度食い違う">
+      <defs>
+        <marker id="a3i" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-ink" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="a3w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-w" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="a3d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-d" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <g transform="translate(50 196)"><polygon class="car" points="12,0 -8,-7 -8,7"/></g>
+      <g transform="translate(50 196) rotate(-60)"><polygon class="car-ghost" points="12,0 -8,-7 -8,7"/></g>
+      <path class="ln-ink" d="M64 196H250" marker-end="url(#a3i)"/>
+      <text class="t" x="90" y="220">真の進行方向（d だけ進む）</text>
+      <path class="ln-w dash" d="M50 196 L 105 101"/>
+      <text class="tw" x="60" y="92">推定 yaw（60° ずれ）</text>
+      <path class="ln-d" d="M255 196V122" marker-end="url(#a3d)"/>
+      <text class="td" x="262" y="136">実際のずれ</text>
+      <text class="td" x="262" y="152">真の進行方向に直交</text>
+      <path class="ln-w dash" d="M255 196 L 191 159" marker-end="url(#a3w)"/>
+      <text class="tw" x="186" y="136" text-anchor="end">EKF の想定</text>
+      <text class="tw" x="186" y="152" text-anchor="end">推定 yaw に直交</text>
+      <path class="grid" d="M255 150 A 46 46 0 0 0 215 173"/>
+      <text class="tm" x="226" y="154">60°</text>
+      <text class="tm" x="10" y="244">ずれの「向き」の見積もりが 60° 間違う → 補正量も共分散も狂う</text>
+    </svg>
+    <figcaption>EKF の誤差伝播 \(\delta\mathbf{p}_{k+1} = \delta\mathbf{p}_k + d\,[-\sin\hat\theta,\ \cos\hat\theta]^\top\delta\theta\) は推定値 \(\hat\theta\) を含む。Invariant EKF では誤差を機体座標で持つので \(\rho_{y,k+1} = \rho_{y,k} + d\,\varphi\) となり、推定 yaw が何度でも同じ形になる。</figcaption>
+  </figure>
+  <div class="callout">Invariant EKF では、予測の遷移行列にも GNSS の観測行列にも、推定中の姿勢が現れません。<b>推定値が間違っていても、「誤差がどう伝わり、どう観測されるか」のモデルは正しいまま</b>です。計算量は EKF と同じです。</div>
+  <h3>シミュレーションでの確認</h3>
+  <p>GNSS の位置だけを使い、初期 yaw 誤差を変えて各 100 回走らせた結果です。NEES は共分散が実際の誤差と合っているかの指標で、理想値は 3、大きいほど共分散を楽観的に見積もっています。</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>初期 yaw 誤差</th><th>5 秒後の yaw 誤差<br>ESEKF → Invariant EKF</th><th>最大 NEES<br>ESEKF → Invariant EKF</th></tr></thead>
+      <tbody>
+        <tr><td>10°</td><td class="n">0.22° → 0.22°</td><td class="n">3.6 → 3.6</td></tr>
+        <tr><td>30°</td><td class="n">0.40° → <span class="good">0.24°</span></td><td class="n">5.6 → <span class="good">3.6</span></td></tr>
+        <tr><td>60°</td><td class="n"><span class="bad">1.13°</span> → <span class="good">0.36°</span></td><td class="n"><span class="bad">36.7</span> → <span class="good">4.3</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <figure>
+    <div class="scroll"><img src="../figures/invariant_ekf_vs_esekf.png" alt="初期 yaw 誤差 10°, 30°, 60° での yaw 誤差 RMS と平均 NEES の時間変化。30° と 60° で Invariant EKF の方が速く収束し、NEES も 3 付近に保たれる"></div>
+    <figcaption>横にスクロールできます。差が出るのは大きな誤差から立ち上がるときで、20 秒後の精度（約 0.13°）はどちらも同じ。</figcaption>
+  </figure>
+</section>
+
+<!-- 4 -->
+<section id="update">
+  <span class="secno">4 / 8</span>
+  <h2>観測の取り込み</h2>
+  <p>観測はすべて「推定した機体から見た残差」に直してから取り込みます。GNSS の位置なら次の形で、観測行列 H は定数になります。</p>
+  <div class="math">\[ \mathbf{r} = \mathbf{R}(\hat\theta)^\top\big(\mathbf{y} - \hat{\mathbf{p}} - \mathbf{R}(\hat\theta)\tilde{\mathbf{l}}\big),\qquad \mathbf{H} = \begin{bmatrix} \mathbf{I}_2 & \mathbf{J}\tilde{\mathbf{l}} & \mathbf{0} \end{bmatrix} \]</div>
+  <h3>アンテナの高さと傾き</h3>
+  <p>アンテナは base_link より高い位置（1 m 以内の想定）にあるので、車両が傾くと水平方向にずれます。roll / pitch で位置を水平面に射影したレバーアーム \(\tilde{\mathbf{l}}\) を使い、roll / pitch の推定誤差の分は観測の共分散に加えます。</p>
+  <figure>
+    <svg viewBox="0 0 400 240" role="img" aria-label="坂で車両が傾くと、高い位置のアンテナが水平方向にずれる">
+      <defs>
+        <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="ah-w" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <path class="ln" d="M20 210 L380 130"/>
+      <text class="tm" x="300" y="170">坂（図は誇張）</text>
+      <g transform="translate(190 172.2) rotate(-12.53)">
+        <rect class="s-box" x="-72" y="-36" width="144" height="28" rx="5"/>
+        <circle class="s-box" cx="-44" cy="-6" r="7"/>
+        <circle class="s-box" cx="44" cy="-6" r="7"/>
+        <path class="ln-g" d="M0 -36V-104"/>
+        <circle class="fill-g" cx="0" cy="-110" r="6"/>
+        <circle class="dot-ink" cx="0" cy="-12" r="3.5"/>
+      </g>
+      <path class="grid dash" d="M187.4 160.5V46"/>
+      <path class="ln-w" d="M168 52H185" marker-start="url(#a4)" marker-end="url(#a4)"/>
+      <text class="tw" x="178" y="34" text-anchor="middle">水平ずれ ≈ l_z · sin(傾き)</text>
+      <text class="tg" x="136" y="118">l_z（≤ 1 m）</text>
+      <text class="t" x="200" y="182">base_link</text>
+      <text class="tg" x="112" y="70">アンテナ</text>
+      <text class="t" x="20" y="232">l_z = 1 m のとき：傾き 1° → 1.7 cm、5° の坂 → 8.7 cm</text>
+    </svg>
+    <figcaption>RTK の精度は数 cm なので、この水平ずれは無視できない。傾きの推定誤差 0.5° なら約 0.9 cm を観測の共分散に加える。</figcaption>
+  </figure>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>観測</th><th>残差（機体座標）</th><th>使う条件</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sw g"></span>GNSS 位置</td><td>アンテナ位置の差を機体座標に回したもの</td><td>RTK-FIX（status 2）、水平 σ ≤ 5 cm、FIX 後 1 秒</td></tr>
+        <tr><td><span class="sw l"></span>LiDAR 姿勢</td><td>Log(X̂⁻¹ Z)（x, y, yaw）</td><td>GICP が収束し、インライア率が十分</td></tr>
+        <tr><td><span class="sw g"></span>進行方位（任意）</td><td>yaw の差</td><td>速度トピックがあり、0.5 m/s 以上で直進中</td></tr>
+        <tr><td><span class="sw d"></span>停止中のジャイロ</td><td>ジャイロバイアスの差</td><td>1 秒以上停止</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="delay">
+  <span class="secno">5 / 8</span>
+  <h2>遅れて届く観測</h2>
+  <p>LiDAR の位置合わせには数十 ms かかるので、結果はスキャンした時刻より遅れて届きます。そこで、過去 2 秒分の状態と入力を履歴として持ち、観測時刻まで巻き戻して補正してから、現在まで計算し直します。</p>
+  <figure>
+    <svg viewBox="0 0 400 210" role="img" aria-label="スキャン時刻まで巻き戻して更新し、保存した入力で現在まで再伝播する">
+      <defs>
+        <marker id="a5l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-l" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="a5d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-d" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="a5m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <rect class="s-d" x="20" y="120" width="360" height="16" rx="3" style="opacity:.7"/>
+      <text class="td" x="24" y="156">履歴バッファ（状態・共分散・入力、2 秒分）</text>
+      <path class="ln" d="M20 120H386" marker-end="url(#a5m)"/>
+      <g class="grid">
+        <path d="M40 116V124M60 116V124M80 116V124M100 116V124M120 116V124M140 116V124M160 116V124M180 116V124M200 116V124M220 116V124M240 116V124M260 116V124M280 116V124M300 116V124M320 116V124M340 116V124M360 116V124"/>
+      </g>
+      <text class="tm" x="386" y="112" text-anchor="end">時間</text>
+      <circle class="dot-l" cx="140" cy="120" r="6"/>
+      <text class="tl" x="140" y="104" text-anchor="middle">スキャン t_z</text>
+      <circle class="dot-ink" cx="320" cy="120" r="5"/>
+      <text class="t" x="320" y="104" text-anchor="middle">結果が届く</text>
+      <path class="ln-l" d="M316 92 C 280 36, 180 36, 146 92" marker-end="url(#a5l)"/>
+      <text class="tl" x="230" y="36" text-anchor="middle">① t_z の状態を取り出す</text>
+      <text class="tl" x="140" y="180" text-anchor="middle">② t_z で更新</text>
+      <path class="ln-d" d="M146 192H316" marker-end="url(#a5d)"/>
+      <text class="td" x="232" y="206" text-anchor="middle">③ 保存した入力で現在まで再伝播</text>
+    </svg>
+    <figcaption>状態が 5 次元と小さいので、2 秒分（400 ステップ）を計算し直しても 1 ms 未満の見込み。観測がどの順番で届いても、履歴の正しい位置に入る。</figcaption>
+  </figure>
+</section>
+
+<!-- 6 -->
+<section id="switch">
+  <span class="secno">6 / 8</span>
+  <h2>GNSS と LiDAR の切り替わり</h2>
+  <p>切り替えのスイッチはなく、「使えるときに入れる」と「両方あるときは GNSS が主」の 2 つの規則で決まります。例として、地図1 → GNSS 区間 → 地図2 と走る場合の流れです。</p>
+  <figure>
+    <svg viewBox="0 0 400 470" role="img" aria-label="区間ごとの GNSS と LiDAR の使われ方">
+      <defs>
+        <pattern id="hl" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" class="fill-ls"/><rect width="2.4" height="6" class="fill-l"/></pattern>
+        <pattern id="hg" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" class="fill-gs"/><rect width="2" height="6" class="fill-g"/></pattern>
+      </defs>
+      <text class="tm" x="4" y="20">区間</text>
+      <text class="tg" x="97" y="20" text-anchor="middle" style="font-size:10.5px">GNSS</text>
+      <text class="tl" x="139" y="20" text-anchor="middle" style="font-size:10.5px">LiDAR</text>
+      <text class="tm" x="160" y="20">起きること</text>
+      <!-- sections -->
+      <rect class="s-l" x="2" y="32" width="78" height="80" rx="4"/><text class="t" x="41" y="77" text-anchor="middle">地図1</text>
+      <rect class="s-box dash" x="2" y="116" width="78" height="80" rx="4"/><text class="t" x="41" y="152" text-anchor="middle">重なり</text><text class="tm" x="41" y="170" text-anchor="middle">（地図の縁）</text>
+      <rect class="s-g" x="2" y="200" width="78" height="100" rx="4"/><text class="t" x="41" y="255" text-anchor="middle">GNSS</text>
+      <rect class="s-box dash" x="2" y="304" width="78" height="70" rx="4"/><text class="t" x="41" y="343" text-anchor="middle">重なり</text>
+      <rect class="s-l" x="2" y="378" width="78" height="88" rx="4"/><text class="t" x="41" y="427" text-anchor="middle">地図2</text>
+      <!-- GNSS lane -->
+      <rect class="hatch-g" x="88" y="116" width="18" height="22"/>
+      <rect class="fill-g" x="88" y="138" width="18" height="236" rx="2"/>
+      <!-- LiDAR lane -->
+      <rect class="fill-l" x="130" y="32" width="18" height="106" rx="2"/>
+      <rect class="hatch-l" x="130" y="138" width="18" height="62"/>
+      <rect class="hatch-l" x="130" y="304" width="18" height="70"/>
+      <rect class="fill-l" x="130" y="374" width="18" height="92" rx="2"/>
+      <!-- notes -->
+      <text class="t" x="160" y="58">LiDAR が主。GNSS はない</text>
+      <text class="tm" x="160" y="78">IMU・ODOM で予測し、LiDAR で補正</text>
+
+      <text class="tg" x="160" y="134">FIX 取得。1 秒の安定待ち</text>
+      <text class="t" x="160" y="154">その後は GNSS が主</text>
+      <text class="tm" x="160" y="172">LiDAR は重み 1/4、食い違えば捨てる</text>
+      <text class="tm" x="160" y="189">推定値がずれていれば GNSS 側へ再アンカー</text>
+
+      <text class="t" x="160" y="226">GNSS だけ</text>
+      <text class="tm" x="160" y="244">地図のタイルがないので LiDAR は止まる</text>
+      <text class="tl" x="160" y="280">地図2 の手前 5 m でタイルを先読み</text>
+
+      <text class="t" x="160" y="326">LiDAR が再開（重み 1/4）</text>
+      <text class="tm" x="160" y="344">GNSS との差をアンカーずれとして記録</text>
+
+      <text class="tw" x="160" y="400">FIX が外れる → LiDAR が主</text>
+      <text class="tm" x="160" y="418">アンカーずれがあれば、LiDAR 側へ</text>
+      <text class="tm" x="160" y="434">再アンカー（5 回一致、約 0.5 秒）</text>
+      <text class="tm" x="160" y="452">出力は 0.1 m/s で滑らかに移る</text>
+    </svg>
+    <figcaption>塗りつぶしは主として使う観測、斜線は補助（LiDAR は重み 1/4、GNSS は安定待ち）。地図1 と地図2 が直接つながる場合は統合済みの 1 枚の地図なので、タイルが入れ替わるだけで観測の扱いは変わらない。</figcaption>
+  </figure>
+  <h3>GNSS が FIX しているときの LiDAR の扱い</h3>
+  <pre class="mermaid">
+flowchart TD
+  A["LiDAR の位置合わせ結果"] --> Q{"品質は十分？"}
+  Q -- いいえ --> R1["捨てる"]
+  Q -- はい --> F{"直近 1 秒に<br/>GNSS FIX あり？"}
+  F -- はい --> C{"推定値との差が<br/>0.15 m・1° 以内？"}
+  C -- はい --> U1["重み 1/4 で融合<br/>（yaw の補強）"]
+  C -- いいえ --> R2["捨てて<br/>アンカーずれとして記録"]
+  F -- いいえ --> G{"外れ値判定を通過？"}
+  G -- はい --> U2["通常の重みで融合"]
+  G -- いいえ --> RC["再アンカーの候補へ"]
+  </pre>
+  <div class="callout">RTK-FIX の GNSS は、推定値と食い違っても捨てません。食い違うときは「推定値の方がずれている」とみなし、次節の再アンカーの候補にします。</div>
+</section>
+
+<!-- 7 -->
+<section id="recovery">
+  <span class="secno">7 / 8</span>
+  <h2>ずれたときの復帰</h2>
+  <p>外れ値判定は「推定値が正しく、観測が外れている」前提です。推定値の方がずれていると、観測を捨て続けて抜け出せなくなります。そこで、捨てた観測どうしを比べて、どちらがずれているかを判断します。</p>
+  <figure>
+    <svg viewBox="0 0 400 250" role="img" aria-label="左：捨てた観測がまとまっていれば推定値を寄せる。右：ばらついていれば照合をやり直す">
+      <defs>
+        <marker id="a7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-ink" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <text class="tb" x="8" y="22">まとまっている</text>
+      <ellipse class="grid dash" cx="56" cy="130" rx="34" ry="26"/>
+      <circle class="dot-ink" cx="56" cy="130" r="5"/>
+      <text class="tm" x="56" y="174" text-anchor="middle">推定値と</text>
+      <text class="tm" x="56" y="189" text-anchor="middle">判定の範囲</text>
+      <circle class="dot-w" cx="146" cy="88" r="4.5"/><circle class="dot-w" cx="152" cy="95" r="4.5"/><circle class="dot-w" cx="141" cy="98" r="4.5"/><circle class="dot-w" cx="149" cy="83" r="4.5"/><circle class="dot-w" cx="157" cy="90" r="4.5"/>
+      <text class="tw" x="150" y="68" text-anchor="middle">捨てた観測</text>
+      <path class="ln-ink" d="M64 124 Q 100 96 134 93" marker-end="url(#a7)"/>
+      <text class="t" x="8" y="222">互いに一致 → 推定値がずれている</text>
+      <text class="tm" x="8" y="240">共分散を広げて観測側へ寄せる（再アンカー）</text>
+
+      <line class="grid" x1="200" y1="30" x2="200" y2="236"/>
+
+      <text class="tb" x="212" y="22">ばらついている</text>
+      <ellipse class="grid dash" cx="256" cy="130" rx="34" ry="26"/>
+      <circle class="dot-ink" cx="256" cy="130" r="5"/>
+      <circle class="dot-w" cx="332" cy="68" r="4.5"/><circle class="dot-w" cx="372" cy="150" r="4.5"/><circle class="dot-w" cx="318" cy="182" r="4.5"/><circle class="dot-w" cx="380" cy="94" r="4.5"/><circle class="dot-w" cx="336" cy="130" r="4.5"/>
+      <text class="t" x="212" y="222">一致しない → 照合の失敗</text>
+      <text class="tm" x="212" y="240">周辺の複数の初期値から照合し直す</text>
+    </svg>
+    <figcaption>捨てた観測は、オドメトリの移動量で最新時刻にそろえてから比べる。一致の判定は 0.10 m・1° 以内で、GNSS は 3 回、LiDAR は 5 回連続の一致が必要。</figcaption>
+  </figure>
+  <pre class="mermaid">
+stateDiagram-v2
+  [*] --> TRACKING
+  TRACKING --> SUSPECT: 観測を捨てた
+  SUSPECT --> TRACKING: 観測を採用
+  SUSPECT --> REANCHOR: 捨てた観測が一致（GNSS 3 回 / LiDAR 5 回）
+  REANCHOR --> TRACKING: 更新完了
+  SUSPECT --> RELOCALIZE: LiDAR が 2 秒不一致（GNSS なし）
+  RELOCALIZE --> REANCHOR: 一意で良い解
+  RELOCALIZE --> LOST: 3 回失敗
+  SUSPECT --> LOST: 位置の σ が 1 m 超
+  LOST --> REANCHOR: RTK-FIX を 3 回取得
+  LOST --> TRACKING: 外部から初期姿勢
+  </pre>
+  <p>照合のやり直しでは、解が一つに決まった場合だけ採用します（最良の候補が、離れた次点の候補より 1.5 倍以上良いこと）。似た構造が続く場所での取り違えを防ぐためです。</p>
+</section>
+
+<!-- 8 -->
+<section id="smoother">
+  <span class="secno">8 / 8</span>
+  <h2>出力整形</h2>
+  <p>推定器の値が補正で急に動いても、外に出す位置は急に動かしません。差をオフセットとして溜め、決まった速さで少しずつ詰めます。</p>
+  <ul class="tight">
+    <li>補正が入った瞬間：推定値は +Δ、オフセットは −Δ。出力は変わらない</li>
+    <li>その後 50 Hz ごと：オフセットを最大 0.1 m/s（yaw は 2°/s）で 0 に近づける</li>
+  </ul>
+  <figure>
+    <svg viewBox="0 0 400 420" role="img" aria-label="0.3 m の補正に対する推定値と出力、出力の標準偏差の時間変化">
+      <text class="tb" x="8" y="18">横位置（0.3 m の再アンカーの例）</text>
+      <g class="grid">
+        <path d="M50 170H380M50 130H380M50 90H380M50 50H380"/>
+      </g>
+      <text class="tm" x="44" y="174" text-anchor="end">0</text>
+      <text class="tm" x="44" y="134" text-anchor="end">0.1</text>
+      <text class="tm" x="44" y="94" text-anchor="end">0.2</text>
+      <text class="tm" x="44" y="54" text-anchor="end">0.3 m</text>
+      <path class="ln-w dash" d="M50 170H91.25V50H380"/>
+      <path class="ln-l" d="M50 170H91.25L338.75 50H380" style="stroke-width:2.6"/>
+      <text class="tw" x="98" y="44">推定値（瞬時に動く）</text>
+      <text class="tl" x="210" y="128">出力（0.1 m/s で追う）</text>
+      <g class="tm">
+        <text x="50" y="190" text-anchor="middle">0</text><text x="132.5" y="190" text-anchor="middle">1</text><text x="215" y="190" text-anchor="middle">2</text><text x="297.5" y="190" text-anchor="middle">3</text><text x="380" y="190" text-anchor="middle">4 s</text>
+      </g>
+
+      <text class="tb" x="8" y="232">出力の横方向の標準偏差</text>
+      <g class="grid" transform="translate(0 200)">
+        <path d="M50 170H380M50 130H380M50 90H380M50 50H380"/>
+      </g>
+      <text class="tm" x="44" y="374" text-anchor="end">0</text>
+      <text class="tm" x="44" y="334" text-anchor="end">0.1</text>
+      <text class="tm" x="44" y="294" text-anchor="end">0.2</text>
+      <text class="tm" x="44" y="254" text-anchor="end">0.3 m</text>
+      <path class="ln-g" d="M50 358H91.25V249.4L132.5 269.3L173.75 289.1L215 308.8L256.25 328.2L297.5 346.7L338.75 358H380" style="stroke-width:2.4"/>
+      <text class="tg" x="160" y="262">Σ_out = Σ_w + o oᵀ</text>
+      <g class="tm">
+        <text x="50" y="390" text-anchor="middle">0</text><text x="132.5" y="390" text-anchor="middle">1</text><text x="215" y="390" text-anchor="middle">2</text><text x="297.5" y="390" text-anchor="middle">3</text><text x="380" y="390" text-anchor="middle">4 s</text>
+      </g>
+      <text class="tm" x="8" y="414">時刻 0.5 s に補正。オフセットは 3 秒で吸収される</text>
+    </svg>
+    <figcaption>上：経路追従からは「3 秒かけて 0.1 m/s で横に寄った」ように見える。下：オフセットが残っている間は、その分だけ出力の共分散を広げて公開するので（0 付近の水平線はフィルタ自体の σ = 3 cm）、下流は「まだ追いついていない」ことを数値で受け取れる。</figcaption>
+  </figure>
+  <div class="math">\[ \Sigma_{\mathrm{out}} = \Sigma_w + \mathbf{o}\,\mathbf{o}^\top \]</div>
+  <div class="callout w">出力が飛ばない代わりに、真の位置への追従は遅れます。オフセットが 1 m または 5° を超えている間は <code>DEGRADED</code> を通知します。0.1 m/s は最高速度 1.7 m/s の約 6 % で、実機で経路追従の制御と合わせて調整します。</div>
+</section>
+
+<footer>
+  詳細な式と手順はリポジトリの <a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/tree/docs/requirements/docs">docs/</a>（設計書・アルゴリズム説明書・ソフトウェア構成）にあります。数値の閾値はすべて仮の値で、実走行データで調整します。
+</footer>
+
+</div>
+</body>
+</html>

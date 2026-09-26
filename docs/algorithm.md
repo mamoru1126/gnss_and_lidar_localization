@@ -3,6 +3,7 @@
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.5） / [ソフトウェア構成](./architecture.md)
 - 状態: ドラフト（v0.1）
 - 検証スクリプト: [`tools/sim/compare_invariant_ekf_vs_esekf.py`](../tools/sim/compare_invariant_ekf_vs_esekf.py)
+- 図解ページ: [`docs/explainer/index.html`](./explainer/index.html)（ブラウザで開くと図と数式が表示される）
 
 本書は 2 部構成である。
 
