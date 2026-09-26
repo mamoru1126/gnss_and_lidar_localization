@@ -1,0 +1,869 @@
+# ソフトウェア構成: コンポーネント図・クラス図
+
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.3）
+- 状態: ドラフト（v0.1）
+
+本書は、設計書 7 章のアーキテクチャを、実装に入れる粒度のコンポーネント図・クラス図に落としたものである。クラス名・メソッド名は実装時の名前の案で、引数や戻り値の細部は実装時に調整する。
+
+---
+
+## 1. 構成の原則
+
+| 原則 | 内容 |
+|---|---|
+| 依存の方向 | `ros2`（IF 層） → `core`（ロジック層）の一方向だけ。`core` は ROS のヘッダ・型・時刻・ログ・パラメータを一切参照しない |
+| 時刻 | `core` 内の時刻はすべて、データに付いたタイムスタンプ（`double` 秒）で扱う。システム時計は参照しない |
+| 外部への口 | `core` が外部に依存する箇所は、インターフェース（`ILogger`、`ITileLoader`、`IScanMatcher`、`IStateEstimator`）で抽象化し、テストで差し替えられるようにする |
+| 推定器は状態を持たない | `IStateEstimator` は `FilterState` を受け取って返す純粋関数の集まりにする。状態は `StateHistory` が保持するので、遅延観測の再伝播（replay）が簡単になる |
+| 観測はデータ型 | 観測は `std::variant` のデータ型（`Measurement`）で表す。線形化（残差・H・R の計算）は推定器側で行う。IEKF と ESEKF で誤差の定義が異なり、H も変わるため |
+| スレッド | `core` が持つスレッドはスキャンマッチング用と地図ロード用の 2 本だけ。フィルタの状態は `Localizer` 内の 1 つの mutex で保護する |
+
+---
+
+## 2. コンポーネント図
+
+### 2.1 全体
+
+```mermaid
+flowchart TB
+  subgraph EXT["外部"]
+    direction LR
+    DRV_IMU["IMU ドライバ"]
+    DRV_ODOM["ODOM"]
+    DRV_GNSS["F9P 独自ドライバ<br/>ublox_gps/NavPVT"]
+    DRV_LIDAR["LiDAR ドライバ"]
+    MAPFILES[("統合済み地図<br/>（外部ツールで作成）")]
+    TILES[("タイル + tile_index.yaml<br/>+ maps.yaml")]
+    DOWN["経路追従など<br/>下流ノード"]
+  end
+
+  subgraph ROS2["gll_ros2（IF 層・ROS 2 依存）"]
+    NODE["LocalizerNode"]
+    CONV["Converters<br/>Imu / Odom / NavPvt / PointCloud"]
+    PARAM["ParameterLoader<br/>→ LocalizerConfig"]
+    PUBL["OutputPublisher<br/>pose / odometry / TF / diagnostics"]
+    RLOG["RosLogger"]
+  end
+
+  subgraph CORE["gll_core（ロジック層・ROS 非依存）"]
+    FACADE["Localizer<br/>（ファサード）"]
+    EST["estimation"]
+    MEAS["measurement"]
+    MAPC["map"]
+    MATCH["matching"]
+    COMMON["common"]
+  end
+
+  subgraph TOOLS["tools（オフライン）"]
+    TILER["gll_map_tiler"]
+    CALIB["gll_anchor_calibrator"]
+  end
+
+  DRV_IMU & DRV_ODOM & DRV_GNSS & DRV_LIDAR --> NODE
+  NODE --> CONV --> FACADE
+  PARAM --> FACADE
+  RLOG -. ILogger を実装 .-> COMMON
+  FACADE --> PUBL --> DOWN
+
+  FACADE --> EST & MEAS & MAPC & MATCH
+  EST & MEAS & MAPC & MATCH --> COMMON
+  MAPC -- ITileLoader --> TILES
+
+  MAPFILES --> TILER --> TILES
+  TILES --> CALIB
+```
+
+### 2.2 コア内部のコンポーネントとインターフェース
+
+```mermaid
+flowchart LR
+  subgraph facade["Localizer（ファサード）"]
+    LOC["Localizer"]
+  end
+
+  subgraph measurement["measurement（センサデータ → 観測）"]
+    ATT["AttitudeEstimator<br/>roll / pitch（Mahony）"]
+    MIB["MotionInputBuilder<br/>IMU + ODOM → MotionInput"]
+    GMB["GnssMeasurementBuilder<br/>採用判定・UTM 変換"]
+    LMB["LidarMeasurementBuilder<br/>地図座標 → UTM"]
+    STOP["StopDetector<br/>停止検出 → ZARU"]
+  end
+
+  subgraph estimation["estimation（推定）"]
+    ISE{{"«interface»<br/>IStateEstimator"}}
+    IEKF["InvEkfSe2"]
+    ESEKF["EsEkf2D（比較用）"]
+    HIST["StateHistory<br/>遅延観測の再適用"]
+    GATE["MahalanobisGate"]
+    SMO["OutputSmoother"]
+    MON["StatusMonitor"]
+    INIT["Initializer<br/>GNSS / 地図"]
+  end
+
+  subgraph matching["matching（スキャンマッチング）"]
+    ISM{{"«interface»<br/>IScanMatcher"}}
+    GICP["GicpMatcher<br/>small_gicp"]
+    PRE["ScanPreprocessor<br/>クロップ・回転デスキュー・ダウンサンプル"]
+    WRK["ScanMatchingWorker<br/>（スレッド）"]
+  end
+
+  subgraph map["map（地図管理）"]
+    MTM["MapTileManager<br/>（スレッド）"]
+    ANC["MapAnchor"]
+    GRP["MapGroup / TileIndex"]
+    ITL{{"«interface»<br/>ITileLoader"}}
+    BTL["BinaryTileLoader"]
+  end
+
+  subgraph common["common"]
+    SE2["SE2"]
+    GEO["UtmProjector<br/>GeographicLib"]
+    ILG{{"«interface»<br/>ILogger"}}
+    TYP["型定義・設定"]
+  end
+
+  LOC --> ATT & MIB & GMB & STOP
+  LOC --> HIST --> ISE
+  ISE -.-> IEKF & ESEKF
+  LOC --> GATE & SMO & MON & INIT
+  LOC --> WRK --> PRE
+  WRK --> ISM -.-> GICP
+  WRK --> LMB --> ANC
+  LOC --> MTM --> GRP
+  MTM --> ITL -.-> BTL
+  MTM -- ターゲット構築 --> ISM
+  GMB --> GEO
+  ANC --> GEO
+  IEKF --> SE2
+```
+
+### 2.3 コンポーネントの責務
+
+| コンポーネント | 責務 | 主な依存 |
+|---|---|---|
+| `Localizer` | 外部 API の窓口。センサデータを受け取り、観測を作らせて推定器に渡し、出力を組み立てる。フィルタの状態の排他制御 | 全コンポーネント |
+| `measurement` | センサデータを「推定器の入力（`MotionInput`）」と「観測（`Measurement`）」に変換する。採用判定（RTK-FIX、精度、停止など）もここで行う | common |
+| `estimation` | 推定アルゴリズム（IEKF）、履歴と再伝播、外れ値ゲート、出力整形、状態監視、初期化 | common |
+| `matching` | LiDAR の前処理と位置合わせ。専用スレッドで非同期に実行する | small_gicp, common |
+| `map` | 地図グループとアンカー、タイルのロードとアンロード、位置合わせのターゲットの構築とダブルバッファ | common, matching（ターゲット構築） |
+| `common` | 型、設定、SE(2) 演算、測地変換、ロガーのインターフェース | Eigen, GeographicLib |
+| `gll_ros2` | ROS メッセージ ↔ コアの型の変換、パラメータの読み込み、publish、TF、診断 | rclcpp, gll_core |
+| `tools` | 統合済み地図のタイル化（点ごとの共分散の事前計算を含む）、アンカーの較正 | PCL, small_gicp, gll_core |
+
+---
+
+## 3. クラス図
+
+### 3.1 common（型・インターフェース）
+
+```mermaid
+classDiagram
+  direction LR
+
+  class ImuSample {
+    +double t
+    +Vector3d gyro
+    +Vector3d acc
+  }
+  class OdomSample {
+    +double t
+    +double v
+    +optional~double~ yaw_rate
+  }
+  class GnssSample {
+    +double t
+    +double lat
+    +double lon
+    +double h
+    +double h_acc
+    +double v_acc
+    +GnssFixType fix
+    +optional~double~ ground_speed
+    +optional~double~ speed_acc
+    +optional~double~ head_mot
+    +optional~double~ head_acc
+  }
+  class LidarScan {
+    +double t
+    +vector~Vector3f~ points
+    +optional~vector~float~~ point_times
+  }
+  class GnssFixType {
+    <<enumeration>>
+    NONE
+    SINGLE
+    DGPS
+    RTK_FLOAT
+    RTK_FIX
+  }
+  class LocalizationStatus {
+    <<enumeration>>
+    INITIALIZING
+    GNSS_AIDED
+    LIDAR_AIDED
+    GNSS_LIDAR_AIDED
+    DEAD_RECKONING
+    DEGRADED
+    LOST
+  }
+  class Pose2D {
+    +double x
+    +double y
+    +double yaw
+  }
+  class Pose3D {
+    +Isometry3d T
+  }
+  class LocalizationOutput {
+    +double t
+    +Pose2D pose
+    +Pose2D raw_pose
+    +Matrix3d cov
+    +double v
+    +double yaw_rate
+    +LocalizationStatus status
+    +string active_map_group
+  }
+  class SE2 {
+    +Matrix2d R
+    +Vector2d t
+    +static Exp(Vector3d xi) SE2
+    +Log() Vector3d
+    +Ad() Matrix3d
+    +inverse() SE2
+    +operator*(SE2) SE2
+    +act(Vector2d p) Vector2d
+    +yaw() double
+  }
+  class UtmProjector {
+    -int zone
+    -bool north
+    +forward(lat, lon) UtmPoint
+    +inverse(E, N) LatLon
+  }
+  class UtmPoint {
+    +double E
+    +double N
+    +double convergence
+    +double scale
+  }
+  class ILogger {
+    <<interface>>
+    +debug(msg)*
+    +info(msg)*
+    +warn(msg)*
+    +error(msg)*
+  }
+  class LocalizerConfig {
+    +EstimatorConfig estimator
+    +GnssConfig gnss
+    +LidarConfig lidar
+    +MapConfig map
+    +OutputConfig output
+    +Extrinsics extrinsics
+    +static fromYaml(path) LocalizerConfig
+  }
+
+  GnssSample --> GnssFixType
+  LocalizationOutput --> Pose2D
+  LocalizationOutput --> LocalizationStatus
+  UtmProjector ..> UtmPoint
+```
+
+### 3.2 facade（Localizer）
+
+```mermaid
+classDiagram
+  direction TB
+
+  class Localizer {
+    -LocalizerConfig cfg_
+    -mutex filter_mtx_
+    -shared_ptr~ILogger~ logger_
+    -unique_ptr~IStateEstimator~ estimator_
+    -StateHistory history_
+    -MahalanobisGate gate_
+    -OutputSmoother smoother_
+    -StatusMonitor monitor_
+    -Initializer initializer_
+    -AttitudeEstimator attitude_
+    -MotionInputBuilder motion_builder_
+    -GnssMeasurementBuilder gnss_builder_
+    -StopDetector stop_detector_
+    -MapTileManager map_manager_
+    -ScanMatchingWorker matching_worker_
+    +Localizer(cfg, estimator, matcher, tile_loader, logger)
+    +addImu(ImuSample)
+    +addOdom(OdomSample)
+    +addGnss(GnssSample)
+    +addLidarScan(LidarScan)
+    +setInitialPose(Pose2D, Matrix3d cov)
+    +getOutput() optional~LocalizationOutput~
+    +diagnostics() Diagnostics
+    -predictTo(double t)
+    -applyMeasurement(Measurement m) UpdateResult
+    -onMatchingResult(PoseMeasurement m)
+  }
+
+  class IStateEstimator {
+    <<interface>>
+  }
+  class StateHistory
+  class MahalanobisGate
+  class OutputSmoother
+  class StatusMonitor
+  class Initializer
+  class AttitudeEstimator
+  class MotionInputBuilder
+  class GnssMeasurementBuilder
+  class StopDetector
+  class MapTileManager
+  class ScanMatchingWorker
+  class ILogger {
+    <<interface>>
+  }
+
+  Localizer *-- StateHistory
+  Localizer *-- MahalanobisGate
+  Localizer *-- OutputSmoother
+  Localizer *-- StatusMonitor
+  Localizer *-- Initializer
+  Localizer *-- AttitudeEstimator
+  Localizer *-- MotionInputBuilder
+  Localizer *-- GnssMeasurementBuilder
+  Localizer *-- StopDetector
+  Localizer *-- MapTileManager
+  Localizer *-- ScanMatchingWorker
+  Localizer o-- IStateEstimator
+  Localizer o-- ILogger
+```
+
+### 3.3 estimation（推定）
+
+```mermaid
+classDiagram
+  direction TB
+
+  class FilterState {
+    +double t
+    +SE2 X
+    +double gyro_bias
+    +double odom_scale
+    +Matrix5d P
+  }
+  class MotionInput {
+    +double t
+    +double v
+    +double omega
+  }
+  class Measurement {
+    <<variant>>
+    GnssPositionMeasurement
+    HeadingMeasurement
+    PoseMeasurement
+    ZeroRateMeasurement
+  }
+  class GnssPositionMeasurement {
+    +double t
+    +Vector2d y_utm
+    +Matrix2d cov_world
+    +Vector2d lever_arm
+  }
+  class HeadingMeasurement {
+    +double t
+    +double yaw
+    +double var
+  }
+  class PoseMeasurement {
+    +double t
+    +SE2 Z
+    +Matrix3d cov_body
+    +Matrix3d anchor_cov_world
+    +string map_group
+  }
+  class ZeroRateMeasurement {
+    +double t
+    +double omega_mean
+    +double var
+  }
+  class Linearization {
+    +VectorXd r
+    +MatrixXd H
+    +MatrixXd R
+  }
+  class UpdateResult {
+    +bool accepted
+    +double mahalanobis_d2
+    +Vector3d world_delta
+  }
+
+  class IStateEstimator {
+    <<interface>>
+    +predict(FilterState, MotionInput, double dt) FilterState*
+    +linearize(FilterState, Measurement) Linearization*
+    +correct(FilterState, Linearization) UpdateResult*
+    +worldCovariance(FilterState) Matrix3d*
+  }
+  class InvEkfSe2 {
+    -EstimatorConfig cfg_
+    +predict(...) FilterState
+    +linearize(...) Linearization
+    +correct(...) UpdateResult
+    +worldCovariance(...) Matrix3d
+  }
+  class EsEkf2D {
+    +predict(...) FilterState
+    +linearize(...) Linearization
+    +correct(...) UpdateResult
+    +worldCovariance(...) Matrix3d
+  }
+
+  class StateHistory {
+    -deque~Entry~ buf_
+    -double length_
+    +push(FilterState, MotionInput)
+    +latest() FilterState
+    +stateAt(double t, IStateEstimator) optional~FilterState~
+    +applyDelayed(Measurement, IStateEstimator, MahalanobisGate) UpdateResult
+    +reset(FilterState)
+  }
+  class MahalanobisGate {
+    -double alpha_
+    -int max_consecutive_rejects_
+    +check(Linearization, Matrix P) GateResult
+  }
+  class OutputSmoother {
+    -Vector3d offset_
+    -double max_rate_xy_
+    -double max_rate_yaw_
+    +onCorrection(Vector3d world_delta)
+    +apply(Pose2D raw, double dt) Pose2D
+    +offsetNorm() pair~double,double~
+  }
+  class StatusMonitor {
+    +onAccepted(MeasurementKind, double t)
+    +onRejected(MeasurementKind, double t)
+    +evaluate(double t, Matrix3d cov, OutputSmoother) LocalizationStatus
+  }
+  class Initializer {
+    -InitPhase phase_
+    +onGnss(GnssPositionMeasurement) optional~FilterState~
+    +onExternalPose(Pose2D, Matrix3d) FilterState
+    +isReady(FilterState) bool
+  }
+
+  IStateEstimator <|.. InvEkfSe2
+  IStateEstimator <|.. EsEkf2D
+  IStateEstimator ..> FilterState
+  IStateEstimator ..> MotionInput
+  IStateEstimator ..> Measurement
+  IStateEstimator ..> Linearization
+  Measurement ..> GnssPositionMeasurement
+  Measurement ..> HeadingMeasurement
+  Measurement ..> PoseMeasurement
+  Measurement ..> ZeroRateMeasurement
+  StateHistory ..> IStateEstimator
+  StateHistory ..> MahalanobisGate
+  StateHistory *-- FilterState
+```
+
+補足:
+
+- `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
+- `linearize` は `std::visit` で観測の型ごとに分岐する。IEKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
+- `correct` は注入（$\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\boldsymbol\xi)$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。
+
+### 3.4 measurement（センサデータ → 入力・観測）
+
+```mermaid
+classDiagram
+  direction LR
+
+  class AttitudeEstimator {
+    -Quaterniond q_
+    -Vector3d gyro_bias_
+    -double kp_
+    -double ki_
+    +initializeStatic(vector~ImuSample~)
+    +update(ImuSample, double v, double v_dot)
+    +roll() double
+    +pitch() double
+    +verticalRate(Vector3d gyro) double
+  }
+  class MotionInputBuilder {
+    -deque~OdomSample~ odom_buf_
+    -double odom_hold_max_
+    +addOdom(OdomSample)
+    +build(ImuSample, AttitudeEstimator) optional~MotionInput~
+  }
+  class GnssMeasurementBuilder {
+    -UtmProjector utm_
+    -Vector2d lever_arm_
+    -double fix_since_
+    +build(GnssSample, double current_yaw_rate) GnssMeasurements
+  }
+  class GnssMeasurements {
+    +optional~GnssPositionMeasurement~ position
+    +optional~HeadingMeasurement~ heading
+    +GnssRejectReason reason
+  }
+  class LidarMeasurementBuilder {
+    +build(RegistrationResult, MapAnchor, double t) optional~PoseMeasurement~
+  }
+  class StopDetector {
+    -double stop_since_
+    -RunningMean omega_mean_
+    +update(MotionInput) optional~ZeroRateMeasurement~
+    +isStopped() bool
+  }
+  class UtmProjector
+
+  GnssMeasurementBuilder --> UtmProjector
+  GnssMeasurementBuilder ..> GnssMeasurements
+  MotionInputBuilder ..> AttitudeEstimator
+```
+
+### 3.5 matching（スキャンマッチング）
+
+```mermaid
+classDiagram
+  direction TB
+
+  class IScanMatcher {
+    <<interface>>
+    +buildTarget(vector~TileData~ tiles, string group) shared_ptr~RegistrationTarget~*
+    +align(PreprocessedScan, RegistrationTarget, Pose3D init) RegistrationResult*
+  }
+  class RegistrationTarget {
+    <<abstract>>
+    +string map_group
+    +set~TileId~ tiles
+    +size_t num_points
+  }
+  class GicpTarget {
+    +shared_ptr~small_gicp_PointCloud~ cloud
+    +shared_ptr~small_gicp_KdTree~ tree
+  }
+  class GicpMatcher {
+    -GicpConfig cfg_
+    +buildTarget(...) shared_ptr~RegistrationTarget~
+    +align(...) RegistrationResult
+    +alignMultiHypothesis(scan, target, vector~Pose3D~) RegistrationResult
+  }
+  class RegistrationResult {
+    +bool converged
+    +int iterations
+    +Pose3D T_map_base
+    +Matrix6d cov_body
+    +double inlier_ratio
+    +double error_per_point
+  }
+  class ScanPreprocessor {
+    -Isometry3d T_base_lidar
+    -CropConfig crop_
+    -double voxel_size_
+    +process(LidarScan, optional~RotationDeskew~) PreprocessedScan
+  }
+  class PreprocessedScan {
+    +double t
+    +shared_ptr~small_gicp_PointCloud~ cloud
+  }
+  class ScanMatchingWorker {
+    -thread thread_
+    -LatestSlot~LidarScan~ pending_
+    -IScanMatcher* matcher_
+    -ScanPreprocessor preprocessor_
+    -MapTileManager* map_manager_
+    -function~Pose3D(double)~ predict_pose_
+    -function~void(PoseMeasurement)~ on_result_
+    +start()
+    +stop()
+    +submit(LidarScan)
+  }
+
+  IScanMatcher <|.. GicpMatcher
+  RegistrationTarget <|-- GicpTarget
+  IScanMatcher ..> RegistrationTarget
+  IScanMatcher ..> RegistrationResult
+  ScanMatchingWorker *-- ScanPreprocessor
+  ScanMatchingWorker --> IScanMatcher
+  ScanPreprocessor ..> PreprocessedScan
+```
+
+補足:
+
+- `ScanMatchingWorker` は最新のスキャンだけを保持する（`LatestSlot`。処理中に届いた古いスキャンは捨てる）。
+- 初期値は `predict_pose_`（`Localizer` が `StateHistory` からスキャン時刻の予測姿勢を返すコールバック）で取得する。結果は `on_result_` で `Localizer` に戻し、遅延観測として適用する。
+- `GicpMatcher` の中に small_gicp の型を閉じ込める。ほかのクラスは `RegistrationTarget` / `PreprocessedScan` を通してだけ扱う。
+- `PreprocessedScan` は現状 small_gicp の点群を持っているので、完全には抽象化できていない。ほかのマッチャに差し替えるときに抽象化する。
+
+### 3.6 map（地図管理）
+
+```mermaid
+classDiagram
+  direction TB
+
+  class MapAnchor {
+    -Vector3d map_point_
+    -UtmPoint anchor_utm_
+    -double ellipsoid_height_
+    -double rotation_
+    -double scale_
+    -Matrix3d cov_world_
+    +static fromConfig(AnchorConfig, UtmProjector) MapAnchor
+    +mapToUtm(Pose3D) Pose3D
+    +utmToMap(Pose3D) Pose3D
+    +covarianceWorld() Matrix3d
+  }
+  class MapGroup {
+    +string id
+    +MapAnchor anchor
+    +TileIndex index
+    +AABB2d utm_bounds
+  }
+  class TileIndex {
+    +double tile_size
+    +vector~TileMeta~ tiles
+    +static load(path) TileIndex
+    +query(AABB2d map_bbox) vector~TileMeta~
+  }
+  class TileMeta {
+    +TileId id
+    +string file
+    +AABB3d bounds_map
+    +AABB2d bounds_utm
+    +size_t num_points
+  }
+  class TileData {
+    +TileId id
+    +vector~Vector3f~ points
+    +vector~Matrix3f~ covs
+  }
+  class ITileLoader {
+    <<interface>>
+    +load(TileMeta) TileData*
+  }
+  class BinaryTileLoader {
+    +load(TileMeta) TileData
+  }
+  class MapTileManager {
+    -vector~MapGroup~ groups_
+    -UniformGridIndex utm_index_
+    -ITileLoader* loader_
+    -IScanMatcher* matcher_
+    -map~TileId, TileData~ cache_
+    -atomic_shared_ptr~RegistrationTarget~ front_
+    -thread thread_
+    +start()
+    +stop()
+    +updatePose(Pose2D, double v)
+    +currentTarget() shared_ptr~const RegistrationTarget~
+    +activeGroup() const MapGroup*
+    +group(string id) const MapGroup&
+  }
+
+  MapGroup *-- MapAnchor
+  MapGroup *-- TileIndex
+  TileIndex *-- TileMeta
+  ITileLoader <|.. BinaryTileLoader
+  ITileLoader ..> TileData
+  MapTileManager *-- MapGroup
+  MapTileManager --> ITileLoader
+  MapTileManager ..> IScanMatcher : buildTarget
+```
+
+補足:
+
+- `updatePose` は呼び出し側のスレッドで要求中心と必要なタイル集合を計算し、変化があればワーカーに通知するだけにする（すぐに戻る）。
+- ワーカーはタイルを読み込み、`IScanMatcher::buildTarget` で新しいターゲットを作る。完成したら `front_` をアトミックに差し替える（ダブルバッファ）。
+- 位置合わせ中のスレッドは `shared_ptr` でターゲットを保持しているので、差し替えの影響を受けない。
+
+### 3.7 gll_ros2（IF 層）
+
+```mermaid
+classDiagram
+  direction LR
+
+  class LocalizerNode {
+    <<rclcpp::Node>>
+    -unique_ptr~Localizer~ localizer_
+    -Subscription imu_sub_
+    -Subscription odom_sub_
+    -Subscription navpvt_sub_
+    -Subscription points_sub_
+    -Subscription initial_pose_sub_
+    -TimerBase output_timer_
+    -OutputPublisher publisher_
+    -NavPvtConverter navpvt_conv_
+    +LocalizerNode(NodeOptions)
+    -onImu(Imu)
+    -onOdom(Odometry)
+    -onNavPvt(ublox_gps_NavPVT)
+    -onPoints(PointCloud2)
+    -onInitialPose(PoseWithCovarianceStamped)
+    -onOutputTimer()
+  }
+  class ParameterLoader {
+    +static load(Node) LocalizerConfig
+  }
+  class ExtrinsicsLoader {
+    +static load(tf2_Buffer, frames) Extrinsics
+  }
+  class RosLogger {
+    -rclcpp_Logger logger_
+    +debug(msg)
+    +info(msg)
+    +warn(msg)
+    +error(msg)
+  }
+  class NavPvtConverter {
+    -double latency_
+    +convert(ublox_gps_NavPVT, rclcpp_Time recv) GnssSample
+  }
+  class MsgConverters {
+    <<utility>>
+    +toCore(Imu) ImuSample
+    +toCore(Odometry) OdomSample
+    +toCore(PointCloud2) LidarScan
+    +toRos(LocalizationOutput) PoseWithCovarianceStamped
+    +toRosOdometry(LocalizationOutput) Odometry
+  }
+  class OutputPublisher {
+    -Publisher pose_pub_
+    -Publisher odom_pub_
+    -Publisher raw_pose_pub_
+    -TransformBroadcaster tf_
+    -Updater diag_
+    +publish(LocalizationOutput)
+    +publishDiagnostics(Diagnostics)
+  }
+  class ILogger {
+    <<interface>>
+  }
+  class Localizer
+
+  LocalizerNode *-- Localizer
+  LocalizerNode *-- OutputPublisher
+  LocalizerNode *-- NavPvtConverter
+  LocalizerNode ..> ParameterLoader
+  LocalizerNode ..> ExtrinsicsLoader
+  LocalizerNode ..> MsgConverters
+  ILogger <|.. RosLogger
+  LocalizerNode ..> RosLogger : 生成して Localizer に注入
+```
+
+ROS 1 版（`gll_ros1`）は、この図の `rclcpp` を `roscpp` に置き換えた同じ構成になる。`Localizer` から下は共通である。
+
+---
+
+## 4. 主要な処理の流れ
+
+### 4.1 IMU 受信（予測）と GNSS 受信（更新）
+
+```mermaid
+sequenceDiagram
+  participant N as LocalizerNode
+  participant L as Localizer
+  participant A as AttitudeEstimator
+  participant M as MotionInputBuilder
+  participant H as StateHistory
+  participant E as InvEkfSe2
+  participant G as GnssMeasurementBuilder
+  participant S as OutputSmoother
+
+  N->>L: addImu(ImuSample)
+  L->>A: update(imu, v, v_dot)
+  L->>M: build(imu, attitude)
+  M-->>L: MotionInput
+  L->>E: predict(latest, input, dt)
+  E-->>L: FilterState
+  L->>H: push(state, input)
+
+  N->>L: addGnss(GnssSample)
+  L->>G: build(sample, yaw_rate)
+  G-->>L: position / heading（採用条件を満たすものだけ）
+  L->>H: applyDelayed(measurement, estimator, gate)
+  H->>E: stateAt(t_z) → linearize → gate → correct
+  H->>E: 再伝播（t_z 以降の入力）
+  H-->>L: UpdateResult（world_delta）
+  L->>S: onCorrection(world_delta)
+```
+
+### 4.2 LiDAR 受信（非同期の位置合わせ → 遅延観測）
+
+```mermaid
+sequenceDiagram
+  participant N as LocalizerNode
+  participant L as Localizer
+  participant W as ScanMatchingWorker（スレッド）
+  participant P as ScanPreprocessor
+  participant MT as MapTileManager
+  participant G as GicpMatcher
+  participant LB as LidarMeasurementBuilder
+  participant H as StateHistory
+
+  N->>L: addLidarScan(scan)
+  L->>W: submit(scan)（最新のみ保持してすぐ戻る）
+  W->>P: process(scan, deskew)
+  W->>MT: currentTarget()
+  W->>L: predict_pose(scan.t)（スキャン時刻の予測姿勢）
+  L->>H: stateAt(scan.t)
+  W->>MT: activeGroup().anchor.utmToMap(pose)
+  W->>G: align(scan, target, init)
+  G-->>W: RegistrationResult
+  W->>LB: build(result, anchor, t)
+  LB-->>W: PoseMeasurement
+  W->>L: on_result(PoseMeasurement)
+  L->>H: applyDelayed(...)（mutex 取得）
+```
+
+### 4.3 地図タイルの更新
+
+```mermaid
+sequenceDiagram
+  participant L as Localizer
+  participant MT as MapTileManager
+  participant T as ロードワーカー（スレッド）
+  participant TL as BinaryTileLoader
+  participant G as GicpMatcher
+
+  L->>MT: updatePose(pose, v)（出力周期で呼ぶ）
+  MT->>MT: 要求中心 = 位置 + 先読み<br/>必要なタイル集合を計算
+  alt タイル集合が変化した
+    MT->>T: 通知（すぐ戻る）
+    T->>TL: load(不足しているタイル)
+    TL-->>T: TileData
+    T->>G: buildTarget(ロード済みタイル, group)
+    G-->>T: 新しいターゲット（KdTree 構築済み）
+    T->>MT: front_ をアトミックに差し替え
+    T->>T: アンロード対象をキャッシュから破棄
+  end
+```
+
+---
+
+## 5. ディレクトリとクラスの対応
+
+| ディレクトリ | クラス / ファイル |
+|---|---|
+| `core/include/gll/common/` | `types.hpp`（センサデータ・出力の型）、`se2.hpp`（`SE2`）、`geodesy.hpp`（`UtmProjector`）、`logger.hpp`（`ILogger`）、`config.hpp`（`LocalizerConfig`） |
+| `core/include/gll/estimation/` | `state_estimator.hpp`（`IStateEstimator`、`FilterState`、`Measurement`）、`inv_ekf_se2.hpp`、`es_ekf_2d.hpp`、`state_history.hpp`、`mahalanobis_gate.hpp`、`output_smoother.hpp`、`status_monitor.hpp`、`initializer.hpp` |
+| `core/include/gll/measurement/` | `attitude_estimator.hpp`、`motion_input_builder.hpp`、`gnss_measurement_builder.hpp`、`lidar_measurement_builder.hpp`、`stop_detector.hpp` |
+| `core/include/gll/matching/` | `scan_matcher.hpp`（`IScanMatcher`、`RegistrationTarget`、`RegistrationResult`）、`gicp_matcher.hpp`、`scan_preprocessor.hpp`、`scan_matching_worker.hpp` |
+| `core/include/gll/map/` | `map_anchor.hpp`、`map_group.hpp`（`MapGroup`、`TileIndex`、`TileMeta`）、`tile_loader.hpp`（`ITileLoader`、`BinaryTileLoader`、`TileData`）、`map_tile_manager.hpp` |
+| `core/include/gll/` | `localizer.hpp`（`Localizer`） |
+| `ros2/gll_ros2/` | `localizer_node.cpp`、`parameter_loader.cpp`、`extrinsics_loader.cpp`、`ros_logger.hpp`、`navpvt_converter.cpp`、`msg_converters.cpp`、`output_publisher.cpp` |
+| `tools/map_tiler/` | `gll_map_tiler`（統合済み地図 → タイル + 点ごとの共分散） |
+| `tools/anchor_calibrator/` | `gll_anchor_calibrator` |
+
+## 6. Phase 1 で実装する範囲
+
+設計書 10 章の Phase 1 に対応して、次のクラスを実装する。
+
+- **common**: 全クラス
+- **estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`、`Initializer`（GNSS 区間の初期化のみ）
+- **measurement**: `AttitudeEstimator`、`MotionInputBuilder`、`GnssMeasurementBuilder`、`StopDetector`
+- **facade**: `Localizer`（LiDAR / 地図関連のメンバは空の実装にしておく）
+- **gll_ros2**: LiDAR 以外の全クラス
+
+`matching` と `map`、`LidarMeasurementBuilder`、`tools` は Phase 2 で実装する。

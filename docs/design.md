@@ -1,6 +1,6 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
-- 関連文書: [要件定義](./requirements.md)
+- 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md)
 - 状態: ドラフト（v0.3）
 
 | 版 | 変更内容 |
@@ -55,7 +55,7 @@ flowchart LR
 
   subgraph Core["コア層（gll_core, ROS 非依存）"]
     ATT[姿勢推定器<br/>roll / pitch]
-    EKF[Invariant EKF<br/>SE(2) + b_g, s]
+    EKF["Invariant EKF<br/>SE(2) + b_g, s"]
     HIST[状態履歴バッファ<br/>遅延観測の再適用]
     GM[GNSS 観測モデル<br/>RTK-FIX 判定・レバーアーム]
     LM[LiDAR 観測モデル<br/>地図座標 → UTM]
@@ -614,6 +614,8 @@ sequenceDiagram
 ## 7. ソフトウェアアーキテクチャ
 
 ### 7.1 レイヤ構成
+
+実装の粒度のコンポーネント図・クラス図・シーケンス図は [ソフトウェア構成](./architecture.md) を参照。
 
 ```mermaid
 flowchart TB
