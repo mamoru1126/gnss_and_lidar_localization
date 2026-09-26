@@ -549,17 +549,21 @@ smoother.onCorrection(world_delta):
     offset -= world_delta                               // 出力は動かさず、差をオフセットとして持つ
 
 // 出力周期（50 Hz）ごとに
-smoother.apply(raw_pose, dt):
+smoother.apply(raw_pose, raw_cov, dt):                  // raw_cov = Σ_w（フィルタの推定値の共分散、世界座標系）
     step_xy  = min(|offset_xy|,  max_rate_xy  · dt)      // 0.1 m/s
     step_yaw = min(|offset_yaw|, max_rate_yaw · dt)      // 2 deg/s
     offset_xy  -= step_xy  · offset_xy / |offset_xy|
     offset_yaw -= step_yaw · sign(offset_yaw)
-    return raw_pose + offset                             // 出力 = 生の推定 + 残っているオフセット
+    pose = raw_pose + offset                             // 出力 = 生の推定 + 残っているオフセット
+    cov  = raw_cov + offset · offsetᵀ                    // 残っているオフセットの分だけ不確かさを広げる
+    return (pose, cov)
 
 status = StatusMonitor.evaluate(...)                     // 設計書 3.12 節と 3.13.5 節
 ```
 
 出力の変化は「デッドレコニングによる滑らかな移動」と「レート制限された補正」だけになる。そのため、観測更新や再アンカーでフィルタの推定値が不連続に動いても、出力は飛ばない（FR-4）。
+
+出力の共分散 $`\Sigma_{\mathrm{out}} = \Sigma_w + \mathbf{o}\mathbf{o}^\top`$ は、出力が最良推定からずれている分（オフセット）を含む。オフセットが残っている間は、下流から見た不確かさがその方向に大きくなり、吸収されるとフィルタの共分散に戻る（設計書 3.10 節）。
 
 ---
 

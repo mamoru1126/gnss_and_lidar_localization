@@ -204,6 +204,7 @@ classDiagram
     +Pose2D pose
     +Pose2D raw_pose
     +Matrix3d cov
+    +Matrix3d raw_cov
     +double v
     +double yaw_rate
     +LocalizationStatus status
@@ -524,7 +525,7 @@ classDiagram
     -double max_rate_xy_
     -double max_rate_yaw_
     +onCorrection(Vector3d world_delta)
-    +apply(Pose2D raw, double dt) Pose2D
+    +apply(Pose2D raw, Matrix3d raw_cov, double dt) SmoothedOutput
     +offsetNorm() OffsetNorm
   }
   class StatusMonitor {
@@ -544,6 +545,7 @@ classDiagram
 
 - `MismatchStatsMap` は `std::map<std::string, MismatchStats>`、`OffsetNorm` は（並進 [m], yaw [rad]）の組の別名。
 - `GnssPositionMeasurement` の `lever_arm_h` は、観測時刻の roll / pitch で水平面に射影したレバーアーム $`\tilde{\mathbf{l}}`$、`lever_cov_body` は roll / pitch の誤差による追加の共分散（設計書 3.6 節）。
+- `OutputSmoother::apply` は、出力姿勢と、オフセットの分を加えた共分散 $`\Sigma_w + \mathbf{o}\mathbf{o}^\top`$ の組（`SmoothedOutput`）を返す（設計書 3.10 節）。
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
 - `linearize` は `std::visit` で観測の型ごとに分岐する。Invariant EKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
 - `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
