@@ -28,6 +28,9 @@ GnssPositionResult GnssMeasurementBuilder::buildPosition(const GnssSample& s,
                                                         const AttitudeEstimator& att) {
   GnssPositionResult res;
   res.fix = classify(s);
+  // メッセージが途切れていた（受信できなかった）場合も、FIX が一度切れたものとして安定待ちをやり直す
+  if (last_sample_t_ >= 0.0 && s.t - last_sample_t_ > cfg_.settle_reset_gap) fix_since_ = -1.0;
+  last_sample_t_ = s.t;
   if (res.fix != GnssFixType::RTK_FIX) {
     fix_since_ = -1.0;
     res.reason = GnssRejectReason::NOT_RTK_FIX;

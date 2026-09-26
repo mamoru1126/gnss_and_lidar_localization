@@ -10,6 +10,8 @@ namespace gll {
 void StatusMonitor::onAccepted(MeasurementKind kind, double t) {
   if (kind == MeasurementKind::GNSS_POSITION) last_gnss_ = std::max(last_gnss_, t);
   if (kind == MeasurementKind::POSE) last_lidar_ = std::max(last_lidar_, t);
+  // 位置を直す観測だけがデッドレコニングを終わらせる（進行方位や ZARU は数えない）
+  if (kind == MeasurementKind::GNSS_POSITION || kind == MeasurementKind::POSE) dr_distance_ = 0.0;
 }
 
 LocalizationStatus StatusMonitor::evaluate(double t, bool ready, const Mat3& cov_world,

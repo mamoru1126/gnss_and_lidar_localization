@@ -16,6 +16,7 @@
 
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace gll_ros2 {
@@ -71,6 +72,9 @@ class LocalizerNode : public rclcpp::Node {
 
   std::ofstream csv_;
   gll::LocalizationStatus last_status_ = gll::LocalizationStatus::INITIALIZING;
+  std::optional<gll::LocalizationOutput> last_out_;
+  double dr_error_distance_ = 30.0;
+  bool dr_error_active_ = false;
 };
 
 }  // namespace gll_ros2

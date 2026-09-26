@@ -51,6 +51,7 @@ class GnssMeasurementBuilder {
   GnssConfig cfg_;
   UtmProjector utm_;
   double fix_since_ = -1.0;
+  double last_sample_t_ = -1.0;
   double last_convergence_ = 0.0;
 };
 

@@ -23,6 +23,7 @@ struct GnssConfig {
   double max_stddev = 0.05;           ///< 採用する水平 σ の上限 [m]
   double min_stddev = 0.02;           ///< 観測共分散の下限 [m]
   double fix_settle_time = 1.0;       ///< FIX 後の安定待ち [s]
+  double settle_reset_gap = 3.0;      ///< GNSS のメッセージがこれ以上途切れたら安定待ちをやり直す [s]
   bool accept_unknown_covariance = false;
   double default_stddev = 0.03;       ///< 共分散が UNKNOWN のときに使う σ [m]
   Vec3 lever_arm = Vec3::Zero();      ///< base_link から見たアンテナ位置 [m]（FLU）
@@ -72,6 +73,9 @@ struct MonitorConfig {
   double aid_timeout = 1.0;    ///< [s]
   double dr_max_stddev = 0.3;  ///< [m]
   double lost_stddev = 1.0;    ///< [m]
+  /// 位置の観測（GNSS / LiDAR / 再アンカー / 初期姿勢）なしで走ったこの距離を超えたら、
+  /// 診断でエラーを通知する [m]（設計書 3.12 節）
+  double dr_error_distance = 30.0;
 };
 
 struct ArbiterConfig {

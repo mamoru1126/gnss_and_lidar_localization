@@ -16,7 +16,8 @@ find_package(gll_core REQUIRED)
 
 set(DEPS rclcpp sensor_msgs nav_msgs geometry_msgs diagnostic_msgs tf2_ros)
 
-add_library(gll_ros2_conversions src/conversions.cpp)
+# ROS メッセージ ⇔ コアの型の変換と、診断メッセージの生成（ROS に依存する IF 層の部品）
+add_library(gll_ros2_conversions src/conversions.cpp src/diagnostics.cpp)
 target_include_directories(gll_ros2_conversions PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -37,6 +38,8 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_conversions test/test_conversions.cpp)
   target_link_libraries(test_conversions gll_ros2_conversions)
+  ament_add_gtest(test_diagnostics test/test_diagnostics.cpp)
+  target_link_libraries(test_diagnostics gll_ros2_conversions)
 endif()
 
 ament_package()

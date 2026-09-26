@@ -54,6 +54,16 @@ TEST(GnssBuilder, SettleTimeAndStddev) {
   EXPECT_EQ(b.buildPosition(sample(11.4, 2, 0.01), att).reason, GnssRejectReason::SETTLING);
 }
 
+TEST(GnssBuilder, MessageGapRestartsSettling) {
+  GnssMeasurementBuilder b;
+  const AttitudeEstimator att = levelAttitude();
+  b.buildPosition(sample(10.0, 2, 0.01), att);
+  ASSERT_TRUE(b.buildPosition(sample(11.1, 2, 0.01), att).position.has_value());
+  // 5 秒間メッセージが来なかった後の最初の FIX は、安定待ちからやり直す
+  EXPECT_EQ(b.buildPosition(sample(16.1, 2, 0.01), att).reason, GnssRejectReason::SETTLING);
+  EXPECT_TRUE(b.buildPosition(sample(17.2, 2, 0.01), att).position.has_value());
+}
+
 TEST(GnssBuilder, UnknownCovariance) {
   GnssConfig c;
   GnssMeasurementBuilder strict(c);

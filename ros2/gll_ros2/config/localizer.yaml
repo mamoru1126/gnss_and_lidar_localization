@@ -29,6 +29,7 @@ gll_localizer:
       max_stddev: 0.05
       min_stddev: 0.02
       fix_settle_time: 1.0
+      settle_reset_gap: 3.0               # GNSS のメッセージがこれ以上途切れたら安定待ちをやり直す [s]
       accept_unknown_covariance: false
       default_stddev: 0.03
       lever_arm: [0.0, 0.0, 0.0]          # base_link から見たアンテナ位置 [m]（未定。l_z <= 1 m）
@@ -70,6 +71,7 @@ gll_localizer:
       aid_timeout: 1.0
       dr_max_stddev: 0.3
       lost_stddev: 1.0
+      dr_error_distance: 30.0             # 位置の観測なしでこの距離を走ったら diagnostics で ERROR（仮の値。実データで調整）
 
     recovery:
       reanchor_confirm_gnss: 3

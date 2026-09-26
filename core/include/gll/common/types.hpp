@@ -126,6 +126,8 @@ struct LocalizationOutput {
   LocalizationStatus status = LocalizationStatus::INITIALIZING;
   RecoveryState recovery = RecoveryState::TRACKING;
   std::string active_map_group;
+  double dr_distance = 0.0;           ///< 最後に位置の観測を採用してから走った距離 [m]
+  bool dr_distance_exceeded = false;  ///< dr_distance が dr_error_distance を超えた（診断でエラー）
 };
 
 }  // namespace gll

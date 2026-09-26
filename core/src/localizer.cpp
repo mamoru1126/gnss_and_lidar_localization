@@ -32,6 +32,7 @@ void Localizer::initializeFilter(const FilterState& st) {
   if (last_imu_t_ > s.t) s = est_->predict(s, last_input_, last_imu_t_ - s.t);
   history_.reset(s);
   smoother_.reset();
+  monitor_.resetTravel();
   filter_initialized_ = true;
   was_ready_ = false;
   logger_->info("filter initialized by " + est_->name());
@@ -46,6 +47,7 @@ void Localizer::predictWith(const MotionInput& u) {
   FilterState st = est_->predict(latest, u, dt);
   st.t = u.t;
   history_.push(st, u);
+  monitor_.addTravel(std::hypot(latest.s * u.v, u.v_lat) * dt);  // デッドレコニング距離（設計書 3.12 節）
 
   if (const auto z = stop_.update(u)) {
     const UpdateResult r = history_.applyDelayed(*z, *est_, gate_, GatePolicy::REJECT_ON_FAIL);
@@ -200,6 +202,8 @@ std::optional<LocalizationOutput> Localizer::getOutput() {
   out.odom_scale = st.s;
   out.recovery = recovery_.state();
   out.status = monitor_.evaluate(st.t, ready, so.cov, smoother_.offsetExceeded(), recovery_.state());
+  out.dr_distance = monitor_.drDistance();
+  out.dr_distance_exceeded = ready && monitor_.drDistanceExceeded();
   return out;
 }
 

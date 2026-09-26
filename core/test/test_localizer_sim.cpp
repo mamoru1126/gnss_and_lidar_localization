@@ -288,3 +288,58 @@ TEST(LocalizerSim, RobustAcrossSeeds) {
     }
   }
 }
+
+TEST(LocalizerSim, LongDeadReckoningRaisesError) {
+  // GNSS が 30 秒（約 45 m）途切れると、デッドレコニング距離が閾値（既定 30 m）を超えてエラーになる。
+  // GNSS が戻ると距離は 0 に戻り、エラーも消える（設計書 3.12 節）。
+  const LocalizerConfig lc = baseConfig();
+  Localizer loc(lc);
+  SimConfig sc;
+  sc.gnss_outage_start = 20.0;
+  sc.gnss_outage_end = 50.0;
+  const SimResult r = Simulator(sc, lc).run(loc);
+  ASSERT_GT(r.ready_time, 0.0);
+
+  double max_dr = 0.0, first_error_t = -1.0, first_error_dr = 0.0;
+  bool error_before_outage = false, error_after_recovery = false;
+  // デッドレコニング距離ごとの位置誤差（閾値の目安を知るため）
+  std::vector<std::pair<double, double>> err_at;  // (dr_distance, pos error)
+  double next_mark = 10.0;
+  for (const auto& rec : r.records) {
+    const auto& o = rec.out;
+    if (o.status == LocalizationStatus::INITIALIZING) continue;
+    max_dr = std::max(max_dr, o.dr_distance);
+    if (o.dr_distance_exceeded && first_error_t < 0.0) {
+      first_error_t = rec.t;
+      first_error_dr = o.dr_distance;
+    }
+    if (rec.t < 20.0 && o.dr_distance_exceeded) error_before_outage = true;
+    if (rec.t > 53.0 && o.dr_distance_exceeded) error_after_recovery = true;
+    if (rec.t >= 20.0 && rec.t < 50.0 && o.dr_distance >= next_mark) {
+      err_at.emplace_back(o.dr_distance, std::hypot(o.raw_pose.x - rec.truth.x, o.raw_pose.y - rec.truth.y));
+      next_mark += 10.0;
+    }
+  }
+  for (const auto& [d, e] : err_at) std::printf("[dead-reckoning] %.1f m -> position error %.3f m\n", d, e);
+  std::printf("[dead-reckoning] error raised at t=%.2fs (%.1f m), max %.1f m\n", first_error_t, first_error_dr, max_dr);
+
+  EXPECT_FALSE(error_before_outage);
+  EXPECT_GT(first_error_t, 20.0);
+  EXPECT_NEAR(first_error_dr, lc.monitor.dr_error_distance, 0.1);
+  EXPECT_GT(max_dr, 40.0);  // 30 s × 1.5 m/s
+  EXPECT_FALSE(error_after_recovery);
+}
+
+TEST(LocalizerSim, StandingStillDoesNotAccumulateDeadReckoning) {
+  // 停止中は距離が増えない（GNSS なしで止まっていてもエラーにしない）
+  const LocalizerConfig lc = baseConfig();
+  Localizer loc(lc);
+  SimConfig sc;
+  sc.duration = 60.0;
+  sc.gnss_outage_start = 52.0;  // 最後の停止区間（50 s 以降）で GNSS が途切れる
+  sc.gnss_outage_end = 1e9;
+  const SimResult r = Simulator(sc, lc).run(loc);
+  double dr_end = -1.0;
+  for (const auto& rec : r.records) dr_end = rec.out.dr_distance;
+  EXPECT_LT(dr_end, 1.0);
+}
