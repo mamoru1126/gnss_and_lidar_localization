@@ -418,6 +418,7 @@ mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "default" });
     </svg>
     <figcaption>塗りつぶしは主として使う観測、斜線は補助（LiDAR は重み 1/4、GNSS は安定待ち）。地図1 と地図2 が直接つながる場合は統合済みの 1 枚の地図なので、タイルが入れ替わるだけで観測の扱いは変わらない。</figcaption>
   </figure>
+  <div class="callout w">運用では、地図と GNSS 区間の間に必要十分な距離をとる前提です。それでも FIX が得られないなどで、GNSS も LiDAR も使えないまま <b>30 m</b>（仮の値）を超えて走った場合は、前提が崩れたとみなして diagnostics で ERROR を出します。止まっている間は距離が増えないので、停車しただけでは出ません。</div>
   <h3>GNSS が FIX しているときの LiDAR の扱い</h3>
   <pre class="mermaid">
 flowchart TD

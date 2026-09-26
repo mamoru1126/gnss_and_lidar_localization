@@ -1,0 +1,14 @@
+# colcon / CMake
+build/
+install/
+log/
+docker/data/
+data/
+
+# Python
+__pycache__/
+*.pyc
+
+# エディタ
+.vscode/
+*.swp

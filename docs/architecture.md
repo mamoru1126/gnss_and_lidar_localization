@@ -1,7 +1,7 @@
 # ソフトウェア構成: コンポーネント図・クラス図
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.8）
-- 状態: ドラフト（v0.4。設計書 v0.8 の ROS 2 Jazzy・Docker・`map` → `base_link`・ODOM の確定を反映）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.9）
+- 状態: ドラフト（v0.5。設計書 v0.9 のデッドレコニング距離の監視、地図グループの扱いの見直し（`TileId`、アクティブグループ、ターゲットのグループのアンカーでの変換）、Phase 1 の実装に合わせた IF 層の構成を反映）
 
 本書は、設計書 7 章のアーキテクチャを、実装に入れる粒度のコンポーネント図・クラス図に落としたものである。クラス名・メソッド名は実装時の名前の案で、引数や戻り値の細部は実装時に調整する。
 
@@ -210,6 +210,8 @@ classDiagram
     +double yaw_rate
     +LocalizationStatus status
     +string active_map_group
+    +double dr_distance
+    +bool dr_distance_exceeded
   }
   class SE2 {
     +Matrix2d R
@@ -257,6 +259,8 @@ classDiagram
 ```
 
 `PointTimes` は `std::vector<float>` の別名（点ごとの時刻。LiDAR ドライバが出さない場合は空）。
+
+`LocalizationOutput` の `dr_distance` は、最後に位置の観測（GNSS 位置・LiDAR 姿勢・再アンカー）を採用してから走った距離、`dr_distance_exceeded` はそれが `dr_error_distance` を超えたか（初期化の完了後だけ true になる）。IF 層はこれを見て diagnostics を ERROR にする（設計書 3.12 節）。
 
 ### 3.2 facade（Localizer）
 
@@ -454,7 +458,7 @@ classDiagram
   class GatePolicy {
     <<enumeration>>
     REJECT_ON_FAIL
-    NEVER_REJECT
+    DEFER_TO_RECOVERY
     SKIP
   }
   class SourceArbiter {
@@ -530,9 +534,15 @@ classDiagram
     +offsetNorm() OffsetNorm
   }
   class StatusMonitor {
+    -MonitorConfig cfg_
+    -double dr_distance_
     +onAccepted(MeasurementKind, double t)
     +onRejected(MeasurementKind, double t)
     +evaluate(double t, Matrix3d cov, OutputSmoother) LocalizationStatus
+    +addTravel(double distance)
+    +resetTravel()
+    +drDistance() double
+    +drDistanceExceeded() bool
   }
   class Initializer {
     -InitPhase phase_
@@ -549,9 +559,10 @@ classDiagram
 - `OutputSmoother::apply` は、出力姿勢と、オフセットの分を加えた共分散 $`\Sigma_w + \mathbf{o}\mathbf{o}^\top`$ の組（`SmoothedOutput`）を返す（設計書 3.10 節）。
 - `IStateEstimator` のメソッドはすべて `const` で、状態を持たない。`FilterState` は値型で、`StateHistory` がリングバッファ（既定 2 s）に保持する。
 - `linearize` は `std::visit` で観測の型ごとに分岐する。Invariant EKF 版は設計書 3.5〜3.7 節の式（機体座標系の残差、定数の H）を実装する。
-- `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `NEVER_REJECT`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
-- `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、`StateHistory::relativeMotion` で最新時刻にそろえて互いに一致するかを判定し、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
+- `GatePolicy` は `SourceArbiter` が観測ごとに決める。RTK-FIX の GNSS は `DEFER_TO_RECOVERY`（ゲートで落ちたら再アンカーの候補にするだけ）。GNSS FIX 中の LiDAR は、`classifyLidar` による固定閾値の判定を先に行う。
+- `RecoveryManager` は設計書 3.13.5 節の状態遷移を持つ。棄却された観測を候補として溜め、各候補の「観測 − その時刻の推定値」が互いに一致するかを判定し（推定値がずれているなら、このずれはほぼ一定になる）、再アンカーや再位置推定を指示する（`RecoveryAction`）。実際の更新は `Localizer` が `StateHistory::applyReanchor` で行う。
 - `correct` は注入（$`\hat X \leftarrow \hat X\,\mathrm{Exp}(\delta\xi)`$）と Joseph 形式の共分散更新を行い、出力整形用に世界座標系での移動量 `world_delta` を返す。
+- `StatusMonitor` のデッドレコニング距離（設計書 3.12 節）: `Localizer` が予測のたびに `addTravel` で走行距離（$`\sqrt{(\hat s v)^2 + v_{\mathrm{lat}}^2}\,\Delta t`$）を足す。`onAccepted` が位置の観測（`GNSS_POSITION`、`POSE`）で 0 に戻し、フィルタの初期化と外部の初期姿勢では `resetTravel` で 0 に戻す。進行方位の観測と ZARU では戻さない。
 
 ### 3.4 measurement（センサデータ → 入力・観測）
 
@@ -582,6 +593,7 @@ classDiagram
     -double attitude_stddev_
     -int rtk_fix_status_
     -double fix_since_
+    -double last_sample_t_
     +classify(GnssSample) GnssFixType
     +buildPosition(GnssSample, AttitudeEstimator) GnssPositionResult
     +buildHeading(GnssVelocitySample, double yaw_rate, bool rtk_fix_active) optional~HeadingMeasurement~
@@ -607,6 +619,8 @@ classDiagram
   GnssMeasurementBuilder ..> AttitudeEstimator : 観測時刻の roll / pitch
   MotionInputBuilder ..> AttitudeEstimator
 ```
+
+- `GnssMeasurementBuilder` は、RTK-FIX に入った時刻 `fix_since_` から安定待ちを数える。FIX でないメッセージが来たときに加えて、メッセージの間隔が `settle_reset_gap`（既定 3 s）を超えたとき（`last_sample_t_` との差で判定）も、安定待ちをやり直す（設計書 3.6 節、v0.9）。
 
 ### 3.5 matching（スキャンマッチング）
 
@@ -680,6 +694,7 @@ classDiagram
 - `PosePredictor` は `std::function<Pose3D(double)>`、`ResultCallback` は `std::function<void(PoseMeasurement)>` の別名（図の表記を単純にするための型エイリアス）。
 - `ScanMatchingWorker` は最新のスキャンだけを保持する（`LatestSlot`。処理中に届いた古いスキャンは捨てる）。
 - 初期値は `predict_pose_`（`Localizer` が `StateHistory` からスキャン時刻の予測姿勢を返すコールバック）で取得する。結果は `on_result_` で `Localizer` に戻し、遅延観測として適用する。
+- 初期値の UTM → 地図の変換と、結果の地図 → UTM の変換には、**照合に使うターゲットの `map_group` のアンカー**（`MapTileManager::group(target.map_group).anchor`）を使う。`activeGroup()` は照合の途中で切り替わりうるので使わない（設計書 5.5 節、v0.9）。
 - `GicpMatcher` の中に small_gicp の型を閉じ込める。ほかのクラスは `RegistrationTarget` / `PreprocessedScan` を通してだけ扱う。
 - `PreprocessedScan` は現状 small_gicp の点群を持っているので、完全には抽象化できていない。ほかのマッチャに差し替えるときに抽象化する。
 
@@ -712,6 +727,11 @@ classDiagram
     +static load(path) TileIndex
     +query(AABB2d map_bbox) vector~TileMeta~
   }
+  class TileId {
+    +string group
+    +int ix
+    +int iy
+  }
   class TileMeta {
     +TileId id
     +string file
@@ -739,17 +759,20 @@ classDiagram
     -TileCache cache_
     -atomic_shared_ptr~RegistrationTarget~ front_
     -thread thread_
+    -string active_group_
     +start()
     +stop()
     +updatePose(Pose2D, double v)
     +currentTarget() shared_ptr~const RegistrationTarget~
     +activeGroup() const MapGroup*
     +group(string id) const MapGroup&
+    +overlappingGroups() vector~GroupPair~
   }
 
   MapGroup *-- MapAnchor
   MapGroup *-- TileIndex
   TileIndex *-- TileMeta
+  TileMeta *-- TileId
   ITileLoader <|.. BinaryTileLoader
   ITileLoader ..> TileData
   MapTileManager *-- MapGroup
@@ -759,7 +782,9 @@ classDiagram
 
 補足:
 
-- `TileCache` は `std::map<TileId, TileData>` の別名。
+- `TileCache` は `std::map<TileId, TileData>` の別名。`TileId` は（グループ ID, ix, iy）の組で、タイルの番号がグループの中でしか一意でないため、グループ ID を含める（設計書 5.2 節、v0.9）。
+- `GroupPair` は `std::pair<std::string, std::string>` の別名。`overlappingGroups` は、起動時にグループどうしのタイルの範囲（UTM）の重なりを調べる。重なりがあれば `Localizer` が WARN を出す（運用上の前提では重ならない。設計書 5.1 節）。
+- アクティブグループ（`active_group_`）は、`updatePose` が**現在位置**（先読みを含まない）から決める。各グループのタイルまでの距離が `load_radius` 以内のグループのうち最も近いものとし、今のグループより `group_switch_margin`（既定 10 m）以上近いグループが現れたときだけ切り替える（設計書 5.5 節）。先読みはタイルのロードにだけ使う。
 - `updatePose` は呼び出し側のスレッドで要求中心と必要なタイル集合を計算し、変化があればワーカーに通知するだけにする（すぐに戻る）。
 - ワーカーはタイルを読み込み、`IScanMatcher::buildTarget` で新しいターゲットを作る。完成したら `front_` をアトミックに差し替える（ダブルバッファ）。
 - 位置合わせ中のスレッドは `shared_ptr` でターゲットを保持しているので、差し替えの影響を受けない。
@@ -825,6 +850,11 @@ classDiagram
     +publish(LocalizationOutput)
     +publishDiagnostics(Diagnostics)
   }
+  class DiagnosticsBuilder {
+    <<utility>>
+    +makeLocalizationStatus(LocalizationOutput, Diagnostics, double dr_error_distance) DiagnosticStatus
+    +makeCounterStatus(Diagnostics) DiagnosticStatus
+  }
   class ILogger {
     <<interface>>
   }
@@ -836,11 +866,23 @@ classDiagram
   LocalizerNode ..> ParameterLoader
   LocalizerNode ..> ExtrinsicsLoader
   LocalizerNode ..> MsgConverters
+  OutputPublisher ..> DiagnosticsBuilder
   ILogger <|.. RosLogger
   LocalizerNode ..> RosLogger : 生成して Localizer に注入
 ```
 
 ROS 1 版（`gll_ros1`）は、この図の `rclcpp` を `roscpp` に置き換えた同じ構成になる。`Localizer` から下は共通である。
+
+`DiagnosticsBuilder` は、`LocalizationOutput` から `DiagnosticStatus` を作る（設計書 3.12 節）。状態からレベルを決め（`DEGRADED` と `INITIALIZING` は WARN、`LOST` は ERROR）、`dr_distance_exceeded` のときは状態にかかわらず ERROR にして、メッセージに `dead reckoning for <距離> m without GNSS / LiDAR position (limit <上限> m)` を付ける。ROS に依存するのはメッセージ型だけなので、単体テスト（`test_diagnostics`）で ERROR になる条件を確かめている。
+
+**Phase 1 の実装での対応**（図はクラスの役割を示した案で、Phase 1 では次のようにまとめた）:
+
+| 図のクラス | Phase 1 の実装 |
+|---|---|
+| `LocalizerNode`、`ParameterLoader`、`OutputPublisher`、`RosLogger` | `localizer_node.hpp` / `localizer_node.cpp` の `LocalizerNode`（パラメータの読み込みと publish をノードの中で行う）と `RosLogger` |
+| `NavSatFixConverter`、`MsgConverters` | `conversions.hpp` / `conversions.cpp` の関数（`toCore`、`toCovariance6` など） |
+| `DiagnosticsBuilder` | `diagnostics.hpp` / `diagnostics.cpp` の関数（`makeLocalizationStatus`、`makeCounterStatus`） |
+| `ExtrinsicsLoader` | 未実装（IMU の取り付け回転とアンテナのレバーアームはパラメータで与える） |
 
 ---
 
@@ -872,7 +914,7 @@ sequenceDiagram
   N->>L: addGnss(GnssSample)
   L->>G: classify(sample) / buildPosition(sample)
   G-->>L: position（RTK-FIX かつ精度・安定待ちを満たすものだけ）
-  L->>AR: onGnssAccepted(t) / gatePolicy(m) → NEVER_REJECT
+  L->>AR: onGnssAccepted(t) / gatePolicy(m) → DEFER_TO_RECOVERY
   L->>H: applyDelayed(measurement, estimator, gate, policy)
   H->>E: stateAt(t_z) → linearize → gate → correct
   H->>E: 再伝播（t_z 以降の入力）
@@ -903,13 +945,14 @@ sequenceDiagram
   N->>L: addLidarScan(scan)
   L->>W: submit(scan)（最新のみ保持してすぐ戻る）
   W->>P: process(scan, deskew)
-  W->>MT: currentTarget()
+  W->>MT: currentTarget()（target はグループ ID を持つ）
   W->>L: predict_pose(scan.t)（スキャン時刻の予測姿勢）
   L->>H: stateAt(scan.t)
-  W->>MT: activeGroup().anchor.utmToMap(pose)
+  W->>MT: group(target.map_group).anchor.utmToMap(pose)
+  Note over W,MT: activeGroup() ではなく、ターゲットのグループのアンカーを使う
   W->>G: align(scan, target, init)
   G-->>W: RegistrationResult
-  W->>LB: build(result, anchor, t)
+  W->>LB: build(result, 同じ anchor, t)
   LB-->>W: PoseMeasurement
   W->>L: on_result(PoseMeasurement)
   Note over L: mutex 取得
@@ -936,12 +979,13 @@ sequenceDiagram
   participant G as GicpMatcher
 
   L->>MT: updatePose(pose, v)（出力周期で呼ぶ）
-  MT->>MT: 要求中心 = 位置 + 先読み<br/>必要なタイル集合を計算
-  alt タイル集合が変化した
+  MT->>MT: 要求中心 = 位置 + 先読み<br/>必要なタイル集合を計算（全グループ）
+  MT->>MT: アクティブグループを現在位置で判定<br/>（先読みは使わない。ヒステリシス付き）
+  alt タイル集合かアクティブグループが変化した
     MT->>T: 通知（すぐ戻る）
     T->>TL: load(不足しているタイル)
     TL-->>T: TileData
-    T->>G: buildTarget(ロード済みタイル, group)
+    T->>G: buildTarget(アクティブグループのロード済みタイル, group)
     G-->>T: 新しいターゲット（KdTree 構築済み）
     T->>MT: front_ をアトミックに差し替え
     T->>T: アンロード対象をキャッシュから破棄
@@ -960,7 +1004,7 @@ sequenceDiagram
 | `core/include/gll/matching/` | `scan_matcher.hpp`（`IScanMatcher`、`RegistrationTarget`、`RegistrationResult`）、`gicp_matcher.hpp`、`scan_preprocessor.hpp`、`scan_matching_worker.hpp` |
 | `core/include/gll/map/` | `map_anchor.hpp`、`map_group.hpp`（`MapGroup`、`TileIndex`、`TileMeta`）、`tile_loader.hpp`（`ITileLoader`、`BinaryTileLoader`、`TileData`）、`map_tile_manager.hpp` |
 | `core/include/gll/` | `localizer.hpp`（`Localizer`） |
-| `ros2/gll_ros2/` | `localizer_node.cpp`、`parameter_loader.cpp`、`extrinsics_loader.cpp`、`ros_logger.hpp`、`navsatfix_converter.cpp`、`msg_converters.cpp`、`output_publisher.cpp` |
+| `ros2/gll_ros2/` | `localizer_node.cpp`（`LocalizerNode`、`RosLogger`）、`conversions.cpp`（メッセージ ⇔ コアの型）、`diagnostics.cpp`（`DiagnosticStatus` の生成）、`main.cpp`、`config/localizer.yaml`、`launch/localizer.launch.py`。Phase 1 でのまとめ方は 3.7 節の表を参照 |
 | `tools/map_tiler/` | `gll_map_tiler`（統合済み地図 → タイル + 点ごとの共分散） |
 | `tools/anchor_calibrator/` | `gll_anchor_calibrator` |
 | `tools/i2nav/` | i2Nav-Robot の変換・事前確認・アンカー決定・真値の位置合わせ・障害注入・評価のスクリプト（[検証計画](./validation_i2nav.md)） |
@@ -973,9 +1017,9 @@ sequenceDiagram
 設計書 10 章の Phase 1 に対応して、次のクラスを実装する。
 
 - **common**: 全クラス
-- **estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`、`Initializer`（GNSS 区間の初期化のみ）、`SourceArbiter`（GNSS 部分）、`RecoveryManager`（GNSS の再アンカーと `LOST` の判定）
+- **estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`（デッドレコニング距離の監視を含む）、`Initializer`（GNSS 区間の初期化のみ）、`SourceArbiter`（GNSS 部分）、`RecoveryManager`（GNSS の再アンカーと `LOST` の判定）
 - **measurement**: `AttitudeEstimator`、`MotionInputBuilder`、`GnssMeasurementBuilder`、`StopDetector`
 - **facade**: `Localizer`（LiDAR / 地図関連のメンバは空の実装にしておく）
-- **gll_ros2**: LiDAR 以外の全クラス
+- **gll_ros2**: LiDAR 以外の全クラス（まとめ方は 3.7 節の表）。diagnostics はデッドレコニング距離の超過で ERROR になる
 
 `matching` と `map`、`LidarMeasurementBuilder`、`tools`、`SourceArbiter` / `RecoveryManager` の LiDAR 部分（食い違い判定、LiDAR の再アンカー、再位置推定）は Phase 2 で実装する。
