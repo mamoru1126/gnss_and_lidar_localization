@@ -140,6 +140,7 @@ gll_localizer:
       init_max_yaw_deg: 180.0
       init_map_distance: 10.0             # 初期姿勢がタイルからこの距離以内なら地図上で初期化する [m]
       init_max_attempts: 5
+      init_timeout: 15.0                  # これだけ待っても決まらなければ、失敗が続いたときと同じに扱う [s]
       position_step: 1.0
       yaw_step_deg: 20.0
       coarse_voxel_size: 2.0

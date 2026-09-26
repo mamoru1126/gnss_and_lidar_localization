@@ -158,6 +158,8 @@ struct RelocalizeConfig {
   double uniqueness_ratio = 1.5;     ///< 最良の解の overlap が、次点のこの倍以上なら一意とみなす
   double min_overlap = 0.6;          ///< 採用する解の overlap の下限
   int init_max_attempts = 5;         ///< 地図上での初期化を試す回数（外部から与えた初期姿勢は、その後そのまま使う）
+  double init_timeout = 15.0;        ///< 地図上での初期化がこの時間 [s] 決まらなければ、失敗が続いたときと同じに扱う
+                                     ///< （LiDAR のデータが来ない、地図のターゲットができないなど）
   double init_map_distance = 10.0;   ///< 初期姿勢がタイルからこの距離以内なら、地図上で初期化する [m]
   int after_rejects = 20;            ///< 再位置推定を始める LiDAR の連続棄却数
   double min_radius = 1.0;           ///< 再位置推定の探索半径の下限 [m]

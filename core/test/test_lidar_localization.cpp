@@ -2,6 +2,7 @@
 //  - 地図だけの環境で、ずれた初期姿勢から地図上で初期化して走る
 //  - 地図1 ↔ GNSS ↔ 地図2 を走る（アンカーの誤差を含む）
 //  - LiDAR が止まってずれた後、再位置推定で戻る
+//  - 地図の近くで初期姿勢を与えたが LiDAR が来ない（地図上の初期化をあきらめる）
 #include "gll/common/pose_store.hpp"
 #include "gll/measurement/lidar_measurement_builder.hpp"
 
@@ -314,4 +315,54 @@ TEST(LidarLocalization, RelocalizesAfterLidarBlackout) {
   EXPECT_LT(after.max_step, 0.005);          // 出力はレート制限でゆっくり戻る（飛ばない）
   EXPECT_GE(run.diag.relocalize_success + run.diag.lidar_reanchor_count, 1u);
   std::filesystem::remove_all(dir);
+}
+
+TEST(LidarLocalization, MapInitTimesOutWithoutLidar) {
+  // 地図の近くで初期姿勢を与えたが、LiDAR のデータが来ない（設計書 3.11 節の init_timeout）。
+  //  - 保存した位置（SAVED）: 地図上の初期化をあきらめ、GNSS で初期化する（GNSS の初期化を止めたままにしない）
+  //  - 外部から与えた初期姿勢（EXTERNAL）: 与えた姿勢でそのまま初期化する
+  for (const auto source : {Localizer::InitialPoseSource::SAVED, Localizer::InitialPoseSource::EXTERNAL}) {
+    const bool saved = source == Localizer::InitialPoseSource::SAVED;
+    SCOPED_TRACE(saved ? "SAVED" : "EXTERNAL");
+    LocalizerConfig lc = lidarTestConfig();
+    lc.relocalize.init_timeout = 5.0;
+    const std::string dir = makeTempDir(saved ? "timeout_saved" : "timeout_external");
+    LidarSimulator sim(campusWorld(), {SimGroup{"campus"}}, lc, dir);
+    Localizer loc(lc, nullptr, std::make_shared<StderrLogger>());
+    loc.setMap(sim.makeMapManager(), std::make_shared<GicpMatcher>(lc.lidar, lc.relocalize));
+    SensorPlan sp;
+    sp.duration = 30.0;
+    sp.init_time = 0.5;
+    sp.init_source = source;
+    sp.init_error = Pose2D{0.03, -0.02, deg2rad(0.5)};
+    sp.init_cov = Vec3(0.05 * 0.05, 0.05 * 0.05, deg2rad(1.0) * deg2rad(1.0)).asDiagonal();
+    sp.lidar_on = [](double) { return false; };
+    sp.gnss_fix = [saved](double, const Vec2&) { return saved; };  // SAVED のときだけ GNSS がある
+    MotionProfile mp = circleRoute();
+    mp.accel = [](double t, double) { return (t >= 12.0 && t < 13.0) ? 1.0 : 0.0; };  // 12 s までは止まっている
+    const SimRun run = sim.run(loc, mp, sp);
+
+    EXPECT_EQ(run.diag.lidar_count, 0u);
+    EXPECT_EQ(run.diag.map_init_attempts, 0u);
+    ASSERT_FALSE(run.records.empty());
+    const double first_output = run.records.front().t;
+    std::printf("[init timeout, %s] first output %.2f s, ready %.2f s\n", saved ? "SAVED" : "EXTERNAL", first_output,
+                run.ready_time);
+    // 姿勢推定器の静止初期化（3 s）の後、init_timeout（5 s）までは地図上での初期化を待つ
+    EXPECT_GT(first_output, 7.9);
+    if (saved) {
+      // GNSS で初期化する（走り出して 1 m 進んでから）
+      EXPECT_GT(first_output, 12.0);
+      ASSERT_GT(run.ready_time, 0.0);
+      const Errors e = evaluate(run, run.ready_time, 1e9);
+      print("init timeout, SAVED -> GNSS", e);
+      EXPECT_LT(e.pos_rms, 0.1);
+    } else {
+      // 与えた姿勢でそのまま初期化する
+      EXPECT_LT(first_output, 8.5);
+      const SimRecord& r0 = run.records.front();
+      EXPECT_LT(std::hypot(r0.out.raw_pose.x - r0.truth.x, r0.out.raw_pose.y - r0.truth.y), 0.1);
+    }
+    std::filesystem::remove_all(dir);
+  }
 }

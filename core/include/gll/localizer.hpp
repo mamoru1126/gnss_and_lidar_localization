@@ -107,6 +107,7 @@ class Localizer {
   /// 初期姿勢（map = UTM）。地図の近くなら、その周りで位置合わせして初期化する（設計書 3.11 節）。
   /// 地図が無ければ、与えた姿勢でそのまま初期化する。SAVED（前回保存した位置）の場合、位置合わせに
   /// 失敗したら初期化しない（EXTERNAL は、何度か失敗したら与えた姿勢で初期化する）。
+  /// SAVED は起動時のためのものなので、フィルタがすでに動いていれば無視する。
   void setInitialPose(double t, const Pose2D& pose, const Mat3& cov_world,
                       InitialPoseSource source = InitialPoseSource::EXTERNAL);
 
@@ -130,12 +131,17 @@ class Localizer {
     Mat3 cov = Mat3::Identity();
     InitialPoseSource source = InitialPoseSource::EXTERNAL;
     int attempts = 0;
+    double wait_start = -1.0;  ///< 待ち始めた時刻（データの時刻。姿勢推定器の初期化が済んでから数える）
   };
 
   void predictWith(const MotionInput& u);
   void applyCorrection(const UpdateResult& r, MeasurementKind kind, double t);
   void initializeFilter(const FilterState& st);
   void updateMaps(double t);
+  /// 地図上での初期化を待ちすぎていないか確かめる（mtx_ を持って呼ぶ）。
+  void checkPendingInit();
+  /// 地図上での初期化をあきらめる。外部から与えた初期姿勢はそのまま使い、保存した位置は捨てる（mtx_ を持って呼ぶ）。
+  void giveUpPendingInit(double t, const std::string& why);
   void processScan(const LidarScan& scan);
   void lidarWorker();
   /// LiDAR の観測を適用する（mtx_ を持って呼ぶ）。採用したら true。

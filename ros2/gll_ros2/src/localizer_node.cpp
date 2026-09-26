@@ -157,6 +157,7 @@ gll::LocalizerConfig LocalizerNode::loadConfig() {
   r.min_overlap = d("relocalize.min_overlap", r.min_overlap);
   r.init_max_attempts = i("relocalize.init_max_attempts", r.init_max_attempts);
   r.init_map_distance = d("relocalize.init_map_distance", r.init_map_distance);
+  r.init_timeout = d("relocalize.init_timeout", r.init_timeout);
   r.after_rejects = i("relocalize.after_rejects", r.after_rejects);
   r.min_radius = d("relocalize.min_radius", r.min_radius);
   r.radius_per_dr_distance = d("relocalize.radius_per_dr_distance", r.radius_per_dr_distance);

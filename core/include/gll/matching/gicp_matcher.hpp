@@ -22,7 +22,7 @@ class GicpMatcher : public IScanMatcher {
   RegistrationResult alignCoarse(const SourceCloud& source, const MatchTarget& target,
                                  const Eigen::Isometry3d& init, int num_threads = 0) const;
 
-  /// スキャンの点のうち、ターゲットの点から distance 以内にあるものの割合（鉛直でない面の点で数える。
+  /// スキャンの点のうち、ターゲットの点から distance 以内にあるものの割合（水平でない面（壁・柱など）の点で数える。
   /// そうした点が少なければ全点）。num_threads <= 0 なら設定の値を使う。
   double overlap(const SourceCloud& source, const MatchTarget& target, const Eigen::Isometry3d& T,
                  double distance, int num_threads = 0) const;

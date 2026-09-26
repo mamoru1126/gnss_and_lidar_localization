@@ -1,7 +1,7 @@
 # アルゴリズム説明書: Invariant EKF による GNSS / LiDAR / IMU / ODOM 融合
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.9） / [ソフトウェア構成](./architecture.md)
-- 状態: ドラフト（v0.2。設計書 v0.9 のデッドレコニング距離の監視と、GNSS の安定待ちのやり直しを反映）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.10） / [ソフトウェア構成](./architecture.md)
+- 状態: ドラフト（v0.3。Phase 2 の実装に合わせ、LiDAR の照合（前処理・デスキュー・GICP・品質・共分散）、多仮説の探索、地図上での初期化、再位置推定の手順を追加）
 - 検証スクリプト: [`tools/sim/compare_invariant_ekf_vs_esekf.py`](../tools/sim/compare_invariant_ekf_vs_esekf.py)
 - 図解ページ: [`docs/explainer/index.html`](./explainer/index.html)（ブラウザで開くと図と数式が表示される）
 
@@ -301,8 +301,10 @@ flowchart TB
   end
 
   subgraph LI["LiDAR（10 Hz、別スレッド）"]
-    L1["スキャン受信"] --> L2["前処理・回転デスキュー"]
-    L2 --> L3["スキャン時刻の予測姿勢 → 地図座標へ"]
+    L1["スキャン受信"] --> L2["デスキュー（回転と並進）<br/>base_link へ・クロップ"]
+    L2 --> L0{"初期化待ち・<br/>再位置推定？"}
+    L0 -- はい --> LS["多仮説の探索<br/>（格子 × yaw → VGICP → GICP）"]
+    L0 -- いいえ --> L3["スキャン時刻の予測姿勢 → 地図座標へ"]
     L3 --> L4["GICP"]
     L4 --> L5{"品質 OK？"}
     L5 -- はい --> L6["UTM へ変換 → 姿勢観測"]
@@ -353,7 +355,40 @@ on RTK-FIX GNSS y:
         phase = READY                                   // 出力を有効にする
 ```
 
-地図区間での初期化（複数の初期値候補からの位置合わせ）は、[設計書](./design.md) 3.11 節の手順による。
+### 8.3 初期化（地図区間）
+
+GNSS が無い現場では、外部から与えた初期姿勢（RViz など）か、前回保存した位置の周りで位置合わせして初期化する（設計書 3.11 節）。探索そのもの（`search`）は 10.3.4 節。
+
+```text
+setInitialPose(pose, Σ, source):                        // source = EXTERNAL / SAVED
+    if source == SAVED and filter 動作中: 無視
+    if どれかのタイルから init_map_distance (10 m) 以内:
+        pending = {pose, Σ, source, attempts: 0}
+        phase = WAIT_MAP_MATCH                          // この間は GNSS による初期化もしない
+        地図マネージャに pose の周りのタイルを読み込ませる
+    else if source == EXTERNAL:
+        start filter at (pose, Σ)
+    // SAVED で地図の外なら捨てる（GNSS を待つ）
+
+on LiDAR scan (pending あり、姿勢推定器の静止初期化の後):
+    center = pose（地図座標へ。z は推定した楕円体高、無ければ地面の高さ + base_link_height）
+    radius    = clamp(3 σ_xy,  0.5 m, 5 m)
+    yaw_range = clamp(3 σ_yaw, 10°, 180°)
+    res = search(scan, target, center, radius, yaw_range)
+    if res.found:
+        Σ0 = T Σ_reg T^T + Σ_anchor                     // 位置合わせの共分散 + アンカーの不確かさ
+        start filter at (res.best を UTM へ, Σ0); pending = 無し
+    else:
+        attempts += 1
+        if attempts ≥ init_max_attempts (5): giveUp()
+
+// 出力周期ごと
+if pending and 静止初期化の後 init_timeout (15 s) たった: giveUp()   // LiDAR が来ないときなど
+
+giveUp():
+    if source == EXTERNAL: start filter at (pose, Σ)   // 与えた姿勢のまま
+    else: pending = 無し; phase = WAIT_FIX             // 保存した位置は捨てて GNSS を待つ
+```
 
 ---
 
@@ -459,6 +494,68 @@ linearize(state, Pose{Z (UTM の SE2), Σ_reg_body, Σ_anchor_world}):
 
 small_gicp の共分散は、もともと機体座標系側の摂動に対するものである。そのため、(x, y, yaw) の成分を取り出すだけで $`\Sigma_{\mathrm{reg,body}}`$ として使える（左不変誤差と定義がそろっている）。
 
+LiDAR の観測を作るまでの手順（設計書 6 章）を、以下に示す。
+
+#### 10.3.1 前処理（デスキュー）
+
+```text
+process(scan, ω = gyro − bias3, v = (s · v_odom, v_lat, 0)):     // スキャンの間は ω, v 一定とみなす
+    for each point p_L (時刻 τ_i = 点の時刻 − scan.t、負の値):
+        p = T_base_lidar · p_L                                     // base_link へ
+        if deskew and 点ごとの時刻がある:
+            w = ω τ_i;  u = v τ_i
+            p = Exp(w) p + V(w) u                                  // SE(3) の指数写像（τ を 0.1 ms 刻みで使い回す）
+        if min_range ≤ |p_L| ≤ max_range and 車体の箱の外: 残す
+```
+
+スキャンの代表時刻 `scan.t` は最後の点の時刻（点ごとの時刻が無ければ `header.stamp + stamp_offset`）。IF 層がフィールドと単位を判別して、相対時刻にしておく（設計書 6.1 節）。
+
+#### 10.3.2 位置合わせ（追跡）
+
+```text
+target = mapManager.currentTarget()                  // アクティブグループのロード済みタイル。無ければ照合しない
+X̂(t) = history.stateAt(scan.t)                        // スキャン時刻の予測姿勢
+X_map = target.anchor.toMap(X̂(t))                      // ターゲットのグループのアンカーで地図座標へ
+init  = (X_map.x, X_map.y, z, roll, pitch, X_map.ψ)    // z: 推定した楕円体高、roll / pitch: 姿勢推定器
+src   = voxel(points, 0.5 m) + 点ごとの共分散（近傍 10 点）
+if |src| < min_source_points: 照合しない
+r = GICP(src, target, init)                            // LM、最大 20 回、対応距離 1.0 m
+```
+
+#### 10.3.3 品質と観測共分散
+
+```text
+reject if not r.converged                         → NOT_CONVERGED
+reject if r.inlier_ratio < 0.6                     → FEW_INLIERS
+reject if r.overlap < 0.5                          → LOW_OVERLAP   // 0.3 m 以内に地図の点がある割合（壁・柱などの点で）
+reject if |init⁻¹ r.T| > (1.0 m, 5°)               → JUMP
+Σ6    = κ · N_in · (H + 1e-6 I)⁻¹                  // κ = cov_scale (0.15)。H の並びは回転 3 → 並進 3
+Σ_reg = Σ6 の (x, y, ψ) = 添字 (3, 4, 2) + diag(σ_min_xy², σ_min_xy², σ_min_yaw²)
+Z     = target.anchor.poseMapToUtm(r.T) の (x, y, ψ)  // 観測（UTM）
+Σ_anchor = target.anchor.covarianceWorld()
+```
+
+品質で棄却した回数は、ゲートで棄却した回数と合わせて `RecoveryManager` が数える（12.2 節）。
+
+#### 10.3.4 多仮説の探索（地図上での初期化と再位置推定）
+
+```text
+search(points, target, center, radius, yaw_range):
+    fine   = voxel(points, 0.5 m);  coarse = voxel(points, 1.0 m)
+    hyps   = { center ∘ (dx, dy, dψ) : (dx, dy) は 1 m 格子で |(dx, dy)| ≤ radius,
+                                        dψ は 20° 刻みで ±yaw_range（180° 以上なら全周） }
+    parallel for h in hyps:                                        // 候補ごとに並列
+        c_h = VGICP(coarse, target のボクセル地図 (2 m), h, 最大 10 回)
+        score_h = overlap(coarse, target, c_h.T, 1.0 m)
+    上位から、互いに 1 m または 10° 以上離れた 5 個を選び、GICP(fine, target) で詰める
+    best   = overlap（0.3 m）が最大の解
+    second = best から 1 m または 10° 以上離れた解のうち overlap が最大のもの（無ければ 0）
+    found  = best.inlier_ratio ≥ 0.6 and best.overlap ≥ 0.6
+             and (second == 0 or best.overlap ≥ 1.5 · second.overlap)   // 一意に決まる
+```
+
+overlap に地面の点を数えないのは、地面はどの水平位置でも重なるため、含めると誤った解でも overlap が高くなるからである。
+
 ### 10.4 進行方位（任意）と ZARU
 
 - 進行方位: $`z = \mathrm{atan2}(v_N, v_E) + \gamma`$。条件は RTK-FIX 中、$`|v| > 0.5`$ m/s、$`|\omega| < 5`$ deg/s、前進中。
@@ -501,12 +598,13 @@ gatePolicy(meas, t):
     GNSS 位置（RTK-FIX）     → DEFER_TO_RECOVERY
     GNSS 進行方位           → REJECT_ON_FAIL
     ZARU                    → REJECT_ON_FAIL
-    LiDAR                   → classifyLidar の結果による
+    LiDAR                   → lidarPolicy(classifyLidar の結果)
+                              FUSE_INFLATED → SKIP（固定閾値で判定済み）、それ以外 → DEFER_TO_RECOVERY
 
 classifyLidar(Z, state, t):
     if isGnssFixActive(t):                              // 直近 1 s 以内に RTK-FIX を採用
         e = SE2::Log(X̂⁻¹ Z)
-        mismatch[group].add(T e)                         // アンカーずれの統計（世界座標系）
+        mismatch[group].add(T e)                         // アンカーずれの統計（世界座標系。平均が閾値を超えたら診断で WARN）
         if |e_xy| ≤ 0.15 m and |e_ψ| ≤ 1°:
             return FUSE_INFLATED                         // R を 4 倍にして適用
         else:
@@ -517,29 +615,41 @@ classifyLidar(Z, state, t):
 ### 12.2 再アンカーと再位置推定（RecoveryManager）
 
 ```text
-onRejected(meas, res, history):                         // ゲート不通過のとき
-    cand[meas.source].push(meas)
+onRejected(meas, res, history, gnss_fix_active, d_DR):  // ゲート不通過のとき
+    cand[meas.source].push(meas)                        // candidate_max_age (5 s) より古い候補は捨てる
     // 各候補の「観測 − その時刻の推定から予測した値」を世界座標系で求める。
     // 推定値がずれているなら、短い区間ではこのずれはほぼ一定になる
-    aligned = [ c.y − X̂(c.t)·c.lever  for c in cand ]
-    if aligned の件数 ≥ N_source (GNSS 3 / LiDAR 5) and ばらつき ≤ (0.10 m, 1°):
-        return REANCHOR(最新の観測, inflation = diag(e²) + Σ_reanchor)
-    if source == LiDAR and GNSS FIX 無し and 連続棄却 ≥ 20:
-        return RELOCALIZE(中心 = 推定値, 半径 = min(3σ, 3 m), yaw 幅 = min(3σ, 30°))
-    if 位置の σ > lost_stddev:
-        state = LOST
+    GNSS:  aligned = [ c.y − X̂(c.t)·c.lever  for 直近 3 件 ]          // 位置だけ
+    LiDAR: aligned = [ (c.Z.p − p̂(c.t), c.Z.ψ − ψ̂(c.t)) for 直近 5 件 ] // 位置と yaw
+    if 件数が足りていて、ばらつき（最大の差）≤ (0.10 m, 1°):
+        return REANCHOR(最新の観測, inflation = diag(r²) + diag(σ_extra²))   // r: 最新の観測の残差
+    if source == LiDAR: return countLidarReject(...)
     return NONE
 
-applyReanchor(meas, inflation):
-    P[0:3,0:3] += inflation
-    update(state, meas, SKIP)                           // ゲートを通さずに適用し、観測側へ強く寄る
-    候補とカウンタをクリア
+onLidarFailure(t, ...):                                 // 品質の条件を満たさなかった（観測を作れなかった）
+    return countLidarReject(...)
 
-onRelocalizeResult(best, second):
-    if best が品質条件を満たす and score(best) ≥ 1.5 × score(second):
-        return REANCHOR(best)
-    attempts += 1
-    if attempts ≥ 3: state = LOST
+countLidarReject(t, gnss_fix_active, d_DR):
+    rejects += 1
+    if gnss_fix_active or rejects < 20 or state ∈ {RELOCALIZE, LOST}: return NONE   // GNSS FIX 中は GNSS を優先
+    return RELOCALIZE(center  = 最新の推定値,
+                      radius  = clamp(max(3σ_xy, 0.05 · d_DR), 1 m, 3 m),   // 共分散が小さすぎるときの下限
+                      yaw幅   = clamp(3σ_ψ, 10°, 30°))
+
+reanchor(meas, inflation):                              // Localizer::reanchorWith
+    history.applyDelayed(meas, SKIP, inflation)         // P[0:3,0:3] += inflation の後、ゲートを通さずに適用
+    候補とカウンタをクリア; state = TRACKING
+
+on LiDAR scan (再位置推定の依頼あり、または LOST で前回の試行から 5 s):
+    res = search(scan, target, request)                 // LOST の再試行は最大範囲（3 m、±30°）
+    if res.found:
+        e = Log(X̂(t)⁻¹ Z)
+        reanchor(Z, inflation = diag(e²) + diag(σ_extra²))
+    else:
+        attempts += 1
+        if attempts ≥ 3: state = LOST                  // 位置の観測をゲートを通して採用できるまで LOST のまま
+
+on GNSS 位置を採用: 再位置推定の依頼を取り消す          // GNSS で位置が確定したため
 ```
 
 ---
@@ -599,6 +709,7 @@ if dr_exceeded:
 | 共分散の数値安定性 | Joseph 形式で更新し、毎回対称化する。対角成分に下限（1e-12）を設ける |
 | 精度 | UTM 座標と状態は `double`。点群だけ地図座標系の `float`（設計書 4.3 節） |
 | 時刻 | すべてデータのタイムスタンプで扱う。履歴に入らない古い観測は破棄し、件数を診断に出す |
+| LiDAR の照合と mutex | 位置合わせ（数 ms〜数百 ms）の間は mutex を持たない。結果を適用する前に、照合の間に初期化し直されていないか（`pending` や初期姿勢の時刻）を確かめる |
 | 単体テスト | Exp / Log の往復、Ad の恒等式、$`\mathbf{F}`$ と $`\mathbf{H}`$ を数値微分と比較する。$`\mathbf{H}`$ は 1e-6 程度で一致する。$`\mathbf{F}`$ のバイアス列は右ヤコビアンの近似の分（$`\tfrac12 s v\Delta t^2`$ 程度）だけずれるのが正しい |
 | 回帰テスト | `tools/sim/compare_invariant_ekf_vs_esekf.py` の結果（6 章の表）を基準値にして、C++ 実装でも同じ傾向が出ることを確認する |
 

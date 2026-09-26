@@ -217,10 +217,14 @@ void Localizer::addGnssVelocity(const GnssVelocitySample& s) {
 
 void Localizer::setInitialPose(double t, const Pose2D& pose, const Mat3& cov_world, InitialPoseSource source) {
   std::lock_guard<std::mutex> lk(mtx_);
+  if (source == InitialPoseSource::SAVED && filter_initialized_) {
+    logger_->info("saved pose ignored: the filter is already running");
+    return;
+  }
   const Vec2 p(pose.x, pose.y);
   if (maps_ && matcher_ && maps_->hasMapWithin(p, cfg_.relocalize.init_map_distance)) {
     // 地図の上なら、その周りで位置合わせしてから初期化する（次のスキャンで行う）
-    pending_init_ = PendingInit{t, pose, cov_world, source, 0};
+    pending_init_ = PendingInit{t, pose, cov_world, source, 0, -1.0};
     pending_relocalize_.reset();
     initializer_.waitForMapMatch();
     recovery_.onExternalPose();
@@ -246,6 +250,34 @@ void Localizer::updateMaps(double t) {
   } else if (filter_initialized_) {
     const FilterState& st = history_.latest();
     maps_->update(st.t, st.X.t(), st.X.yaw(), last_input_.v * st.s);
+  }
+}
+
+void Localizer::checkPendingInit() {
+  // 位置合わせは姿勢推定器の静止初期化の後に始まるので、時間もそこから数える
+  if (!pending_init_ || !attitude_.initialized() || last_imu_t_ < 0.0) return;
+  if (pending_init_->wait_start < 0.0) {
+    pending_init_->wait_start = last_imu_t_;
+    return;
+  }
+  if (last_imu_t_ - pending_init_->wait_start > cfg_.relocalize.init_timeout)
+    giveUpPendingInit(last_imu_t_, "no match within " + fmt(cfg_.relocalize.init_timeout, 0) + " s");
+}
+
+void Localizer::giveUpPendingInit(double t, const std::string& why) {
+  if (!pending_init_) return;
+  if (pending_init_->source == InitialPoseSource::EXTERNAL) {
+    logger_->warn("could not match the initial pose to the map (" + why + "); using the given pose as is");
+    const double b0 = attitude_.initialized() ? attitude_.gyroBias().z() : 0.0;
+    const FilterState s0 = initializer_.fromExternalPose(t, pending_init_->pose, pending_init_->cov, b0,
+                                                         cfg_.estimator.estimate_odom_scale, *est_);
+    pending_init_.reset();
+    initializeFilter(s0);
+  } else {
+    // 保存した位置はフィルタの始動前にしか受け付けないので、ここではフィルタは動いていない
+    logger_->warn("could not match the saved pose to the map (" + why + "); waiting for GNSS or an initial pose");
+    pending_init_.reset();
+    if (!filter_initialized_) initializer_.reset();
   }
 }
 
@@ -442,20 +474,8 @@ void Localizer::processScan(const LidarScan& scan) {
         ++pending_init_->attempts;
         info.status = "INIT_" + res.reason;
         logger_->warn("map initialization failed (" + res.reason + "): " + detail.str());
-        if (pending_init_->attempts >= cfg_.relocalize.init_max_attempts) {
-          if (pending_init_->source == InitialPoseSource::EXTERNAL) {
-            logger_->warn("could not match the initial pose to the map; using the given pose as is");
-            const double b0 = attitude_.gyroBias().z();
-            const FilterState s0 = initializer_.fromExternalPose(
-                scan.t, pending_init_->pose, pending_init_->cov, b0, cfg_.estimator.estimate_odom_scale, *est_);
-            pending_init_.reset();
-            initializeFilter(s0);
-          } else {
-            logger_->warn("could not match the saved pose to the map; waiting for GNSS or an initial pose");
-            pending_init_.reset();
-            if (!filter_initialized_) initializer_.reset();
-          }
-        }
+        if (pending_init_->attempts >= cfg_.relocalize.init_max_attempts)
+          giveUpPendingInit(scan.t, std::to_string(pending_init_->attempts) + " attempts failed");
       }
     } else {
       ++diag_.relocalize_attempts;
@@ -538,6 +558,7 @@ void Localizer::processScan(const LidarScan& scan) {
 
 std::optional<LocalizationOutput> Localizer::getOutput() {
   std::lock_guard<std::mutex> lk(mtx_);
+  checkPendingInit();
   updateMaps(last_imu_t_);
   if (!filter_initialized_) return std::nullopt;
   const FilterState& st = history_.latest();

@@ -39,6 +39,7 @@ struct SensorPlan {
   std::function<double(double t)> odom_scale_error = [](double) { return 0.0; };  ///< ODOM の速度の相対誤差
   double gnss_delay = 0.05;
   std::optional<double> init_time;   ///< 外部の初期姿勢を与える時刻
+  Localizer::InitialPoseSource init_source = Localizer::InitialPoseSource::EXTERNAL;
   Pose2D init_error;                 ///< 真値からのずれ（UTM）
   Mat3 init_cov = Vec3(1.0, 1.0, deg2rad(20.0) * deg2rad(20.0)).asDiagonal();
   unsigned seed = 11;
@@ -225,7 +226,7 @@ class LidarSimulator {
         ip.x += sp.init_error.x;
         ip.y += sp.init_error.y;
         ip.yaw = wrapAngle(ip.yaw + sp.init_error.yaw);
-        loc.setInitialPose(t, ip, sp.init_cov);
+        loc.setInitialPose(t, ip, sp.init_cov, sp.init_source);
         init_sent = true;
       }
       if (const auto out = loc.getOutput()) {

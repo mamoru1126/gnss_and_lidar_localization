@@ -28,7 +28,7 @@ using SgVoxelMap = small_gicp::GaussianVoxelMap;
 /// 法線がこれより鉛直に近い点（地面・天井）は、overlap の計算から外す。
 /// 地面はどの水平位置でも重なるので、含めると誤った解との差が小さくなるため。
 constexpr double kHorizontalNormalZ = 0.7;
-/// 鉛直でない面の点がこれより少ない場合は、すべての点で overlap を数える。
+/// 水平でない面（壁・柱など）の点がこれより少ない場合は、すべての点で overlap を数える。
 constexpr std::size_t kMinStructurePoints = 50;
 
 class GicpTarget : public MatchTarget {
@@ -76,7 +76,7 @@ class GicpTarget : public MatchTarget {
 class GicpSource : public SourceCloud {
  public:
   std::shared_ptr<SgCloud> cloud;
-  std::vector<std::size_t> structure;  ///< 鉛直でない面の点の添字（overlap の計算に使う）
+  std::vector<std::size_t> structure;  ///< 水平でない面（法線が鉛直に近くない点）の添字（overlap の計算に使う）
   std::size_t size() const override { return cloud ? cloud->size() : 0; }
 };
 
