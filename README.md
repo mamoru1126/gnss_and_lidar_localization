@@ -8,9 +8,9 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 - 設計書: [docs/design.md](docs/design.md)
 - ソフトウェア構成（コンポーネント図・クラス図）: [docs/architecture.md](docs/architecture.md)
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
-- 図解ページ: [docs/explainer/index.html](docs/explainer/index.html)
+- 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)
-- タイル読み込みのデモ（ダウンロードしてブラウザで開く）: [docs/demo/tile_loading.html](docs/demo/tile_loading.html)（作り方は [tools/tile_demo](tools/tile_demo/README.md)）
+- タイル読み込みのデモ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html)（ソース: [docs/demo/tile_loading.html](docs/demo/tile_loading.html)、作り方は [tools/tile_demo](tools/tile_demo/README.md)）
 
 ## 実装の状況
 
