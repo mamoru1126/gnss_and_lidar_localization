@@ -15,16 +15,16 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/koide3/hdl_lo
 git -C /tmp/hdl_localization sparse-checkout set data
 
 # タイル化（82 枚）
-gll_map_tiler -i /tmp/hdl_localization/data/map.pcd -o /tmp/hdl_tiles --tile-size 20 --voxel-size 0.2
+tiled_pcd_map_tiler -i /tmp/hdl_localization/data/map.pcd -o /tmp/hdl_tiles --tile-size 20 --voxel-size 0.2
 
 # 経路に沿って MapTileManager を動かし、0.5 s ごとの状態を記録する
-gll_tile_demo /tmp/hdl_tiles/tile_index.yaml tools/tile_demo/route_hdl_localization.txt /tmp/frames.json
+tiled_pcd_map_demo /tmp/hdl_tiles/tile_index.yaml tools/tile_demo/route_hdl_localization.txt /tmp/frames.json
 
 # ページにする（numpy と PyYAML が必要）
 python3 tools/tile_demo/make_page.py /tmp/hdl_tiles /tmp/frames.json docs/demo/tile_loading.html
 ```
 
-`gll_tile_demo` は `gll_map_tiler` と同じく、[gll_map](../../map/README.md) を `GLL_MAP_BUILD_TOOLS=ON`（既定）でビルドするとできる（ROS も small_gicp も要らない）。
+`tiled_pcd_map_demo` は `tiled_pcd_map_tiler` と同じく、[tiled_pcd_map](../../tiled_pcd_map/README.md) を `TILED_PCD_MAP_BUILD_TOOLS=ON`（既定）でビルドするとできる（ROS も small_gicp も要らない）。
 
 ### 西新宿の地図（docs/demo/nishishinjuku.html）
 
@@ -35,14 +35,14 @@ curl -L -o /tmp/nishishinjuku.zip https://github.com/tier4/AWSIM/releases/downlo
 unzip -q /tmp/nishishinjuku.zip -d /tmp/nishishinjuku
 M=/tmp/nishishinjuku/nishishinjuku_autoware_map
 
-gll_map_tiler -i $M/pointcloud_map.pcd -o /tmp/nsj_tiles --tile-size 20 --voxel-size 0.2   # 936 枚
+tiled_pcd_map_tiler -i $M/pointcloud_map.pcd -o /tmp/nsj_tiles --tile-size 20 --voxel-size 0.2   # 936 枚
 
 # 経路を作り直す場合（numpy と scipy が必要）
 python3 tools/tile_demo/lanelet_route.py $M/lanelet2_map.osm \
     '[[81190,49815],[81260,50120],[81330,50210],[81470,50560],[81700,50640],[81840,50120],[81620,50050],[81560,50400],[81470,50630],[81430,50690]]' \
     > /tmp/route.txt
 
-gll_tile_demo /tmp/nsj_tiles/tile_index.yaml tools/tile_demo/route_nishishinjuku.txt /tmp/nsj_frames.json
+tiled_pcd_map_demo /tmp/nsj_tiles/tile_index.yaml tools/tile_demo/route_nishishinjuku.txt /tmp/nsj_frames.json
 python3 tools/tile_demo/make_page.py /tmp/nsj_tiles /tmp/nsj_frames.json docs/demo/nishishinjuku.html \
     --display-res 0.5 --title "西新宿タイル読み込みデモ" --heading "西新宿のタイル読み込み" --note "（条件と出典の HTML）"
 ```
@@ -53,7 +53,7 @@ python3 tools/tile_demo/make_page.py /tmp/nsj_tiles /tmp/nsj_frames.json docs/de
 
 | ファイル | 内容 |
 |---|---|
-| `map/tools/tile_demo_main.cpp` | `gll_tile_demo`（gll_map のツール）。経路（折れ線）に沿って一定の速さ（既定 1.5 m/s）で `MapTileManager::update` を 0.1 s ごとに呼び、自己位置・領域（MapRegion）のタイル・読み込み回数を JSON に書く |
+| `tiled_pcd_map/tools/tile_demo_main.cpp` | `tiled_pcd_map_demo`（tiled_pcd_map のツール）。経路（折れ線）に沿って一定の速さ（既定 1.5 m/s）で `MapTileManager::update` を 0.1 s ごとに呼び、自己位置・領域（MapRegion）のタイル・読み込み回数を JSON に書く |
 | `route_nishishinjuku.txt` / `lanelet_route.py` | 西新宿の地図用の経路（約 2.9 km。CC BY-NC 4.0）と、lanelet の中心線から経路を作るスクリプト |
 | `route_hdl_localization.txt` | hdl_localization の地図用の経路（南の通路から広場を一周して戻る、約 200 s）。1 行に `x y`（地図座標 [m]） |
 | `make_page.py` | タイルの点を間引き（`--display-res`、既定 0.2 m）、記録と一緒に `template.html` に埋め込んで 1 つの HTML にする |

@@ -2,14 +2,14 @@
 
 RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作成した点群地図と LiDAR の照合で、途切れない自己位置（UTM の x, y, yaw）を推定する ROS 2 パッケージ。推定器は SE(2) 上の **Invariant EKF** 1 つで、GNSS・LiDAR・IMU・ODOM を融合する。GNSS 区間が無く、点群地図だけがある現場でも、初期姿勢（または前回保存した位置）から地図上で初期化して動く。
 
-パッケージ名・名前空間などの **gll** は **G**NSS and **L**iDAR **L**ocalization の略（`gll_map`、`gll_core`、`gll_ros2`、`gll::`、`gll_map_tiler`、ノード名 `gll_localizer`）。
+パッケージ名・名前空間などの **gll** は **G**NSS and **L**iDAR **L**ocalization の略（`gll_core`、`gll_ros2`、`gll::`、ノード名 `gll_localizer`）。
 
-点群地図のタイル化と、自己位置の周りのタイルだけを読み込む仕組みは、単体でも使えるライブラリ **[gll_map](map/README.md)** に分けてある（ROS 非依存。ほかの自己位置推定に部分地図を渡す用途などにも使える）。
+点群地図のタイル化と、自己位置の周りのタイルだけを読み込む仕組みは、単体でも使えるライブラリ **[tiled_pcd_map](tiled_pcd_map/README.md)** に分けてある（ROS にも gll にも依存しないので、名前も `tiled_pcd_map`。ほかの自己位置推定に部分地図を渡す用途などにも使える）。
 
 - 要件定義: [docs/requirements.md](docs/requirements.md)
 - 設計書: [docs/design.md](docs/design.md)
 - ソフトウェア構成（コンポーネント図・クラス図）: [docs/architecture.md](docs/architecture.md)
-- 地図のライブラリ gll_map: [map/README.md](map/README.md)
+- 地図のライブラリ tiled_pcd_map: [tiled_pcd_map/README.md](tiled_pcd_map/README.md)
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)
@@ -20,15 +20,15 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 | Phase | 内容 | 状態 |
 |---|---|---|
 | 1 | Docker・CI、コア（SE(2)・Invariant EKF・遅延観測・GNSS・姿勢推定・出力整形・状態監視・デッドレコニング距離の監視・GNSS の再アンカー）、ROS 2 IF（IMU・ODOM・GNSS・diagnostics） | 実装済み |
-| 2 | 地図のタイル化ツール（`gll_map_tiler`）、地図タイル管理（非同期ロード・複数の地図グループの切り替え）、small_gicp（GICP）による LiDAR 観測とデスキュー、地図上での初期化、GNSS FIX 中の食い違い判定、LiDAR の再アンカーと再位置推定、ROS 2 IF（PointCloud2・デバッグ出力・前回位置の保存） | 実装済み（合成データのシミュレーションで確認。実データでの調整は Phase 3） |
+| 2 | 地図のタイル化ツール（`tiled_pcd_map_tiler`）、地図タイル管理（非同期ロード・複数の地図グループの切り替え）、small_gicp（GICP）による LiDAR 観測とデスキュー、地図上での初期化、GNSS FIX 中の食い違い判定、LiDAR の再アンカーと再位置推定、ROS 2 IF（PointCloud2・デバッグ出力・前回位置の保存） | 実装済み（合成データのシミュレーションで確認。実データでの調整は Phase 3） |
 | 3 | 実データ（i2Nav-Robot）での検証とパラメータ調整、アンカー較正ツール | 未着手 |
 
 ## 構成
 
 ```
-map/                   gll_map: 点群地図のタイル化と動的ロードのライブラリ（C++17, Eigen, GeographicLib, yaml-cpp。
-                       small_gicp は任意）と、タイル化ツール gll_map_tiler。単体でも使える（map/README.md）
-core/                  gll_core: ROS に依存しない自己位置推定のライブラリ（gll_map, small_gicp）
+tiled_pcd_map/         tiled_pcd_map: 点群地図のタイル化と動的ロードのライブラリ（C++17, Eigen, GeographicLib, yaml-cpp。
+                       small_gicp は任意）と、タイル化ツール tiled_pcd_map_tiler。単体でも使える（tiled_pcd_map/README.md）
+core/                  gll_core: ROS に依存しない自己位置推定のライブラリ（tiled_pcd_map, small_gicp）
 ros2/gll_ros2/         ROS 2 Jazzy のインターフェース（LocalizerNode, launch, パラメータ）
 docker/                Dockerfile（dev / runtime）と compose.yaml
 tools/sim/             Invariant EKF と ESEKF の比較シミュレーション（Python）
@@ -49,7 +49,7 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 colcon test && colcon test-result --verbose
 ```
 
-コアだけなら ROS なしでもビルドできる（`libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev` と、ソースからインストールした [small_gicp](https://github.com/koide3/small_gicp) v1.0.1 が必要。手順は [.github/workflows/ci.yml](.github/workflows/ci.yml) の core ジョブを参照）。`core/` を CMake でビルドすると、`map/`（gll_map）も一緒にビルドされる。gll_map だけのビルドは [map/README.md](map/README.md)。
+コアだけなら ROS なしでもビルドできる（`libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev` と、ソースからインストールした [small_gicp](https://github.com/koide3/small_gicp) v1.0.1 が必要。手順は [.github/workflows/ci.yml](.github/workflows/ci.yml) の core ジョブを参照）。`core/` を CMake でビルドすると、`tiled_pcd_map/`（tiled_pcd_map）も一緒にビルドされる。tiled_pcd_map だけのビルドは [tiled_pcd_map/README.md](tiled_pcd_map/README.md)。
 
 ```bash
 cmake -S core -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -71,7 +71,7 @@ ros2 launch gll_ros2 localizer.launch.py \
 1. **地図をタイルにする**（地図グループごとに 1 回）。入力は外部ツールで作った統合済みの PCD（ascii / binary / binary_compressed）。
 
    ```bash
-   gll_map_tiler -i /data/maps/area_a.pcd -o /data/maps/area_a --tile-size 20 --voxel-size 0.2
+   tiled_pcd_map_tiler -i /data/maps/area_a.pcd -o /data/maps/area_a --tile-size 20 --voxel-size 0.2
    # → /data/maps/area_a/tiles/*.bin と tile_index.yaml
    ```
 

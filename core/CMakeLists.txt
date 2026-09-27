@@ -18,12 +18,13 @@ find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 # small_gicp（スキャンマッチング。設計書 6 章）: v1.0.1 をソースからビルドしてインストールしておく（README）
 find_package(small_gicp 1.0 REQUIRED)
-# gll_map（地図のタイル化・動的ロード、測地変換・SE(2) などの基本。../map）。
-# colcon ではパッケージとして先にビルドされる。plain CMake でコアだけをビルドする場合は、リポジトリの map/ を一緒にビルドする
-find_package(gll_map QUIET)
-if(NOT gll_map_FOUND)
-  set(GLL_MAP_BUILD_TESTS ${GLL_BUILD_TESTS} CACHE BOOL "")
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../map ${CMAKE_CURRENT_BINARY_DIR}/gll_map)
+# tiled_pcd_map（地図のタイル化・動的ロード、測地変換・SE(2) などの基本。../tiled_pcd_map）。
+# colcon ではパッケージとして先にビルドされる。plain CMake でコアだけをビルドする場合は、リポジトリの
+# tiled_pcd_map/ を一緒にビルドする
+find_package(tiled_pcd_map QUIET)
+if(NOT tiled_pcd_map_FOUND)
+  set(TILED_PCD_MAP_BUILD_TESTS ${GLL_BUILD_TESTS} CACHE BOOL "")
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../tiled_pcd_map ${CMAKE_CURRENT_BINARY_DIR}/tiled_pcd_map)
 endif()
 
 add_library(gll_core
@@ -54,7 +55,7 @@ target_include_directories(gll_core
     $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(gll_core
-  PUBLIC Eigen3::Eigen gll::gll_map
+  PUBLIC Eigen3::Eigen tiled_pcd_map::tiled_pcd_map
   PRIVATE small_gicp::small_gicp OpenMP::OpenMP_CXX)
 target_compile_options(gll_core PRIVATE -Wall -Wextra -Wpedantic)
 

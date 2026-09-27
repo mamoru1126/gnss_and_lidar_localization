@@ -3,9 +3,9 @@
 #pragma once
 
 #include "gll/common/config.hpp"
-#include "gll/map/map_anchor.hpp"
-#include "gll/map/map_region.hpp"
-#include "gll/map/tile.hpp"
+#include "tiled_pcd_map/map_anchor.hpp"
+#include "tiled_pcd_map/map_region.hpp"
+#include "tiled_pcd_map/tile.hpp"
 
 #include <Eigen/Geometry>
 
@@ -17,7 +17,7 @@
 namespace gll {
 
 /// 位置合わせのターゲット（アクティブグループのロード済みタイルを結合したもの）。中身は実装ごとに持つ。
-/// gll_map の MapRegion を継承する（group・anchor・tiles・num_points）。照合の結果は anchor で UTM に変換する（設計書 5.5 節）。
+/// tiled_pcd_map の MapRegion を継承する（group・anchor・tiles・num_points）。照合の結果は anchor で UTM に変換する（設計書 5.5 節）。
 class MatchTarget : public MapRegion {
  public:
   /// 地図座標 (x, y) から水平距離 radius 以内の点の z を小さい順に並べ、下から fraction の位置の値を返す

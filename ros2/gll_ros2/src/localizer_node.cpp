@@ -5,8 +5,8 @@
 #include <gll/common/pose_store.hpp>
 #include <gll/estimation/es_ekf_2d.hpp>
 #include <gll/estimation/inv_ekf_se2.hpp>
-#include <gll/map/map_config.hpp>
-#include <gll/map/map_tile_manager.hpp>
+#include <tiled_pcd_map/map_config.hpp>
+#include <tiled_pcd_map/map_tile_manager.hpp>
 #include <gll/matching/gicp_matcher.hpp>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>

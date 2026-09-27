@@ -6,9 +6,9 @@ on:
   pull_request:
 
 jobs:
-  # 地図ライブラリ gll_map を単体でビルド・テストする（small_gicp なし）。インストールしたものを
-  # find_package で使う例（map/examples/follow_path）もビルドする
-  map:
+  # 地図のライブラリ tiled_pcd_map を単体でビルド・テストする（small_gicp なし）。インストールしたものを
+  # find_package で使う例（tiled_pcd_map/examples/follow_path）もビルドする
+  tiled_pcd_map:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -19,17 +19,17 @@ jobs:
             ninja-build libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev
       - name: Build and test
         run: |
-          cmake -S map -B build_map -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/install_map
+          cmake -S tiled_pcd_map -B build_map -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/install_map
           cmake --build build_map -j
           ctest --test-dir build_map --output-on-failure
           cmake --install build_map
-      - name: Build the example against the installed gll_map
+      - name: Build the example against the installed tiled_pcd_map
         run: |
-          cmake -S map/examples/follow_path -B build_example -G Ninja -DCMAKE_PREFIX_PATH=$PWD/install_map
+          cmake -S tiled_pcd_map/examples/follow_path -B build_example -G Ninja -DCMAKE_PREFIX_PATH=$PWD/install_map
           cmake --build build_example
 
   # ROS なしでコア単体をビルド・テストする（ROS 依存が紛れ込んでいないことの確認を兼ねる）。
-  # gll_map は core/CMakeLists.txt が map/ を一緒にビルドする
+  # tiled_pcd_map は core/CMakeLists.txt が tiled_pcd_map/ を一緒にビルドする
   core:
     runs-on: ubuntu-24.04
     steps:

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "gll/common/config.hpp"
-#include "gll/common/geodesy.hpp"
+#include "tiled_pcd_map/geodesy.hpp"
 #include "gll/estimation/state.hpp"
 #include "gll/measurement/attitude_estimator.hpp"
 

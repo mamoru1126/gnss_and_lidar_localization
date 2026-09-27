@@ -4,8 +4,8 @@
 #pragma once
 
 #include "gll/localizer.hpp"
-#include "gll/map/map_config.hpp"
-#include "gll/map/map_tiler.hpp"
+#include "tiled_pcd_map/map_config.hpp"
+#include "tiled_pcd_map/map_tiler.hpp"
 #include "gll/matching/gicp_matcher.hpp"
 
 #include "sim_world.hpp"

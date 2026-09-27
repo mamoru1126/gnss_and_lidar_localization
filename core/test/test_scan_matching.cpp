@@ -1,6 +1,6 @@
 // スキャンマッチング（前処理・GICP・共分散・多仮説の探索）の単体テスト。合成環境のレイキャストで作ったスキャンを使う。
-#include "gll/map/map_anchor.hpp"
-#include "gll/map/map_tiler.hpp"
+#include "tiled_pcd_map/map_anchor.hpp"
+#include "tiled_pcd_map/map_tiler.hpp"
 #include "gll/matching/gicp_matcher.hpp"
 #include "gll/matching/scan_preprocessor.hpp"
 

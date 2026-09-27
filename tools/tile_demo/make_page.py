@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gll_tile_demo の記録とタイルから、デモページ（1 つの HTML）を作る（README.md 参照）。
+"""tiled_pcd_map_demo の記録とタイルから、デモページ（1 つの HTML）を作る（README.md 参照）。
 
   python3 make_page.py <タイルのディレクトリ> <frames.json> <出力.html>
       [--title 名前] [--heading 見出し] [--note 条件の説明（HTML）]
@@ -21,13 +21,13 @@ DEFAULT_NOTE = (
     "タイル 20 m、load 60 m / unload 90 m、先読み 3 s（既定値）。1.5 m/s で南の通路から広場を一周して戻る 200 s の経路。"
     "<code>MapTileManager</code> を同期モードで 0.1 s ごとに更新し、0.5 s ごとに記録した。<br>\n"
     '        点群: <a href="https://github.com/koide3/hdl_localization" target="_blank" rel="noopener">koide3/hdl_localization</a> の '
-    "<code>data/map.pcd</code>（BSD-2-Clause）を <code>gll_map_tiler</code> でタイル化（表示は 0.2 m に間引き）。"
+    "<code>data/map.pcd</code>（BSD-2-Clause）を <code>tiled_pcd_map_tiler</code> でタイル化（表示は 0.2 m に間引き）。"
 )
 
 
 def read_tile(path):
     b = pathlib.Path(path).read_bytes()
-    if b[:8] != b"GLLTILE1":
+    if b[:8] not in (b"TPCMTIL1", b"GLLTILE1"):  # GLLTILE1 は名前を変える前の形式
         raise ValueError(f"{path}: not a gll tile file")
     n, _flags = struct.unpack("<QI", b[8:20])
     return np.frombuffer(b[20:20 + 12 * n], dtype=np.float32).reshape(-1, 3)
