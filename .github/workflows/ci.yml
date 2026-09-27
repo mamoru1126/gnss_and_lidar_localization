@@ -67,3 +67,10 @@ jobs:
                      colcon build --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release && \
                      colcon test --event-handlers console_direct+ && \
                      colcon test-result --verbose"
+      - name: Tile demo rosbag (make_bag.py) plays in ROS 2
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
+            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
+                     colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
+                     source install/setup.bash && \
+                     src/gnss_and_lidar_localization/tools/tile_demo/test/run_bag_check.sh"
