@@ -1,4 +1,4 @@
-// 地図タイルマネージャ（ロード・アンロード・アクティブグループ・重なりの検出）の単体テスト。
+// 地図タイルマネージャ（ロード・アンロード・アクティブグループ・重なりの検出・領域の作り方）の単体テスト。
 #include "gll/map/map_tile_manager.hpp"
 
 #include <gtest/gtest.h>
@@ -17,37 +17,11 @@ class FakeLoader : public ITileLoader {
     ++loads;
     auto t = std::make_shared<TileData>();
     t->id = meta.id;
-    t->points.assign(100, Vec3f::Zero());
+    // タイルの中心に 100 点（地図座標）
+    t->points.assign(100, Vec3f((meta.id.ix + 0.5f) * 20.0f, (meta.id.iy + 0.5f) * 20.0f, 0.0f));
     return t;
   }
   mutable std::atomic<int> loads{0};
-};
-
-class FakeTarget : public MatchTarget {
- public:
-  std::optional<double> groundHeight(double, double, double, double) const override { return 0.0; }
-  std::vector<Vec3f> samplePoints(std::size_t) const override { return {}; }
-};
-
-/// ターゲットにタイル ID だけを記録するマッチャ。
-class FakeMatcher : public IScanMatcher {
- public:
-  std::shared_ptr<const MatchTarget> buildTarget(const std::string& group, const MapAnchor& anchor,
-                                                 const std::vector<std::shared_ptr<const TileData>>& tiles) const override {
-    auto t = std::make_shared<FakeTarget>();
-    t->group = group;
-    t->anchor = anchor;
-    for (const auto& d : tiles) {
-      t->tiles.push_back(d->id);
-      t->num_points += d->points.size();
-    }
-    return t;
-  }
-  std::shared_ptr<const SourceCloud> prepareSource(const std::vector<Vec3f>&, double) const override { return nullptr; }
-  RegistrationResult align(const SourceCloud&, const MatchTarget&, const Eigen::Isometry3d&) const override { return {}; }
-  PoseSearchResult search(const std::vector<Vec3f>&, const MatchTarget&, const PoseSearchRequest&) const override {
-    return {};
-  }
 };
 
 /// 地図座標で [-40, 40)² を覆う 20 m タイル 16 枚のグループ。アンカーは UTM で直接与える。
@@ -88,10 +62,10 @@ std::vector<MapGroup> twoGroups() { return {makeGroup("A", 500000, 4000000, 90),
 
 TEST(MapTileManager, LoadsActiveGroupAroundPosition) {
   auto loader = std::make_shared<FakeLoader>();
-  MapTileManager mgr(managerConfig(false), twoGroups(), loader, std::make_shared<FakeMatcher>());
+  MapTileManager mgr(managerConfig(false), twoGroups(), loader);
   mgr.update(0.0, kOriginA + Vec2(5, 5), 0.0, 0.0, true);
   EXPECT_EQ(mgr.activeGroup(), "A");
-  const auto target = mgr.currentTarget();
+  const auto target = mgr.currentRegion();
   ASSERT_TRUE(target);
   EXPECT_EQ(target->group, "A");
   EXPECT_EQ(target->tiles.size(), 16u);  // A の全タイルが 60 m 以内
@@ -102,7 +76,7 @@ TEST(MapTileManager, LoadsActiveGroupAroundPosition) {
 
 TEST(MapTileManager, SwitchesGroupOnceWithHysteresis) {
   auto loader = std::make_shared<FakeLoader>();
-  MapTileManager mgr(managerConfig(false), twoGroups(), loader, std::make_shared<FakeMatcher>());
+  MapTileManager mgr(managerConfig(false), twoGroups(), loader);
   // A の中心から B の中心まで東へ 2 m ずつ進む
   std::string prev;
   int switches = 0;
@@ -119,7 +93,7 @@ TEST(MapTileManager, SwitchesGroupOnceWithHysteresis) {
     // 切り替える前から、B のタイルは先読みでキャッシュに入る
     const auto s = mgr.stats();
     if (g == "A" && s.loaded_tiles_per_group.count("B")) saw_both_loaded = true;
-    const auto t = mgr.currentTarget();
+    const auto t = mgr.currentRegion();
     if (t) {
       for (const auto& id : t->tiles) EXPECT_EQ(id.group, t->group);  // 別のグループの点を混ぜない
     }
@@ -138,10 +112,10 @@ TEST(MapTileManager, SwitchesGroupOnceWithHysteresis) {
 }
 
 TEST(MapTileManager, NoActiveGroupFarFromMaps) {
-  MapTileManager mgr(managerConfig(false), twoGroups(), std::make_shared<FakeLoader>(), std::make_shared<FakeMatcher>());
+  MapTileManager mgr(managerConfig(false), twoGroups(), std::make_shared<FakeLoader>());
   mgr.update(0.0, kOriginA + Vec2(0, 500), 0.0, 0.0, true);
   EXPECT_EQ(mgr.activeGroup(), "");
-  EXPECT_FALSE(mgr.currentTarget());
+  EXPECT_FALSE(mgr.currentRegion());
   EXPECT_FALSE(mgr.hasMapWithin(kOriginA + Vec2(0, 500), 100.0));
   EXPECT_TRUE(mgr.hasMapWithin(kOriginA + Vec2(0, 50), 15.0));
   const auto [g, d] = mgr.nearestGroup(kOriginA + Vec2(0, 50));
@@ -152,7 +126,7 @@ TEST(MapTileManager, NoActiveGroupFarFromMaps) {
 TEST(MapTileManager, DetectsOverlappingGroups) {
   auto groups = twoGroups();
   groups.push_back(makeGroup("C", 500050, 4000010, 90));  // A と 30 m ほど重なる
-  MapTileManager mgr(managerConfig(false), groups, std::make_shared<FakeLoader>(), std::make_shared<FakeMatcher>());
+  MapTileManager mgr(managerConfig(false), groups, std::make_shared<FakeLoader>());
   const auto ov = mgr.overlappingGroups();
   ASSERT_EQ(ov.size(), 1u);
   EXPECT_EQ(ov[0].first, "A");
@@ -161,10 +135,10 @@ TEST(MapTileManager, DetectsOverlappingGroups) {
 
 TEST(MapTileManager, AsyncLoading) {
   auto loader = std::make_shared<FakeLoader>();
-  MapTileManager mgr(managerConfig(true), twoGroups(), loader, std::make_shared<FakeMatcher>());
+  MapTileManager mgr(managerConfig(true), twoGroups(), loader);
   mgr.update(0.0, kOriginB, 0.0, 0.0, true);
   mgr.waitIdle();
-  const auto target = mgr.currentTarget();
+  const auto target = mgr.currentRegion();
   ASSERT_TRUE(target);
   EXPECT_EQ(target->group, "B");
   EXPECT_EQ(loader->loads.load(), 16);
@@ -172,4 +146,55 @@ TEST(MapTileManager, AsyncLoading) {
   mgr.update(0.1, kOriginB + Vec2(0.2, 0), 0.0, 0.0);
   mgr.waitIdle();
   EXPECT_EQ(mgr.stats().target_builds, 1u);
+}
+
+TEST(MapTileManager, DefaultRegionHoldsTilePoints) {
+  // 既定の領域（TileSetRegion）: 読み込んだタイルの点をそのまま持ち、アンカーで UTM にできる
+  MapTileManager mgr(managerConfig(false), twoGroups(), std::make_shared<FakeLoader>());
+  mgr.update(0.0, kOriginA + Vec2(5, 5), 0.0, 0.0, true);
+  const auto r = mgr.currentRegionAs<TileSetRegion>();
+  ASSERT_TRUE(r);
+  EXPECT_EQ(r->tile_data.size(), 16u);
+  EXPECT_EQ(r->points().size(), 1600u);
+  const auto utm = r->pointsUtm();
+  ASSERT_EQ(utm.size(), 1600u);
+  // グループ A はアンカーが kOriginA、地図の x 軸がグリッド北から 90°（= UTM の東）なので、地図座標 + kOriginA
+  const Vec3f& p = r->points().front();
+  EXPECT_NEAR(utm.front().x(), kOriginA.x() + p.x(), 1e-6);
+  EXPECT_NEAR(utm.front().y(), kOriginA.y() + p.y(), 1e-6);
+}
+
+TEST(MapTileManager, CustomBuilderAndCallback) {
+  // 使う側の型の領域を作るビルダーと、差し替えのたびに呼ばれる関数
+  struct Counted : MapRegion {
+    std::size_t tile_count = 0;
+  };
+  int built = 0;
+  const RegionBuilder builder = [&built](const std::string& group, const MapAnchor& anchor,
+                                         const std::vector<std::shared_ptr<const TileData>>& tiles) {
+    auto r = std::make_shared<Counted>();
+    r->group = group;
+    r->anchor = anchor;
+    for (const auto& t : tiles) {
+      r->tiles.push_back(t->id);
+      r->num_points += t->points.size();
+    }
+    r->tile_count = tiles.size();
+    ++built;
+    return r;
+  };
+  MapTileManager mgr(managerConfig(true), twoGroups(), std::make_shared<FakeLoader>(), builder);
+  std::vector<std::string> seen;
+  mgr.setRegionCallback([&seen](std::shared_ptr<const MapRegion> r) { seen.push_back(r ? r->group : "(none)"); });
+  mgr.update(0.0, kOriginA, 0.0, 0.0, true);
+  mgr.waitIdle();
+  const auto r = mgr.currentRegionAs<Counted>();
+  ASSERT_TRUE(r);
+  EXPECT_EQ(r->tile_count, 16u);
+  EXPECT_EQ(built, 1);
+  EXPECT_FALSE(mgr.currentRegionAs<TileSetRegion>());  // 型が違えば nullptr
+  mgr.update(1.0, kOriginA + Vec2(0, 500), 0.0, 0.0, true);  // 地図から離れると領域が無くなる
+  mgr.waitIdle();
+  EXPECT_FALSE(mgr.currentRegion());
+  EXPECT_EQ(seen, (std::vector<std::string>{"A", "(none)"}));
 }

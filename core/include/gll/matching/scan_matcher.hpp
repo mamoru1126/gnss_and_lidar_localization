@@ -4,6 +4,7 @@
 
 #include "gll/common/config.hpp"
 #include "gll/map/map_anchor.hpp"
+#include "gll/map/map_region.hpp"
 #include "gll/map/tile.hpp"
 
 #include <Eigen/Geometry>
@@ -16,15 +17,9 @@
 namespace gll {
 
 /// 位置合わせのターゲット（アクティブグループのロード済みタイルを結合したもの）。中身は実装ごとに持つ。
-class MatchTarget {
+/// gll_map の MapRegion を継承する（group・anchor・tiles・num_points）。照合の結果は anchor で UTM に変換する（設計書 5.5 節）。
+class MatchTarget : public MapRegion {
  public:
-  virtual ~MatchTarget() = default;
-
-  std::string group;          ///< 地図グループ ID
-  MapAnchor anchor;           ///< このグループのアンカー（照合の結果はこれで UTM に変換する。設計書 5.5 節）
-  std::vector<TileId> tiles;  ///< 含まれるタイル
-  std::size_t num_points = 0;
-
   /// 地図座標 (x, y) から水平距離 radius 以内の点の z を小さい順に並べ、下から fraction の位置の値を返す
   /// （地面の高さの推定。地図上での初期化で z を決めるのに使う）。点が無ければ nullopt。
   virtual std::optional<double> groundHeight(double x, double y, double radius, double fraction = 0.1) const = 0;
@@ -91,5 +86,13 @@ class IScanMatcher {
   virtual PoseSearchResult search(const std::vector<Vec3f>& points_base, const MatchTarget& target,
                                   const PoseSearchRequest& request) const = 0;
 };
+
+/// MapTileManager に渡す RegionBuilder（領域 = このマッチャのターゲット）。
+inline RegionBuilder targetBuilder(std::shared_ptr<const IScanMatcher> matcher) {
+  return [matcher](const std::string& group, const MapAnchor& anchor,
+                   const std::vector<std::shared_ptr<const TileData>>& tiles) -> std::shared_ptr<const MapRegion> {
+    return matcher->buildTarget(group, anchor, tiles);
+  };
+}
 
 }  // namespace gll

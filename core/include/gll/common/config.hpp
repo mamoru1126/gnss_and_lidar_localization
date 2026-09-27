@@ -2,6 +2,7 @@
 #pragma once
 
 #include "gll/common/types.hpp"
+#include "gll/map/map_manager_config.hpp"
 
 #include <Eigen/Geometry>
 
@@ -129,17 +130,7 @@ struct LidarConfig {
   bool async = true;                 ///< 別スレッドで照合する（テストでは false にして同期で処理する）
 };
 
-/// 地図タイルの管理（設計書 5 章）。
-struct MapManagerConfig {
-  double load_radius = 60.0;         ///< [m]
-  double unload_radius = 90.0;       ///< [m]
-  double lookahead_time = 3.0;       ///< [s]
-  double update_distance = 1.0;      ///< この距離を動いたら、必要なタイルとアクティブグループを見直す [m]
-  double update_interval = 1.0;      ///< 動いていなくても、この間隔で見直す [s]
-  double group_switch_margin = 10.0; ///< アクティブグループの切り替えのヒステリシス [m]
-  int min_target_points = 500;       ///< ターゲットの点数がこれ未満なら照合しない
-  bool async = true;                 ///< 別スレッドでロードする（テストでは false）
-};
+// 地図タイルの管理の設定 MapManagerConfig は gll_map の gll/map/map_manager_config.hpp（設計書 5 章）。
 
 /// 地図上での初期化と再位置推定（設計書 3.11 節・3.13.4 節）。
 struct RelocalizeConfig {

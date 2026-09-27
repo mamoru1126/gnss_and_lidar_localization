@@ -1,20 +1,22 @@
-// 地図タイルの動的ロードと、位置合わせのターゲットの管理（設計書 5.3〜5.5 節）。
+// 地図タイルの動的ロード（設計書 5.3〜5.5 節、map/README.md）。
 //
 // - 必要なタイル: 現在位置と先読みした位置のどちらかから load_radius 以内（全グループ）。次に入るグループのタイルも
 //   前もってキャッシュに入る。現在位置から unload_radius より遠くなったタイルは捨てる。
 // - アクティブグループ: 現在位置（先読みを含まない）から最も近いグループ（load_radius 以内）。今のグループより
 //   group_switch_margin 以上近いグループが現れたときだけ切り替える。
-// - ターゲット: アクティブグループのロード済みタイルだけで作り、できたら差し替える（ダブルバッファ）。
-//   照合中のスレッドは shared_ptr でターゲットを持つので、差し替えの影響を受けない。
+// - 領域（MapRegion）: アクティブグループのロード済みタイルだけで RegionBuilder が作り、できたら差し替える
+//   （ダブルバッファ）。使う側は shared_ptr で領域を持つので、差し替えの影響を受けない。
+//   Stats の target_* は、この領域（位置合わせのターゲット）のこと。
 #pragma once
 
-#include "gll/common/config.hpp"
 #include "gll/common/logger.hpp"
 #include "gll/map/map_config.hpp"
-#include "gll/matching/scan_matcher.hpp"
+#include "gll/map/map_manager_config.hpp"
+#include "gll/map/map_region.hpp"
 
 #include <array>
 #include <condition_variable>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -39,8 +41,11 @@ class MapTileManager {
     std::size_t target_builds = 0;
   };
 
+  using RegionCallback = std::function<void(std::shared_ptr<const MapRegion>)>;
+
+  /// builder を省略すると、読み込んだタイルを並べるだけの TileSetRegion を作る。
   MapTileManager(const MapManagerConfig& cfg, std::vector<MapGroup> groups, std::shared_ptr<const ITileLoader> loader,
-                 std::shared_ptr<const IScanMatcher> matcher, std::shared_ptr<ILogger> logger = nullptr);
+                 RegionBuilder builder = buildTileSetRegion, std::shared_ptr<ILogger> logger = nullptr);
   ~MapTileManager();
   MapTileManager(const MapTileManager&) = delete;
   MapTileManager& operator=(const MapTileManager&) = delete;
@@ -50,8 +55,16 @@ class MapTileManager {
   /// force = true なら間隔によらず見直す。
   void update(double t, const Vec2& position, double yaw, double speed, bool force = false);
 
-  /// 今のターゲット（アクティブグループが無い、またはまだ準備中なら nullptr）。
-  std::shared_ptr<const MatchTarget> currentTarget() const;
+  /// 今の領域（アクティブグループが無い、まだ準備中、または点が min_target_points 未満なら nullptr）。
+  std::shared_ptr<const MapRegion> currentRegion() const;
+  /// 今の領域を、RegionBuilder が作った型として取り出す（型が違えば nullptr）。
+  template <class T>
+  std::shared_ptr<const T> currentRegionAs() const {
+    return std::dynamic_pointer_cast<const T>(currentRegion());
+  }
+  /// 領域が差し替わるたびに呼ぶ関数を設定する（nullptr になるときも呼ぶ）。非同期モードではロードのスレッドから
+  /// 呼ばれるので、中で時間のかかる処理をしない。
+  void setRegionCallback(RegionCallback cb);
   /// アクティブグループ（無ければ空文字列）。
   std::string activeGroup() const;
   /// 位置 p（UTM）から、いずれかのグループのタイルまでの距離が radius 以内か。
@@ -81,7 +94,7 @@ class MapTileManager {
   MapManagerConfig cfg_;
   std::vector<MapGroup> groups_;
   std::shared_ptr<const ITileLoader> loader_;
-  std::shared_ptr<const IScanMatcher> matcher_;
+  RegionBuilder builder_;
   std::shared_ptr<ILogger> logger_;
   std::vector<TileEntry> tiles_;                       ///< 全グループのタイル（起動時に作り、以後は読むだけ）
   std::vector<std::pair<Vec2, Vec2>> group_bounds_;    ///< グループごとのタイルの範囲（UTM）
@@ -103,7 +116,8 @@ class MapTileManager {
   int requested_active_ = -1;              ///< groups_ の添字（-1 は無し）
   Vec2 requested_position_ = Vec2::Zero();
   int active_ = -1;                        ///< 見直しで決めたアクティブグループ（ヒステリシス用）
-  std::shared_ptr<const MatchTarget> front_;
+  std::shared_ptr<const MapRegion> front_;
+  RegionCallback on_region_;
   Stats stats_;
 
   // ロードワーカーだけが触る

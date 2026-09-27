@@ -199,8 +199,8 @@ void LocalizerNode::setupMap(const gll::LocalizerConfig& cfg) {
     local_origin_ = gll::Vec2(std::round(a.x() / 100.0) * 100.0, std::round(a.y() / 100.0) * 100.0);
   }
   auto matcher = std::make_shared<gll::GicpMatcher>(cfg.lidar, cfg.relocalize);
-  auto maps = std::make_shared<gll::MapTileManager>(cfg.map, std::move(groups),
-                                                    std::make_shared<gll::BinaryTileLoader>(), matcher, logger);
+  auto maps = std::make_shared<gll::MapTileManager>(cfg.map, std::move(groups), std::make_shared<gll::BinaryTileLoader>(),
+                                                    gll::targetBuilder(matcher), logger);
   localizer_->setMap(maps, matcher);
   lidar_enabled_ = true;
   RCLCPP_INFO(get_logger(), "LiDAR localization enabled: %zu map groups, %zu tiles (%s)", ms.groups.size(), tiles,

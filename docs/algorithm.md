@@ -513,7 +513,7 @@ process(scan, ω = gyro − bias3, v = (s · v_odom, v_lat, 0)):     // スキ�
 #### 10.3.2 位置合わせ（追跡）
 
 ```text
-target = mapManager.currentTarget()                  // アクティブグループのロード済みタイル。無ければ照合しない
+target = mapManager.currentRegionAs<MatchTarget>()   // アクティブグループのロード済みタイル。無ければ照合しない
 X̂(t) = history.stateAt(scan.t)                        // スキャン時刻の予測姿勢
 X_map = target.anchor.toMap(X̂(t))                      // ターゲットのグループのアンカーで地図座標へ
 init  = (X_map.x, X_map.y, z, roll, pitch, X_map.ψ)    // z: 推定した楕円体高、roll / pitch: 姿勢推定器

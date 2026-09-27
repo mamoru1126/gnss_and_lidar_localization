@@ -120,7 +120,8 @@ class LidarSimulator {
 
   std::shared_ptr<MapTileManager> makeMapManager(std::shared_ptr<ILogger> logger = nullptr) const {
     return std::make_shared<MapTileManager>(lc_.map, map_groups_, std::make_shared<BinaryTileLoader>(),
-                                            std::make_shared<GicpMatcher>(lc_.lidar, lc_.relocalize), logger);
+                                            targetBuilder(std::make_shared<GicpMatcher>(lc_.lidar, lc_.relocalize)),
+                                            logger);
   }
 
   Pose2D toUtm(const Vec2& xy, double yaw) const {

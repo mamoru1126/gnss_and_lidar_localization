@@ -1,6 +1,6 @@
 #include "gll/common/geodesy.hpp"
 
-#include "gll/common/types.hpp"
+#include "gll/common/math.hpp"
 
 #include <GeographicLib/UTMUPS.hpp>
 

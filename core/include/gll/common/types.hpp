@@ -2,38 +2,15 @@
 // 座標系: base_link は前・左・上（FLU）。map は UTM（Easting, Northing, 楕円体高）。
 #pragma once
 
-#include <Eigen/Core>
-#include <Eigen/Geometry>
+#include "gll/common/math.hpp"
 
-#include <cmath>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace gll {
 
-using Vec2 = Eigen::Vector2d;
-using Vec3 = Eigen::Vector3d;
-using Vec3f = Eigen::Vector3f;
-using Vec5 = Eigen::Matrix<double, 5, 1>;
-using Vec6 = Eigen::Matrix<double, 6, 1>;
-using Mat2 = Eigen::Matrix2d;
-using Mat3 = Eigen::Matrix3d;
-using Mat5 = Eigen::Matrix<double, 5, 5>;
-using Mat6 = Eigen::Matrix<double, 6, 6>;
-
-constexpr double kPi = 3.14159265358979323846;
 constexpr double kGravity = 9.80665;
-
-inline double deg2rad(double d) { return d * kPi / 180.0; }
-inline double rad2deg(double r) { return r * 180.0 / kPi; }
-
-/// 角度を [-pi, pi) に正規化する。
-inline double wrapAngle(double a) {
-  a = std::fmod(a + kPi, 2.0 * kPi);
-  if (a < 0.0) a += 2.0 * kPi;
-  return a - kPi;
-}
 
 /// IMU の 1 サンプル（base_link 座標系に回転済み）。
 struct ImuSample {
@@ -77,12 +54,6 @@ struct LidarScan {
   double t = 0.0;
   std::vector<Vec3f> points;
   std::vector<float> times;
-};
-
-struct Pose2D {
-  double x = 0.0;
-  double y = 0.0;
-  double yaw = 0.0;
 };
 
 enum class LocalizationStatus {

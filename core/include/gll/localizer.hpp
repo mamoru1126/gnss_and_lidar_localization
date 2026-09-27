@@ -94,7 +94,8 @@ class Localizer {
   Localizer(const Localizer&) = delete;
   Localizer& operator=(const Localizer&) = delete;
 
-  /// 地図とスキャンマッチャを設定する（LiDAR を使う場合。起動時に 1 回）。
+  /// 地図とスキャンマッチャを設定する（LiDAR を使う場合。起動時に 1 回）。maps は、領域として matcher のターゲットを
+  /// 作るように targetBuilder(matcher) を渡して作ったもの（ほかの領域では照合しない）。
   void setMap(std::shared_ptr<MapTileManager> maps, std::shared_ptr<const IScanMatcher> matcher);
 
   void addImu(const ImuSample& s);
