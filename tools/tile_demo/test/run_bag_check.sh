@@ -5,7 +5,18 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tools="$(dirname "$here")"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+# 失敗したら、最後の出力を GitHub Actions の注釈（::error::）にも出す（ログを開かなくても原因が分かるように）
+log="$(mktemp)"
+exec > >(tee "$log") 2>&1
+on_exit() {
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    msg="$(tail -n 60 "$log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+    echo "::error title=run_bag_check.sh failed (exit $rc)::$msg"
+  fi
+  rm -rf "$work" "$log"
+}
+trap on_exit EXIT
 
 tiler="$(find /ws/install -type f -name tiled_pcd_map_tiler | head -1)"
 demo="$(find /ws/install -type f -name tiled_pcd_map_demo | head -1)"
