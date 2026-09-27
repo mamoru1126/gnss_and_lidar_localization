@@ -2,7 +2,7 @@
 // タイルファイルは独自のバイナリ形式（float32 の xyz と、点ごとの共分散の上三角 6 要素）。
 #pragma once
 
-#include "gll/common/types.hpp"
+#include "gll/common/math.hpp"
 
 #include <array>
 #include <memory>

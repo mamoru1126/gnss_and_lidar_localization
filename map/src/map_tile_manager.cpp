@@ -49,12 +49,12 @@ bool quadsOverlap(const std::array<Vec2, 4>& a, const std::array<Vec2, 4>& b) {
 }  // namespace
 
 MapTileManager::MapTileManager(const MapManagerConfig& cfg, std::vector<MapGroup> groups,
-                               std::shared_ptr<const ITileLoader> loader, std::shared_ptr<const IScanMatcher> matcher,
+                               std::shared_ptr<const ITileLoader> loader, RegionBuilder builder,
                                std::shared_ptr<ILogger> logger)
     : cfg_(cfg),
       groups_(std::move(groups)),
       loader_(std::move(loader)),
-      matcher_(std::move(matcher)),
+      builder_(builder ? std::move(builder) : RegionBuilder(buildTileSetRegion)),
       logger_(logger ? std::move(logger) : std::make_shared<NullLogger>()) {
   for (std::size_t g = 0; g < groups_.size(); ++g) {
     const MapGroup& grp = groups_[g];
@@ -212,15 +212,16 @@ void MapTileManager::processPending() {
     for (const auto& [i, data] : cache_)
       if (static_cast<int>(tiles_[i].group_index) == active) tset.insert(i);
   const bool rebuild = active != target_group_ || tset != target_tiles_;
-  std::shared_ptr<const MatchTarget> target;
+  std::shared_ptr<const MapRegion> target;
   if (rebuild && active >= 0 && !tset.empty()) {
     std::vector<std::shared_ptr<const TileData>> data;
     for (const std::size_t i : tset) data.push_back(cache_.at(i));
     const MapGroup& g = groups_[static_cast<std::size_t>(active)];
-    target = matcher_->buildTarget(g.id, g.anchor, data);
-    if (static_cast<int>(target->num_points) < cfg_.min_target_points) {
+    target = builder_(g.id, g.anchor, data);
+    if (target && static_cast<int>(target->num_points) < cfg_.min_target_points) {
       std::ostringstream os;
-      os << "map group " << g.id << ": only " << target->num_points << " points around here, not used for matching";
+      os << "map group " << g.id << ": only " << target->num_points << " points around here (min_target_points "
+         << cfg_.min_target_points << "), no region";
       logger_->warn(os.str());
       target.reset();
     }
@@ -230,10 +231,12 @@ void MapTileManager::processPending() {
     target_tiles_ = tset;
   }
 
+  RegionCallback cb;
   {
     std::lock_guard<std::mutex> lk(mtx_);
     if (rebuild) {
       front_ = target;
+      cb = on_region_;
       ++stats_.target_builds;
       stats_.target_tiles = target ? target->tiles.size() : 0;
       stats_.target_points = target ? target->num_points : 0;
@@ -243,14 +246,23 @@ void MapTileManager::processPending() {
     for (const auto& [i, data] : cache_) ++stats_.loaded_tiles_per_group[groups_[tiles_[i].group_index].id];
     stats_.tile_loads += loads;
     stats_.tile_load_failures += failures;
+  }
+  if (cb) cb(target);  // waitIdle() がこの呼び出しの後に戻るよう、busy_ はここで下ろす
+  {
+    std::lock_guard<std::mutex> lk(mtx_);
     busy_ = false;
   }
   idle_cv_.notify_all();
 }
 
-std::shared_ptr<const MatchTarget> MapTileManager::currentTarget() const {
+std::shared_ptr<const MapRegion> MapTileManager::currentRegion() const {
   std::lock_guard<std::mutex> lk(mtx_);
   return front_;
+}
+
+void MapTileManager::setRegionCallback(RegionCallback cb) {
+  std::lock_guard<std::mutex> lk(mtx_);
+  on_region_ = std::move(cb);
 }
 
 std::string MapTileManager::activeGroup() const {

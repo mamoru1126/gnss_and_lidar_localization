@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Eigen3 NO_MODULE)
+find_dependency(Threads)
+# gll_map は静的ライブラリなので、非公開の依存もリンク時に必要になる
+find_dependency(yaml-cpp)
+set(GLL_MAP_WITH_SMALL_GICP @GLL_MAP_WITH_SMALL_GICP@)
+if(GLL_MAP_WITH_SMALL_GICP)
+  find_dependency(OpenMP COMPONENTS CXX)
+  find_dependency(small_gicp)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/gll_mapTargets.cmake")
+check_required_components(gll_map)

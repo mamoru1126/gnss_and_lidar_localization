@@ -1,9 +1,9 @@
 # ソフトウェア構成: コンポーネント図・クラス図
 
-- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.10） / [アルゴリズム説明書](./algorithm.md)
-- 状態: ドラフト（v0.6。Phase 2 の実装（スキャンマッチング、地図タイル、地図上での初期化、再位置推定）に合わせて、クラス図とシーケンス図を実装のとおりに更新）
+- 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.11） / [アルゴリズム説明書](./algorithm.md) / [gll_map](../map/README.md)
+- 状態: ドラフト（v0.7。地図の部分を単体で使えるライブラリ `gll_map`（`map/`）に切り出した。v0.6 で Phase 2 の実装に合わせてクラス図とシーケンス図を更新）
 
-本書は、設計書 7 章のアーキテクチャを、実装の粒度のコンポーネント図・クラス図に落としたものである。v0.6 で、Phase 2 までの実装（`core/include/gll/` のヘッダ）に合わせた。図では、引数の `const` 参照やスマートポインタの細部を省略している。
+本書は、設計書 7 章のアーキテクチャを、実装の粒度のコンポーネント図・クラス図に落としたものである。v0.6 で、Phase 2 までの実装（`map/include/gll/` と `core/include/gll/` のヘッダ）に合わせた。図では、引数の `const` 参照やスマートポインタの細部を省略している。
 
 ---
 
@@ -11,9 +11,9 @@
 
 | 原則 | 内容 |
 |---|---|
-| 依存の方向 | `ros2`（IF 層） → `core`（ロジック層）の一方向だけ。`core` は ROS のヘッダ・型・時刻・ログ・パラメータを一切参照しない |
+| 依存の方向 | `ros2`（IF 層） → `core`（ロジック層） → `map`（地図のライブラリ `gll_map`）の一方向だけ。`core` と `map` は ROS のヘッダ・型・時刻・ログ・パラメータを一切参照しない。`map` は `core` を知らないので単体で使える（v0.7） |
 | 時刻 | `core` 内の時刻はすべて、データに付いたタイムスタンプ（`double` 秒）で扱う。システム時計は参照しない（処理時間の計測だけは例外） |
-| 外部への口 | `core` が外部に依存する箇所は、インターフェース（`ILogger`、`ITileLoader`、`IScanMatcher`、`IStateEstimator`）で抽象化し、テストで差し替えられるようにする。small_gicp の型は `GicpMatcher` の実装ファイルの中に閉じ込める |
+| 外部への口 | `core` が外部に依存する箇所は、インターフェース（`ILogger`、`ITileLoader`、`IScanMatcher`、`IStateEstimator`）と関数（`RegionBuilder`）で抽象化し、テストで差し替えられるようにする。small_gicp の型は `GicpMatcher`（と `gll_map` のタイル化の共分散の計算）の実装ファイルの中に閉じ込める |
 | 推定器は状態を持たない | `IStateEstimator` は `FilterState` を受け取って返す純粋関数の集まりにする。状態は `StateHistory` が保持するので、遅延観測の再伝播（replay）が簡単になる |
 | 観測はデータ型 | 観測は `std::variant` のデータ型（`Measurement`）で表す。線形化（残差・H・R の計算）は推定器側で行う。Invariant EKF と ESEKF で誤差の定義が異なり、H も変わるため |
 | スレッド | `core` が持つスレッドは、LiDAR の照合用（`Localizer` の中）と地図ロード用（`MapTileManager` の中）の 2 本だけ。どちらも設定（`lidar.async`、`map.async`）で止められ、その場合は呼び出し側のスレッドで処理する（テストはこの形で決定的に動かす）。位置合わせの中は OpenMP で並列化する。フィルタの状態は `Localizer` 内の 1 つの mutex で保護し、位置合わせの間は mutex を持たない |
@@ -49,13 +49,17 @@ flowchart TB
     FACADE["Localizer<br/>（ファサード）"]
     EST["estimation"]
     MEAS["measurement"]
-    MAPC["map"]
     MATCH["matching"]
-    COMMON["common"]
+    COMMON["common<br/>センサデータ・設定"]
+  end
+
+  subgraph GLLMAP["gll_map（地図のライブラリ・ROS 非依存・単体で使える）"]
+    MAPC["map<br/>タイル・動的ロード"]
+    BASE["common<br/>SE2 / UTM / ILogger"]
+    TILER["gll_map_tiler"]
   end
 
   subgraph TOOLS["tools（オフライン）"]
-    TILER["gll_map_tiler"]
     CALIB["gll_anchor_calibrator<br/>（Phase 3）"]
   end
 
@@ -63,11 +67,12 @@ flowchart TB
   NODE --> CONV --> FACADE
   NODE --> DIAG
   NODE <--> SAVED
-  RLOG -. ILogger を実装 .-> COMMON
+  RLOG -. ILogger を実装 .-> BASE
   FACADE --> NODE --> DOWN
 
   FACADE --> EST & MEAS & MAPC & MATCH
-  EST & MEAS & MAPC & MATCH --> COMMON
+  EST & MEAS & MATCH --> COMMON
+  COMMON & MAPC --> BASE
   MAPC -- "maps.yaml / ITileLoader" --> TILES
 
   MAPFILES --> TILER --> TILES
@@ -85,7 +90,7 @@ flowchart TB
   MEAS["measurement<br/>AttitudeEstimator<br/>MotionInputBuilder<br/>GnssMeasurementBuilder<br/>LidarMeasurementBuilder<br/>StopDetector"]
   EST["estimation<br/>StateHistory / MahalanobisGate<br/>SourceArbiter / RecoveryManager<br/>OutputSmoother / StatusMonitor<br/>Initializer"]
   MATCH["matching<br/>ScanPreprocessor<br/>MatchTarget / SourceCloud"]
-  MAPC["map<br/>MapTileManager（スレッド）<br/>MapGroup / TileIndex / MapAnchor<br/>maps.yaml・タイル・PCD の入出力"]
+  MAPC["map（gll_map）<br/>MapTileManager（スレッド）<br/>MapRegion / MapGroup / TileIndex / MapAnchor<br/>maps.yaml・タイル・PCD の入出力"]
   COMMON["common<br/>SE2 / UtmProjector<br/>型定義・設定・前回位置の保存"]
 
   ISE{{"«interface»<br/>IStateEstimator"}}
@@ -102,7 +107,7 @@ flowchart TB
   LOC --> MEAS
   LOC --> EST
   LOC -->|"デスキュー"| MATCH
-  LOC -->|"currentTarget"| MAPC
+  LOC -->|"currentRegionAs"| MAPC
   LOC -->|"prepareSource / align / search"| ISM
   LOC --> ILG
 
@@ -110,7 +115,7 @@ flowchart TB
   ISE -.-> INVEKF
   ISE -.-> ESEKF
   ISM -.-> GICP
-  MAPC -->|"buildTarget"| ISM
+  MAPC -->|"RegionBuilder = buildTarget"| ISM
   MAPC --> ITL
   ITL -.-> BTL
   ILG -.-> RLOG
@@ -121,7 +126,7 @@ flowchart TB
   MAPC --> COMMON
 ```
 
-`IScanMatcher` とその入出力の型（`MatchTarget`、`SourceCloud`、`RegistrationResult`）は `matching` パッケージにある。`MatchTarget` はグループのアンカー（`map` の `MapAnchor`）を持ち、`MapTileManager` は `IScanMatcher::buildTarget` でターゲットを作るので、`map` と `matching` は互いの型を参照する（ヘッダの循環はない）。
+`IScanMatcher` とその入出力の型（`MatchTarget`、`SourceCloud`、`RegistrationResult`）は `matching`（`gll_core`）にある。`map` は `gll_map` パッケージで、`gll_core` の型を参照しない（v0.7）。`MapTileManager` は、読み込んだタイルから「領域」（`MapRegion`）を作る関数（`RegionBuilder`）を受け取る。`gll_core` は `MatchTarget` を `MapRegion` の派生にし、`IScanMatcher::buildTarget` を呼ぶ関数（`targetBuilder(matcher)`）を渡すので、領域がそのまま照合のターゲットになる。
 
 ### 2.3 コンポーネントの責務
 
@@ -131,10 +136,10 @@ flowchart TB
 | `measurement` | センサデータを「推定器の入力（`MotionInput`）」と「観測（`Measurement`）」に変換する。採用判定（RTK-FIX、精度、停止、位置合わせの品質など）もここで行う | common, matching（`RegistrationResult`） |
 | `estimation` | 推定アルゴリズム（Invariant EKF）、履歴と再伝播、外れ値ゲート、出力整形、状態監視、初期化。GNSS 優先の判断と LiDAR の食い違い判定（`SourceArbiter`）、再アンカー・再位置推定・`LOST` の判定（`RecoveryManager`） | common |
 | `matching` | LiDAR の前処理（デスキュー・base_link への変換・クロップ）と、位置合わせのインターフェース。位置合わせ（GICP）、複数の初期値からの探索、品質指標（インライア率・overlap）の計算は `GicpMatcher` が行う | small_gicp, OpenMP, common |
-| `map` | 地図グループとアンカー（maps.yaml）、タイルの索引とファイル、タイルのロードとアンロード、アクティブグループの決定、位置合わせのターゲットの構築とダブルバッファ。点群地図のタイル化（`gll_map_tiler` の中身）と PCD の読み書き | yaml-cpp, small_gicp（タイル化の共分散）, common, matching（ターゲット構築） |
-| `common` | 型、設定、SE(2) 演算、測地変換、ロガーのインターフェース、前回位置の保存と読み込み | Eigen, GeographicLib |
+| `map`（`gll_map`） | 地図グループとアンカー（maps.yaml）、タイルの索引とファイル、タイルのロードとアンロード、アクティブグループの決定、領域（`MapRegion`）の構築とダブルバッファ。点群地図のタイル化（`gll_map_tiler` の中身）と PCD の読み書き。単体でも使える（[map/README.md](../map/README.md)） | yaml-cpp, GeographicLib, small_gicp（任意。タイル化の共分散） |
+| `common` | `gll_core`: センサデータと出力の型、設定、前回位置の保存と読み込み。`gll_map`: 基本の型と角度（`math.hpp`）、SE(2) 演算、測地変換、ロガーのインターフェース | Eigen, GeographicLib |
 | `gll_ros2` | ROS メッセージ ⇔ コアの型の変換、パラメータの読み込み、地図の設定（maps.yaml）、publish、TF、診断、前回位置の定期保存 | rclcpp, gll_core |
-| `tools` | `gll_map_tiler`: 統合済み地図（PCD）のタイル化（点ごとの共分散の事前計算を含む）。`gll_anchor_calibrator`（Phase 3）: アンカーの較正 | gll_core |
+| `tools` | `gll_map_tiler`（`gll_map`）: 統合済み地図（PCD）のタイル化（点ごとの共分散の事前計算を含む）。`gll_tile_demo`（`gll_map`）: タイル読み込みのデモの記録。`gll_anchor_calibrator`（Phase 3）: アンカーの較正 | gll_map |
 
 ---
 
@@ -762,12 +767,14 @@ classDiagram
     +align(SourceCloud, MatchTarget, Isometry3d init) RegistrationResult*
     +search(points_base, MatchTarget, PoseSearchRequest) PoseSearchResult*
   }
-  class MatchTarget {
-    <<abstract>>
+  class MapRegion {
     +string group
     +MapAnchor anchor
     +vector~TileId~ tiles
     +size_t num_points
+  }
+  class MatchTarget {
+    <<abstract>>
     +groundHeight(x, y, radius, fraction) optional~double~*
     +samplePoints(size_t max_points) vector~Vector3f~*
   }
@@ -830,6 +837,7 @@ classDiagram
   }
 
   IScanMatcher <|.. GicpMatcher
+  MapRegion <|-- MatchTarget
   MatchTarget <|-- GicpTarget
   SourceCloud <|-- GicpSource
   IScanMatcher ..> MatchTarget
@@ -934,16 +942,32 @@ classDiagram
   class BinaryTileLoader {
     +load(TileMeta) TileDataPtr
   }
+  class MapRegion {
+    +string group
+    +MapAnchor anchor
+    +vector~TileId~ tiles
+    +size_t num_points
+  }
+  class TileSetRegion {
+    +vector~TileDataPtr~ tile_data
+    +points() vector~Vector3f~
+    +pointsUtm() vector~Vector3d~
+  }
   class MapTileManager {
     -MapManagerConfig cfg_
     -vector~MapGroup~ groups_
     -vector~TileEntry~ tiles_
     -TileCache cache_
-    -MatchTargetPtr front_
+    -RegionBuilder builder_
+    -MapRegionPtr front_
+    -RegionCallback on_region_
     -int active_
     -thread worker_
+    +MapTileManager(cfg, groups, loader, builder, logger)
     +update(t, position, yaw, speed, force)
-    +currentTarget() MatchTargetPtr
+    +currentRegion() MapRegionPtr
+    +currentRegionAs~T~() TPtr
+    +setRegionCallback(RegionCallback)
     +activeGroup() string
     +hasMapWithin(position, radius) bool
     +nearestGroup(position) GroupDistance
@@ -961,9 +985,6 @@ classDiagram
     +size_t tile_load_failures
     +size_t target_builds
   }
-  class IScanMatcher {
-    <<interface>>
-  }
 
   MapSetConfig *-- MapGroupConfig
   MapGroupConfig *-- AnchorConfig
@@ -977,8 +998,10 @@ classDiagram
   ITileLoader ..> TileData
   MapTileManager *-- MapGroup
   MapTileManager --> ITileLoader
-  MapTileManager --> IScanMatcher : buildTarget
   MapTileManager ..> Stats
+  MapRegion <|-- TileSetRegion
+  MapTileManager ..> MapRegion : RegionBuilder で作る
+  MapRegion *-- MapAnchor
 ```
 
 関数（クラスに属さないもの）:
@@ -988,17 +1011,19 @@ classDiagram
 | `loadMapSetConfig(path)` | `map_config.hpp` | maps.yaml を読む（相対パスは maps.yaml のディレクトリから解決。ID の重複を検出） |
 | `loadMapGroups(MapSetConfig, UtmProjector)` | `map_config.hpp` | 各グループのアンカーを作り、tile_index.yaml を読んで `MapGroup` の一覧にする |
 | `writeTileFile` / `readTileFile` | `tile.hpp` | タイルファイル（独自のバイナリ形式。設計書 5.2 節）の読み書き |
-| `tileMap(points, TilerOptions, group)` / `writeTiles(dir, TilerResult)` | `map_tiler.hpp` | 点群を間引き、点ごとの共分散を付けてタイルに分け、ファイルに書く（`gll_map_tiler` の中身） |
+| `tileMap(points, TilerOptions, group)` / `writeTiles(dir, TilerResult)` | `map_tiler.hpp` | 点群を間引き（`voxelDownsample`）、点ごとの共分散を付けて（small_gicp があるとき）タイルに分け、ファイルに書く（`gll_map_tiler` の中身） |
+| `buildTileSetRegion(group, anchor, tiles)` | `map_region.hpp` | 既定の `RegionBuilder`（読み込んだタイルを並べるだけの `TileSetRegion`） |
 | `readPcd(path)` / `writePcd(path, points, format)` | `pcd_io.hpp` | PCD（ascii / binary / binary_compressed）の読み書き。PCL には依存しない |
 
 補足:
 
-- `TileCache` は `std::map<std::size_t, TileDataPtr>`（キーは全グループのタイルの通し番号）、`TileDataPtr` は `std::shared_ptr<const TileData>`、`GroupPair` は `std::pair<std::string, std::string>`、`GroupDistance` は（グループ ID, 距離）の組、`Stats` は `MapTileManager::Stats` の別名。`PackedCov` は点ごとの共分散の上三角 6 要素（float）。
+- `TileCache` は `std::map<std::size_t, TileDataPtr>`（キーは全グループのタイルの通し番号）、`TileDataPtr` は `std::shared_ptr<const TileData>`、`GroupPair` は `std::pair<std::string, std::string>`、`GroupDistance` は（グループ ID, 距離）の組、`Stats` は `MapTileManager::Stats` の別名。`PackedCov` は点ごとの共分散の上三角 6 要素（float）。`MapRegionPtr` は `std::shared_ptr<const MapRegion>`、`RegionBuilder` は（グループ ID、アンカー、読み込み済みタイル）から領域を作る `std::function`、`RegionCallback` は領域が差し替わったときに呼ぶ `std::function`。
+- この節のクラスと関数はすべて `gll_map`（`map/`）にある（v0.7）。`gll_core` の `MatchTarget` は `MapRegion` の派生で、`Localizer` は `currentRegionAs<MatchTarget>()` で照合のターゲットを受け取る。
 - `TileId` は（グループ ID, ix, iy）の組。タイルの番号はグループの中でしか一意でないため、グループ ID を含める（設計書 5.2 節、v0.9）。
 - `MapAnchor` は、地図グループの座標系 ⇔ map（UTM）の相似変換（回転 $`\varphi`$、縮尺 $`k`$）。緯度経度・方位で与える、UTM で直接与える、`anchor: local`（地図の座標をそのまま出力する）の 3 通りの与え方がある（設計書 4.2 節）。
 - `overlappingGroups` は、起動時にグループどうしのタイルの範囲（UTM での四隅）の重なりを調べる。重なりがあれば `Localizer::setMap` が WARN を出す（運用上の前提では重ならない。設計書 5.1 節）。
 - `update` は `update_distance`（既定 1 m）以上動いたか `update_interval`（既定 1 s）以上たったときだけ見直す。**アクティブグループ**は**現在位置**（先読みを含まない）から決める。各グループのタイルまでの距離が `load_radius` 以内のグループのうち最も近いものとし、今のグループより `group_switch_margin`（既定 10 m）以上近いグループが現れたときだけ切り替える（設計書 5.5 節）。**必要なタイル**は、現在位置と先読みした位置（`lookahead_time` 秒先）のどちらかから `load_radius` 以内のもの（全グループ。次に入るグループのタイルも前もって読んでおく）。
-- `update` は、必要なタイルかアクティブグループが変わったときだけワーカーに通知してすぐ戻る。ワーカーは不足しているタイルを読み込み、現在位置から `unload_radius` より遠いタイルを捨て、アクティブグループのロード済みタイルだけで `IScanMatcher::buildTarget` を呼んで新しいターゲットを作る。点が `min_target_points` 未満のターゲットは使わない。完成したら `front_` を差し替える（ダブルバッファ）。
+- `update` は、必要なタイルかアクティブグループが変わったときだけワーカーに通知してすぐ戻る。ワーカーは不足しているタイルを読み込み、現在位置から `unload_radius` より遠いタイルを捨て、アクティブグループのロード済みタイルだけで `RegionBuilder` を呼んで新しい領域を作る（`gll_core` では `IScanMatcher::buildTarget`）。点が `min_target_points` 未満の領域は使わない。完成したら `front_` を差し替え（ダブルバッファ）、`RegionCallback` があれば呼ぶ。
 - 照合中のスレッドは `shared_ptr` でターゲットを保持しているので、差し替えの影響を受けない。照合の結果は、そのターゲットが持つアンカー（`MatchTarget::anchor`）で UTM に変換する。`activeGroup()` は照合の途中で切り替わりうるので使わない（設計書 5.5 節、v0.9）。
 
 ### 3.7 gll_ros2（IF 層）
@@ -1082,7 +1107,7 @@ classDiagram
 
 - `conversions` と `diagnostics` は、`conversions.hpp` / `diagnostics.hpp` の自由関数の集まり（図では `<<utility>>` のクラスとして書いた）。`array36` は `std::array<double, 36>`。
 - IMU・ODOM・GNSS・初期姿勢のコールバックは、コンストラクタの中のラムダで書いている（変換して `Localizer` に渡すだけ）。
-- `setupMap` は `map.config_path` の maps.yaml を `loadMapSetConfig` / `loadMapGroups` で読み、`MapTileManager`（`BinaryTileLoader`、`GicpMatcher`）を作って `Localizer::setMap` に渡す。maps.yaml の UTM ゾーンが GNSS の設定と違えば起動を止める。可視化用の `map_local` の原点を指定していなければ、最初のグループのアンカー付近（100 m 単位に丸める）にする。
+- `setupMap` は `map.config_path` の maps.yaml を `loadMapSetConfig` / `loadMapGroups` で読み、`MapTileManager`（`BinaryTileLoader`、`targetBuilder(GicpMatcher)`）を作って `Localizer::setMap` に渡す。maps.yaml の UTM ゾーンが GNSS の設定と違えば起動を止める。可視化用の `map_local` の原点を指定していなければ、最初のグループのアンカー付近（100 m 単位に丸める）にする。
 - `toCore(PointCloud2, PointCloudOptions)` は、点ごとの時刻のフィールドを自動で判別する（`time` / `t` / `timestamp` / `time_stamp` / `offset_time`。単位は型と値の大きさから決める。設計書 6.1 節）。最初のスキャンで、使ったフィールドをログに出す。
 - `makeLocalizationStatus` は、`LocalizationOutput` から `DiagnosticStatus` を作る（設計書 3.12 節）。状態からレベルを決め（`DEGRADED` と `INITIALIZING` は WARN、`LOST` は ERROR）、`dr_distance_exceeded` のときは状態にかかわらず ERROR にして、メッセージに `dead reckoning for <距離> m without GNSS / LiDAR position (limit <上限> m)` を付ける。`makeMapStatus` は、アクティブグループとロード済みタイルを出し、地図グループのアンカーずれ（GNSS FIX 中の LiDAR との差の平均）が閾値を超えたら WARN「anchor of map group ... needs calibration」、タイルの読み込みに失敗していても WARN にする。ROS に依存するのはメッセージ型だけなので、単体テスト（`test_diagnostics`）で条件を確かめている。
 - `savePose` は、出力が `INITIALIZING` / `LOST` でなければ `init.save_interval`（既定 1 s）ごとに、フィルタの推定値を `init.saved_pose_path` に保存する。デストラクタでも保存する。起動時に `init.use_saved_pose` なら読み込んで、`InitialPoseSource::SAVED` として `setInitialPose` に渡す。
@@ -1157,7 +1182,7 @@ sequenceDiagram
   W->>H: stateAt(scan.t)（照合の初期値）
   W->>W: モードを決める（TRACK / INIT / RELOCALIZE）<br/>roll・pitch、デスキュー用の運動、z_utm
   Note over W: mutex 解放
-  W->>MT: currentTarget()（target はグループとアンカーを持つ）
+  W->>MT: currentRegionAs MatchTarget（target はグループとアンカーを持つ）
   W->>P: process(scan, motion)（デスキュー → base_link → クロップ）
   W->>W: target.anchor.toMap(予測姿勢) → 初期値
   Note over W,MT: activeGroup() ではなく、ターゲットのグループのアンカーを使う
@@ -1246,7 +1271,7 @@ sequenceDiagram
     T->>TL: load(不足しているタイル)
     TL-->>T: TileData
     T->>T: 現在位置から unload_radius より遠いタイルを捨てる
-    T->>G: buildTarget(アクティブグループのロード済みタイル, group, anchor)
+    T->>G: RegionBuilder = buildTarget(アクティブグループのロード済みタイル, group, anchor)
     G-->>T: 新しいターゲット（KdTree 構築済み）
     T->>MT: front_ を差し替え
   end
@@ -1258,14 +1283,15 @@ sequenceDiagram
 
 | ディレクトリ | クラス / ファイル |
 |---|---|
-| `core/include/gll/common/` | `types.hpp`（センサデータ・出力の型）、`se2.hpp`（`SE2`）、`geodesy.hpp`（`UtmProjector`）、`logger.hpp`（`ILogger`）、`config.hpp`（`LocalizerConfig`）、`pose_store.hpp`（`SavedPose`、`savePose`、`loadPose`） |
+| `core/include/gll/common/` | `types.hpp`（センサデータ・出力の型）、`config.hpp`（`LocalizerConfig`）、`pose_store.hpp`（`SavedPose`、`savePose`、`loadPose`）。SE(2)・測地変換・ロガーは gll_map の `gll/common/` |
 | `core/include/gll/estimation/` | `state.hpp`（`FilterState`、`MotionInput`、`Measurement`、`UpdateResult`）、`state_estimator.hpp`（`IStateEstimator`、`correct`）、`inv_ekf_se2.hpp`、`es_ekf_2d.hpp`、`state_history.hpp`、`mahalanobis_gate.hpp`、`output_smoother.hpp`、`status_monitor.hpp`、`initializer.hpp`、`source_arbiter.hpp`、`recovery_manager.hpp` |
 | `core/include/gll/measurement/` | `attitude_estimator.hpp`、`motion_input_builder.hpp`、`gnss_measurement_builder.hpp`、`lidar_measurement_builder.hpp`、`stop_detector.hpp` |
 | `core/include/gll/matching/` | `scan_matcher.hpp`（`IScanMatcher`、`MatchTarget`、`SourceCloud`、`RegistrationResult`、`PoseSearchRequest`、`PoseSearchResult`）、`gicp_matcher.hpp`（`GicpMatcher`）、`scan_preprocessor.hpp`（`ScanPreprocessor`、`ScanMotion`） |
-| `core/include/gll/map/` | `map_anchor.hpp`（`AnchorConfig`、`MapAnchor`）、`map_config.hpp`（`MapSetConfig`、`MapGroup`、`loadMapGroups`）、`tile.hpp`（`TileId`、`TileMeta`、`TileData`、`TileIndex`、`ITileLoader`、`BinaryTileLoader`）、`map_tile_manager.hpp`、`map_tiler.hpp`（`tileMap`、`writeTiles`）、`pcd_io.hpp` |
+| `map/include/gll/map/`（gll_map） | `map_anchor.hpp`（`AnchorConfig`、`MapAnchor`）、`map_config.hpp`（`MapSetConfig`、`MapGroup`、`loadMapGroups`）、`tile.hpp`（`TileId`、`TileMeta`、`TileData`、`TileIndex`、`ITileLoader`、`BinaryTileLoader`）、`map_region.hpp`（`MapRegion`、`TileSetRegion`、`RegionBuilder`）、`map_manager_config.hpp`、`map_tile_manager.hpp`、`map_tiler.hpp`（`tileMap`、`writeTiles`、`voxelDownsample`）、`pcd_io.hpp` |
+| `map/include/gll/common/`（gll_map） | `math.hpp`（基本の型・角度・`Pose2D`）、`se2.hpp`（`SE2`）、`geodesy.hpp`（`UtmProjector`）、`logger.hpp`（`ILogger`） |
+| `map/tools/`・`map/examples/`・`map/test/` | `gll_map_tiler`、`gll_tile_demo`、`find_package(gll_map)` で使う例、gll_map の単体テスト |
 | `core/include/gll/` | `localizer.hpp`（`Localizer`、`Diagnostics`、`LidarMatchInfo`） |
 | `core/src/` | 上のヘッダの実装。small_gicp を使うのは `gicp_matcher.cpp` と `map_tiler.cpp` だけ |
-| `core/tools/` | `map_tiler_main.cpp`（`gll_map_tiler` のコマンドライン） |
 | `core/test/` | 単体テストと統合シミュレーション（`sim_world.hpp` の合成環境へのレイキャストで LiDAR を模擬し、`lidar_sim.hpp` で Localizer 全体を動かす） |
 | `ros2/gll_ros2/` | `localizer_node.cpp`（`LocalizerNode`、`RosLogger`）、`conversions.cpp`（メッセージ ⇔ コアの型）、`diagnostics.cpp`（`DiagnosticStatus` の生成）、`main.cpp`、`config/localizer.yaml`、`launch/localizer.launch.py` |
 | `tools/anchor_calibrator/` | `gll_anchor_calibrator`（Phase 3） |
@@ -1280,4 +1306,5 @@ sequenceDiagram
 |---|---|
 | 1 | **common**: 全クラス（前回位置の保存を除く）。**estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`（デッドレコニング距離の監視を含む）、`Initializer`（GNSS 区間の初期化と外部の初期姿勢）、`SourceArbiter`（GNSS 部分）、`RecoveryManager`（GNSS の再アンカーと `LOST` の判定）。**measurement**: `AttitudeEstimator`、`MotionInputBuilder`、`GnssMeasurementBuilder`、`StopDetector`。**facade**: `Localizer`。**gll_ros2**: LiDAR 以外 |
 | 2 | **matching**: `IScanMatcher`、`GicpMatcher`、`ScanPreprocessor`。**map**: `MapAnchor`、maps.yaml と tile_index.yaml の読み込み、タイルファイル、`MapTileManager`、タイル化（`tileMap`）、PCD の入出力。**measurement**: `LidarMeasurementBuilder`。**estimation**: `SourceArbiter` / `RecoveryManager` の LiDAR 部分（食い違い判定、アンカーずれの記録、LiDAR の再アンカー、再位置推定）、`Initializer` の `WAIT_MAP_MATCH`。**facade**: `Localizer` の LiDAR の照合（追跡・地図上での初期化・再位置推定）。**common**: 前回位置の保存。**tools**: `gll_map_tiler`。**gll_ros2**: PointCloud2 の入力、`~/debug/lidar_pose`・`~/debug/map_points`、地図の診断、前回位置の保存 |
+| 2 の後（v0.7） | 地図の部分（タイル、動的ロード、アンカー、maps.yaml、PCD、タイル化）と基本の型・SE(2)・測地変換・ロガーを、単体で使えるライブラリ `gll_map` に切り出した。`MapTileManager` の出力を、差し替えられる `RegionBuilder` で作る `MapRegion` にした |
 | 3（予定） | `gll_anchor_calibrator`、実データでのパラメータ調整に合わせた修正 |

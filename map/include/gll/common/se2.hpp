@@ -2,7 +2,7 @@
 // 接空間のベクトルは xi = (rho_x, rho_y, phi) の順（並進が先、回転が後）。
 #pragma once
 
-#include "gll/common/types.hpp"
+#include "gll/common/math.hpp"
 
 #include <cmath>
 

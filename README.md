@@ -2,11 +2,14 @@
 
 RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作成した点群地図と LiDAR の照合で、途切れない自己位置（UTM の x, y, yaw）を推定する ROS 2 パッケージ。推定器は SE(2) 上の **Invariant EKF** 1 つで、GNSS・LiDAR・IMU・ODOM を融合する。GNSS 区間が無く、点群地図だけがある現場でも、初期姿勢（または前回保存した位置）から地図上で初期化して動く。
 
-パッケージ名・名前空間などの **gll** は **G**NSS and **L**iDAR **L**ocalization の略（`gll_core`、`gll_ros2`、`gll::`、`gll_map_tiler`、ノード名 `gll_localizer`）。
+パッケージ名・名前空間などの **gll** は **G**NSS and **L**iDAR **L**ocalization の略（`gll_map`、`gll_core`、`gll_ros2`、`gll::`、`gll_map_tiler`、ノード名 `gll_localizer`）。
+
+点群地図のタイル化と、自己位置の周りのタイルだけを読み込む仕組みは、単体でも使えるライブラリ **[gll_map](map/README.md)** に分けてある（ROS 非依存。ほかの自己位置推定に部分地図を渡す用途などにも使える）。
 
 - 要件定義: [docs/requirements.md](docs/requirements.md)
 - 設計書: [docs/design.md](docs/design.md)
 - ソフトウェア構成（コンポーネント図・クラス図）: [docs/architecture.md](docs/architecture.md)
+- 地図のライブラリ gll_map: [map/README.md](map/README.md)
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)
@@ -23,8 +26,9 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 ## 構成
 
 ```
-core/                  gll_core: ROS に依存しないコアライブラリ（C++17, Eigen, GeographicLib, small_gicp, yaml-cpp）
-                       と地図のタイル化ツール gll_map_tiler
+map/                   gll_map: 点群地図のタイル化と動的ロードのライブラリ（C++17, Eigen, GeographicLib, yaml-cpp。
+                       small_gicp は任意）と、タイル化ツール gll_map_tiler。単体でも使える（map/README.md）
+core/                  gll_core: ROS に依存しない自己位置推定のライブラリ（gll_map, small_gicp）
 ros2/gll_ros2/         ROS 2 Jazzy のインターフェース（LocalizerNode, launch, パラメータ）
 docker/                Dockerfile（dev / runtime）と compose.yaml
 tools/sim/             Invariant EKF と ESEKF の比較シミュレーション（Python）
@@ -45,7 +49,7 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 colcon test && colcon test-result --verbose
 ```
 
-コアだけなら ROS なしでもビルドできる（`libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev` と、ソースからインストールした [small_gicp](https://github.com/koide3/small_gicp) v1.0.1 が必要。手順は [.github/workflows/ci.yml](.github/workflows/ci.yml) の core ジョブを参照）。
+コアだけなら ROS なしでもビルドできる（`libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev` と、ソースからインストールした [small_gicp](https://github.com/koide3/small_gicp) v1.0.1 が必要。手順は [.github/workflows/ci.yml](.github/workflows/ci.yml) の core ジョブを参照）。`core/` を CMake でビルドすると、`map/`（gll_map）も一緒にビルドされる。gll_map だけのビルドは [map/README.md](map/README.md)。
 
 ```bash
 cmake -S core -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

@@ -2,7 +2,7 @@
 // 読み込み: DATA ascii / binary / binary_compressed、x・y・z が F4 または F8 のもの。NaN の点は捨てる。
 #pragma once
 
-#include "gll/common/types.hpp"
+#include "gll/common/math.hpp"
 
 #include <string>
 #include <vector>

@@ -1,7 +1,7 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md) / [検証計画: i2Nav-Robot](./validation_i2nav.md)
-- 状態: ドラフト（v0.10。Phase 2 を実装済み）
+- 状態: ドラフト（v0.11。Phase 2 を実装済み。地図のライブラリ gll_map を切り出した）
 
 | 版 | 変更内容 |
 |---|---|
@@ -15,6 +15,7 @@
 | v0.8 | ROS 2 Jazzy と Docker 環境を確定し、ROS 1 対応は後回しに。出力 TF を `map` → `base_link`（`map` = UTM）とし、地図グループの座標系を `pcd_<group_id>` に改名。ODOM を `nav_msgs/Odometry`（twist を使用）に確定し、横方向の速度も予測に使えるようにした |
 | v0.9 | 運用上の前提（点群地図と GNSS 区間の間には必要十分な距離を設ける。要件定義 3 章）を反映。**デッドレコニング距離の監視**を追加し、位置の観測なしで一定距離を走ったら diagnostics で ERROR を通知するようにした（3.12 節）。GNSS のメッセージが途切れた後は FIX の安定待ちをやり直す（3.6 節）。複数の地図グループの扱いを見直した: アクティブグループを現在位置で決める、LiDAR の結果は照合に使ったターゲットのグループのアンカーで変換する、タイル ID にグループを含める、z を楕円体高で保持する、グループの重なりを起動時に検出する（3.9 節、5 章） |
 | v0.10 | **Phase 2（スキャンマッチング）を実装**し、実装に合わせて更新。**GNSS 区間が無く点群地図だけがある現場**も対象にした: 初期姿勢（外部から与える、または前回保存した位置）の周りで位置合わせして地図上で初期化する（3.11 節）。スキャンマッチングの共分散の式と品質の指標（overlap）を確定し（6.2 節）、多仮説の探索（6.4 節）、再位置推定の探索範囲の下限（3.13.4 節）、タイルと地図設定の形式（5.2 節）、アンカーの UTM での直接指定と `local`（4.2 節）、点群の時刻の扱い（6.1 節）を追記 |
+| v0.11 | 地図のタイル化・動的ロードを、単体でも使える ROS 非依存のライブラリ **`gll_map`**（`map/`）に切り出した（7.2 節・7.7 節）。`MapTileManager` は、読み込み中のタイルをまとめた「領域」を、差し替えられる関数（`RegionBuilder`）で作る。`gll_core` はそこに GICP のターゲットを作る関数を渡す。small_gicp は `gll_map` では任意（あればタイル化のときに点ごとの共分散を計算する） |
 
 ### 前提ハードウェア・運用条件（v0.2〜v0.3、v0.9 で確定）
 
@@ -72,7 +73,7 @@ flowchart LR
     GM[GNSS 観測モデル<br/>RTK-FIX 判定・レバーアーム]
     LM[LiDAR 観測モデル<br/>地図座標 → UTM]
     SM[スキャンマッチャ<br/>small_gicp]
-    MTM[地図タイルマネージャ<br/>ロード / アンロード]
+    MTM[地図タイルマネージャ<br/>ロード / アンロード<br/>（gll_map）]
     OS[出力整形<br/>補正量のレート制限]
     ST[状態監視<br/>モード判定]
   end
@@ -901,17 +902,23 @@ flowchart TB
 
 ```
 gnss_and_lidar_localization/
-├── core/                       # gll_core（純粋な CMake。colcon / catkin からも plain CMake でビルド可能）
+├── map/                        # gll_map（v0.11。単体でも使える地図のライブラリ。純粋な CMake。map/README.md）
+│   ├── include/gll/
+│   │   ├── common/             # math（型・角度）, se2, geodesy（UTM）, logger
+│   │   └── map/                # アンカー、maps.yaml、タイルと索引、PCD の読み書き、タイル化、MapTileManager、MapRegion
+│   ├── src/
+│   ├── tools/                  # gll_map_tiler（統合済みの PCD → タイル + tile_index.yaml）、gll_tile_demo
+│   ├── examples/               # find_package(gll_map) で使う例
+│   └── test/
+├── core/                       # gll_core（純粋な CMake。gll_map を使う。colcon / catkin からも plain CMake でビルド可能）
 │   ├── CMakeLists.txt
 │   ├── include/gll/
-│   │   ├── common/             # types, config, logger, geodesy（UTM）, se2, pose_store
+│   │   ├── common/             # types（センサデータ・出力）, config, pose_store
 │   │   ├── estimation/         # 推定器（InvEkfSe2 / EsEkf2D）、履歴、ゲート、出力整形、状態監視、初期化、優先度、復帰
 │   │   ├── measurement/        # 姿勢推定器、予測入力、停止検出、GNSS / LiDAR の観測の生成
-│   │   ├── map/                # アンカー、maps.yaml、タイルと索引、PCD の読み書き、タイル化、MapTileManager
-│   │   ├── matching/           # IScanMatcher、GicpMatcher（small_gicp）、ScanPreprocessor
+│   │   ├── matching/           # IScanMatcher（MatchTarget は gll_map の MapRegion を継承）、GicpMatcher（small_gicp）、ScanPreprocessor
 │   │   └── localizer.hpp       # ファサード
 │   ├── src/
-│   ├── tools/                  # gll_map_tiler（統合済みの PCD → タイル + tile_index.yaml）
 │   └── test/                   # GoogleTest（ROS 無しで実行可能。合成環境のレイキャストによる LiDAR の模擬を含む）
 ├── ros2/
 │   └── gll_ros2/               # ament_cmake パッケージ（ノード、launch、パラメータ）
@@ -1025,15 +1032,17 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 
 ### 7.7 外部依存（コア）
 
-| ライブラリ | 用途 |
-|---|---|
-| Eigen3 | 線形代数 |
-| GeographicLib | 緯度経度 ↔ UTM、子午線収差、縮尺係数 |
-| small_gicp（v1.0.1） | スキャンマッチング（GICP / VGICP）、ダウンサンプリング、共分散推定、KdTree。タグを固定してソースからビルドする（apt のパッケージは使わない）。GCC 13 と Eigen 3.3 の組み合わせでは、small_gicp の `kdtree.hpp` が `<cstdint>` を必要とするので、使う側で先に含める |
-| OpenMP | small_gicp の並列化（GCC の libgomp） |
-| （PCL） | 使わない（v0.10）。PCD の読み込みは `gll_map_tiler` の独自実装、PointCloud2 の変換は IF 層の独自実装 |
-| yaml-cpp | maps.yaml・tile_index.yaml |
-| GoogleTest | 単体テスト |
+v0.11 で、地図の部分を `gll_map` に分けた。`gll_map` の必須の依存は Eigen3・GeographicLib・yaml-cpp だけで、small_gicp は任意（あればタイル化のときに点ごとの共分散を計算する。無ければ共分散なしのタイルを書き、`gll_core` の `GicpMatcher` がターゲットを作るときに計算する）。`gll_core` は `gll_map` と small_gicp・OpenMP を使う。
+
+| ライブラリ | 使うパッケージ | 用途 |
+|---|---|---|
+| Eigen3 | 両方 | 線形代数 |
+| GeographicLib | gll_map | 緯度経度 ↔ UTM、子午線収差、縮尺係数 |
+| small_gicp（v1.0.1） | gll_core（gll_map は任意） | スキャンマッチング（GICP / VGICP）、共分散推定、KdTree。タグを固定してソースからビルドする（apt のパッケージは使わない）。GCC 13 と Eigen 3.3 の組み合わせでは、small_gicp の `kdtree.hpp` が `<cstdint>` を必要とするので、使う側で先に含める |
+| OpenMP | gll_core（gll_map は任意） | small_gicp の並列化（GCC の libgomp） |
+| （PCL） | 使わない | v0.10。PCD の読み込みとボクセルの間引きは `gll_map` の独自実装、PointCloud2 の変換は IF 層の独自実装 |
+| yaml-cpp | gll_map | maps.yaml・tile_index.yaml |
+| GoogleTest | 両方 | 単体テスト |
 
 ---
 
@@ -1051,7 +1060,7 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 | VS Code | `.devcontainer/devcontainer.json`（任意。`dev` ステージを使う） |
 | CI | GitHub Actions で同じ Dockerfile の `dev` ステージをビルドし、その中で colcon ビルドと単体テストを実行する |
 
-- コア（`gll_core`）は ROS なしでもビルドできる構成を保つ。CI では、ROS なしでのコア単体のビルドとテストも別ジョブで行い、ROS への依存が紛れ込んでいないことを確かめる。
+- コア（`gll_core`）は ROS なしでもビルドできる構成を保つ。CI では、ROS なしでのコア単体のビルドとテストも別ジョブで行い、ROS への依存が紛れ込んでいないことを確かめる。`gll_map` は、small_gicp も無い環境で単体でビルド・テストし、インストールしたものを `find_package(gll_map)` で使う例もビルドする（v0.11）。
 - i2Nav-Robot の変換・評価スクリプト（[検証計画](./validation_i2nav.md)）も、`dev` ステージのコンテナ内で実行する。
 
 ## 8. パラメータ初期値（抜粋）

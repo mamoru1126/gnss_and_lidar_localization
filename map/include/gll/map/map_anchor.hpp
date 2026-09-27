@@ -4,7 +4,7 @@
 
 #include "gll/common/geodesy.hpp"
 #include "gll/common/se2.hpp"
-#include "gll/common/types.hpp"
+#include "gll/common/math.hpp"
 
 #include <Eigen/Geometry>
 

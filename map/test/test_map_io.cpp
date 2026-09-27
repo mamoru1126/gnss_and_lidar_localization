@@ -5,8 +5,6 @@
 #include "gll/map/pcd_io.hpp"
 #include "gll/map/tile.hpp"
 
-#include "sim_world.hpp"
-
 #include <GeographicLib/Geodesic.hpp>
 #include <gtest/gtest.h>
 
@@ -28,6 +26,21 @@ fs::path tempDir(const std::string& name) {
   fs::remove_all(d);
   fs::create_directories(d);
   return d;
+}
+
+/// 地面（[-90, 90)² を 0.25 m 間隔、高さ 0.005 m のばらつき）と、壁 1 枚の点群。
+std::vector<Vec3f> groundAndWall() {
+  std::vector<Vec3f> pts;
+  unsigned s = 12345;
+  const auto noise = [&s] {
+    s = s * 1103515245u + 12345u;
+    return (static_cast<float>((s >> 8) & 0xffff) / 65535.0f - 0.5f) * 0.01f;
+  };
+  for (float x = -90.0f; x < 90.0f; x += 0.25f)
+    for (float y = -90.0f; y < 90.0f; y += 0.25f) pts.emplace_back(x, y, noise());
+  for (float x = 10.0f; x < 30.0f; x += 0.25f)
+    for (float z = 0.25f; z < 4.0f; z += 0.25f) pts.emplace_back(x, 15.0f + noise(), z);
+  return pts;
 }
 
 AnchorConfig tokyoAnchor(double heading_deg) {
@@ -246,8 +259,7 @@ TEST(MapConfig, RejectsDuplicateIds) {
 }
 
 TEST(MapTiler, TilesWithPlaneCovariances) {
-  const sim::World w = sim::campusWorld();
-  const auto pts = w.samplePoints(0.25, 0.005);
+  const auto pts = groundAndWall();
   TilerOptions opt;
   opt.tile_size = 20.0;
   opt.voxel_size = 0.3;
@@ -258,7 +270,7 @@ TEST(MapTiler, TilesWithPlaneCovariances) {
   for (std::size_t i = 0; i < r.tiles.size(); ++i) {
     const auto& t = r.tiles[i];
     total += t.points.size();
-    ASSERT_EQ(t.covs.size(), t.points.size());
+    ASSERT_EQ(t.covs.size(), tilerCanComputeCovariance() ? t.points.size() : 0u);
     EXPECT_EQ(t.id.group, "campus");
     EXPECT_EQ(r.index.tiles[i].id, t.id);
     for (const auto& p : t.points) {
@@ -268,14 +280,17 @@ TEST(MapTiler, TilesWithPlaneCovariances) {
   }
   EXPECT_EQ(total, r.output_points);
   EXPECT_LT(r.output_points, pts.size());
-  // 地面の点の共分散は、法線（z）方向だけが小さい平面の形になる（固有値 1e-3, 1, 1）
-  const auto& t0 = r.tiles.front();
-  const PackedCov& c = t0.covs.front();
-  Mat3 C;
-  C << c[0], c[1], c[2], c[1], c[3], c[4], c[2], c[4], c[5];
-  const Eigen::SelfAdjointEigenSolver<Mat3> es(C);
-  EXPECT_NEAR(es.eigenvalues()(0), 1e-3, 1e-4);
-  EXPECT_NEAR(es.eigenvalues()(2), 1.0, 1e-3);
+  EXPECT_EQ(r.has_covariance, tilerCanComputeCovariance());
+  if (r.has_covariance) {
+    // 地面の点の共分散は、法線（z）方向だけが小さい平面の形になる（固有値 1e-3, 1, 1）
+    const auto& t0 = r.tiles.front();
+    const PackedCov& c = t0.covs.front();
+    Mat3 C;
+    C << c[0], c[1], c[2], c[1], c[3], c[4], c[2], c[4], c[5];
+    const Eigen::SelfAdjointEigenSolver<Mat3> es(C);
+    EXPECT_NEAR(es.eigenvalues()(0), 1e-3, 1e-4);
+    EXPECT_NEAR(es.eigenvalues()(2), 1.0, 1e-3);
+  }
 
   const fs::path d = tempDir("tiler");
   writeTiles(d.string(), r);
@@ -284,4 +299,23 @@ TEST(MapTiler, TilesWithPlaneCovariances) {
   const auto back = BinaryTileLoader().load(idx.tiles[3]);
   EXPECT_EQ(back->points.size(), r.tiles[3].points.size());
   fs::remove_all(d);
+}
+
+TEST(MapTiler, VoxelDownsampleAverages) {
+  const std::vector<Vec3f> pts = {Vec3f(0.01f, 0.01f, 0.0f), Vec3f(0.09f, 0.03f, 0.0f), Vec3f(0.5f, 0.0f, 0.0f)};
+  const auto out = voxelDownsample(pts, 0.2);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_NEAR(out[0].x(), 0.05f, 1e-6);  // 同じボクセルの 2 点は平均する
+  EXPECT_NEAR(out[0].y(), 0.02f, 1e-6);
+  EXPECT_NEAR(out[1].x(), 0.5f, 1e-6);
+  EXPECT_EQ(voxelDownsample(pts, 0.0).size(), 3u);  // 0 以下なら間引かない
+}
+
+TEST(MapTiler, WithoutCovariance) {
+  TilerOptions opt;
+  opt.compute_covariance = false;
+  const TilerResult r = tileMap(groundAndWall(), opt, "g");
+  EXPECT_FALSE(r.has_covariance);
+  EXPECT_GT(r.tiles.size(), 50u);
+  for (const auto& t : r.tiles) EXPECT_TRUE(t.covs.empty());
 }

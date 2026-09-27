@@ -3,12 +3,11 @@
 //   gll_tile_demo tile_index.yaml route.txt out.json [--speed 1.5]
 //
 // 実際の MapTileManager（既定の設定、同期モード）を、経路（route.txt の折れ線）に沿って一定の速さで動かし、
-// 0.5 s ごとに自己位置と照合のターゲットに入っているタイルを JSON に書く。
+// 0.5 s ごとに自己位置と、読み込み中の領域（MapRegion）に入っているタイルを JSON に書く。
 // route.txt は 1 行に「x y」（地図座標 [m]）。# で始まる行は無視する。
 #include "gll/map/map_anchor.hpp"
 #include "gll/map/map_config.hpp"
 #include "gll/map/map_tile_manager.hpp"
-#include "gll/matching/gicp_matcher.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -59,9 +58,7 @@ int main(int argc, char** argv) {
     g.anchor = MapAnchor::identity();
     g.index = TileIndex::load(argv[1], g.id);
     const std::vector<TileMeta> metas = g.index.tiles;
-    LidarConfig lc;
-    lc.num_threads = 4;
-    MapTileManager mgr(mc, {g}, std::make_shared<BinaryTileLoader>(), std::make_shared<GicpMatcher>(lc));
+    MapTileManager mgr(mc, {g}, std::make_shared<BinaryTileLoader>());  // 既定の領域（TileSetRegion）
 
     std::ofstream os(argv[3]);
     if (!os) throw std::runtime_error(std::string("cannot write ") + argv[3]);
@@ -87,7 +84,7 @@ int main(int argc, char** argv) {
         mgr.waitIdle();
         if (step % record_every != 0) continue;
         const auto st = mgr.stats();
-        const auto target = mgr.currentTarget();
+        const auto target = mgr.currentRegion();
         os << (first ? "" : ",") << "{\"t\":" << std::round(t * 10) / 10 << ",\"x\":" << p.x() << ",\"y\":" << p.y()
            << ",\"yaw\":" << yaw << ",\"loads\":" << st.tile_loads - prev_loads << ",\"builds\":" << st.target_builds
            << ",\"points\":" << st.target_points << ",\"tiles\":[";

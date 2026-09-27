@@ -24,7 +24,7 @@ gll_tile_demo /tmp/hdl_tiles/tile_index.yaml tools/tile_demo/route_hdl_localizat
 python3 tools/tile_demo/make_page.py /tmp/hdl_tiles /tmp/frames.json docs/demo/tile_loading.html
 ```
 
-`gll_tile_demo` は `gll_map_tiler` と同じく、コアを `GLL_BUILD_TOOLS=ON`（既定）でビルドするとできる。
+`gll_tile_demo` は `gll_map_tiler` と同じく、[gll_map](../../map/README.md) を `GLL_MAP_BUILD_TOOLS=ON`（既定）でビルドするとできる（ROS も small_gicp も要らない）。
 
 ### 西新宿の地図（docs/demo/nishishinjuku.html）
 
@@ -53,7 +53,7 @@ python3 tools/tile_demo/make_page.py /tmp/nsj_tiles /tmp/nsj_frames.json docs/de
 
 | ファイル | 内容 |
 |---|---|
-| `core/tools/tile_demo_main.cpp` | `gll_tile_demo`。経路（折れ線）に沿って一定の速さ（既定 1.5 m/s）で `MapTileManager::update` を 0.1 s ごとに呼び、自己位置・ターゲットのタイル・読み込み回数を JSON に書く |
+| `map/tools/tile_demo_main.cpp` | `gll_tile_demo`（gll_map のツール）。経路（折れ線）に沿って一定の速さ（既定 1.5 m/s）で `MapTileManager::update` を 0.1 s ごとに呼び、自己位置・領域（MapRegion）のタイル・読み込み回数を JSON に書く |
 | `route_nishishinjuku.txt` / `lanelet_route.py` | 西新宿の地図用の経路（約 2.9 km。CC BY-NC 4.0）と、lanelet の中心線から経路を作るスクリプト |
 | `route_hdl_localization.txt` | hdl_localization の地図用の経路（南の通路から広場を一周して戻る、約 200 s）。1 行に `x y`（地図座標 [m]） |
 | `make_page.py` | タイルの点を間引き（`--display-res`、既定 0.2 m）、記録と一緒に `template.html` に埋め込んで 1 つの HTML にする |

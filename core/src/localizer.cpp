@@ -404,7 +404,7 @@ void Localizer::processScan(const LidarScan& scan) {
     z_utm = z_utm_;
   }
 
-  const std::shared_ptr<const MatchTarget> target = maps->currentTarget();
+  const std::shared_ptr<const MatchTarget> target = maps->currentRegionAs<MatchTarget>();
   if (!target) {
     std::lock_guard<std::mutex> lk(mtx_);
     ++diag_.lidar_no_target;
@@ -618,7 +618,7 @@ std::optional<LidarMatchInfo> Localizer::lastLidarMatch() const {
 
 std::shared_ptr<const MatchTarget> Localizer::currentMapTarget() const {
   std::lock_guard<std::mutex> lk(mtx_);
-  return maps_ ? maps_->currentTarget() : nullptr;
+  return maps_ ? maps_->currentRegionAs<MatchTarget>() : nullptr;
 }
 
 std::optional<FilterState> Localizer::latestState() const {
