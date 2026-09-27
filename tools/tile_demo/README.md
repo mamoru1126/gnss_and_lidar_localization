@@ -1,6 +1,6 @@
 # タイル読み込みのデモ
 
-`MapTileManager`（設計書 5.3〜5.5 節）が、自己位置の移動に合わせて点群地図のタイルを読み込み・破棄する様子を、上から見たアニメーションで確かめるためのツール。生成したページは [docs/demo/tile_loading.html](../../docs/demo/tile_loading.html)（ダウンロードしてブラウザで開く）。
+`MapTileManager`（設計書 5.3〜5.5 節）が、自己位置の移動に合わせて点群地図のタイルを読み込み・破棄する様子を、上から見たアニメーションで確かめるためのツール。生成したページは [docs/demo/tile_loading.html](../../docs/demo/tile_loading.html) で、GitHub Pages で [https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html) として公開している（main の `docs/` を公開）。
 
 - 背景は黒、地図の全体を白、照合のターゲットに入っている（読み込み中の）タイルを緑で描く。捨てたタイルは赤枠で一瞬示す。
 - 動きは作り物ではなく、実際の `MapTileManager`（既定の設定: タイル 20 m、load 60 m / unload 90 m、先読み 3 s）を同期モードで経路に沿って動かした記録を再生している。
