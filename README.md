@@ -10,6 +10,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 - 設計書: [docs/design.md](docs/design.md)
 - ソフトウェア構成（コンポーネント図・クラス図）: [docs/architecture.md](docs/architecture.md)
 - 地図のライブラリ tiled_pcd_map: [tiled_pcd_map/README.md](tiled_pcd_map/README.md)
+- 点群地図の部分ロードの図解: [https://sunomamo1126.github.io/gnss_and_lidar_localization/tiled_pcd_map/](https://sunomamo1126.github.io/gnss_and_lidar_localization/tiled_pcd_map/)（ソース: [docs/tiled_pcd_map/index.html](docs/tiled_pcd_map/index.html)）
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)

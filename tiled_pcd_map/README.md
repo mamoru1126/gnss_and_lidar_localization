@@ -2,7 +2,7 @@
 
 大きな点群地図をタイルに分けておき、自己位置の周りのタイルだけを読み込むための C++17 ライブラリ。ROS には依存しない。このリポジトリの自己位置推定（`gll_core`）はこれを使っているが、`tiled_pcd_map` は単体でも使える。たとえば、別の自己位置推定（NDT など）に部分地図を渡したり、地図を扱うツールを作ったりするのに使える。
 
-動きはデモページで見られる: [小さい地図](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html) / [西新宿の約 1 km 四方の地図](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html)
+仕組みの図解は [点群地図の部分ロード](https://sunomamo1126.github.io/gnss_and_lidar_localization/tiled_pcd_map/)（ソース: [docs/tiled_pcd_map/index.html](../docs/tiled_pcd_map/index.html)）。動きはデモページで見られる: [小さい地図](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html) / [西新宿の約 1 km 四方の地図](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html)
 
 ## できること
 

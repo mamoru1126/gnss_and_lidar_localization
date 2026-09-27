@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>点群地図の部分ロード</title>
+<meta name="description" content="tiled_pcd_map が、大きな点群地図のうち自己位置の周りのタイルだけを読み込む仕組みの解説">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg: #f5f7f5;
+    --surface: #ffffff;
+    --text: #1b221e;
+    --muted: #59665f;
+    --line: #d5ddd8;
+    --faint: #e8ede9;
+    --green: #1c8f50;
+    --green-fill: #cfeedd;
+    --pose: #b86e00;
+    --red: #c9432f;
+    --code-bg: #eaefeb;
+    --sans: "IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d110f;
+      --surface: #141a17;
+      --text: #dfe7e2;
+      --muted: #91a097;
+      --line: #2a3530;
+      --faint: #1d2622;
+      --green: #45d98a;
+      --green-fill: #174a30;
+      --pose: #ffb547;
+      --red: #ff7a66;
+      --code-bg: #1d2622;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d110f;
+    --surface: #141a17;
+    --text: #dfe7e2;
+    --muted: #91a097;
+    --line: #2a3530;
+    --faint: #1d2622;
+    --green: #45d98a;
+    --green-fill: #174a30;
+    --pose: #ffb547;
+    --red: #ff7a66;
+    --code-bg: #1d2622;
+  }
+  html, body { background: var(--bg); color: var(--text); }
+  body { margin: 0; font-family: var(--sans); font-size: 16px; line-height: 1.8; padding-inline: 16px; padding-block: 32px 64px; }
+  main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  h1 { font-size: 30px; line-height: 1.35; margin: 0 0 4px; text-wrap: balance; }
+  h2 { font-size: 21px; line-height: 1.4; margin: 40px 0 4px; padding-top: 16px; border-top: 1px solid var(--line); text-wrap: balance; }
+  h3 { font-size: 17px; margin: 20px 0 0; }
+  p, ul, ol { margin: 6px 0; max-width: 68ch; }
+  li { margin: 2px 0; }
+  a { color: var(--green); }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  .lead { font-size: 17px; color: var(--muted); max-width: 64ch; }
+  .meta { font-size: 13px; color: var(--muted); }
+  nav.toc { margin: 16px 0 0; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  nav.toc ol { margin: 0; padding-left: 1.4em; columns: 2 16em; column-gap: 32px; font-size: 14.5px; }
+  figure { margin: 18px 0 10px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  figure svg { display: block; width: 100%; height: auto; color: var(--text); font-family: var(--sans); }
+  figcaption { margin-top: 10px; font-size: 14px; color: var(--muted); line-height: 1.7; }
+  figcaption b { color: var(--text); font-weight: 500; }
+  .table-wrap { overflow-x: auto; margin: 10px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--surface); }
+  th, td { text-align: left; padding: 7px 10px; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--faint); font-weight: 500; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .callout { margin: 12px 0; padding: 10px 14px; border-left: 3px solid var(--green); background: var(--surface); font-size: 15px; max-width: 72ch; }
+  /* 図の中の色（SVG の要素に class で当てる） */
+  .s { stroke: currentColor; fill: none; }
+  .box { stroke: currentColor; fill: var(--surface); stroke-width: 1.2; }
+  .box-accent { stroke: var(--green); fill: var(--green-fill); stroke-width: 1.4; }
+  .grid { stroke: var(--line); fill: none; stroke-width: 1; }
+  .t-need { fill: var(--green-fill); stroke: var(--green); stroke-width: 1; }
+  .t-kept { fill: none; stroke: var(--green); stroke-width: 1; stroke-dasharray: 3 3; }
+  .t-drop { fill: none; stroke: var(--red); stroke-width: 2; }
+  .t-none { fill: none; stroke: var(--line); stroke-width: 1; }
+  .ring-load { fill: none; stroke: var(--green); stroke-width: 2; stroke-dasharray: 8 5; }
+  .ring-ahead { fill: none; stroke: var(--green); stroke-width: 1.2; stroke-dasharray: 3 5; opacity: 0.8; }
+  .ring-unload { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 8 6; }
+  .pose { fill: var(--pose); stroke: var(--bg); stroke-width: 1; }
+  .trail { fill: none; stroke: var(--pose); stroke-width: 2.5; opacity: 0.7; }
+  .accent-text { fill: var(--green); }
+  .red-text { fill: var(--red); }
+  .pose-text { fill: var(--pose); }
+  .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; stroke-linejoin: round; }
+  .muted-text { fill: var(--muted); }
+  .pt { fill: currentColor; }
+  .pt-faint { fill: currentColor; opacity: 0.25; }
+  .lane { stroke: var(--line); stroke-width: 1; }
+  .bar { fill: var(--faint); stroke: currentColor; stroke-width: 1; }
+  .bar-accent { fill: var(--green-fill); stroke: var(--green); stroke-width: 1.2; }
+  svg text { fill: currentColor; font-size: 13px; }
+  svg text.small { font-size: 11.5px; }
+  svg text.title { font-weight: 700; }
+  svg text.code { font-family: var(--mono); font-size: 12px; }
+  .arrow { stroke: currentColor; stroke-width: 1.4; fill: none; }
+  .arrow-accent { stroke: var(--green); stroke-width: 1.8; fill: none; }
+  .arrow-red { stroke: var(--red); stroke-width: 1.6; fill: none; }
+  .head { fill: currentColor; }
+  .head-accent { fill: var(--green); }
+  .head-red { fill: var(--red); }
+</style>
+
+<main>
+  <header>
+    <p class="meta">tiled_pcd_map ／ gnss_and_lidar_localization</p>
+    <h1>点群地図の部分ロード</h1>
+    <p class="lead">大きな点群地図を 20 m 四方のタイルに分けておき、自己位置の周りのタイルだけをメモリに読み込む。自己位置が動くと、前方のタイルを先に読み、遠くなったタイルを捨てる。その仕組みを図で説明する。</p>
+    <p class="meta">実装: <a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/tree/main/tiled_pcd_map">tiled_pcd_map</a>（ROS 非依存の C++ ライブラリ）／ 動きを見るデモ: <a href="../demo/tile_loading.html">小さい地図</a>・<a href="../demo/nishishinjuku.html">西新宿の約 1 km 四方の地図</a></p>
+  </header>
+
+  <nav class="toc" aria-label="目次">
+    <ol>
+      <li><a href="#why">なぜ部分ロードか</a></li>
+      <li><a href="#overview">全体の流れ</a></li>
+      <li><a href="#tiling">地図をタイルにする</a></li>
+      <li><a href="#which">どのタイルを読むか</a></li>
+      <li><a href="#when">いつ見直すか</a></li>
+      <li><a href="#swap">読み込みと差し替え</a></li>
+      <li><a href="#region">領域の中身を決める</a></li>
+      <li><a href="#groups">複数の地図</a></li>
+      <li><a href="#memory">メモリの使用量</a></li>
+      <li><a href="#params">パラメータ</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="why">1. なぜ部分ロードか</h2>
+  <p>LiDAR で自己位置を推定するときは、スキャンを点群地図に重ねて（位置合わせして）位置を求める。位置合わせに要るのは、LiDAR が届く範囲（数十 m）の地図だけで、地図全体は要らない。</p>
+  <ul>
+    <li><b>メモリ</b>: 地図全体を読むと、地図が広くなるほどメモリが増える。西新宿の約 0.9 km × 1.1 km の地図でも、間引いた後で約 460 万点ある。</li>
+    <li><b>検索の速さ</b>: 位置合わせでは、スキャンの各点に最も近い地図の点を探す（KdTree）。探す相手が周りだけなら、木が小さくて済み、作り直しも速い。</li>
+    <li><b>起動の速さ</b>: 起動時に読むのは、各タイルの範囲と点数を書いた索引だけ。点群本体は必要になったときに読む。</li>
+  </ul>
+
+  <h2 id="overview">2. 全体の流れ</h2>
+  <p>地図のタイル化は事前に 1 回だけ行う（オフライン）。走行中は、自己位置が来るたびに必要なタイルを見直し、別のスレッドで読み込んで、照合に使う「領域」を差し替える。</p>
+
+  <figure>
+    <svg viewBox="0 0 760 300" role="img" aria-label="オフラインで PCD をタイル化してファイルに書き、走行中は自己位置から必要なタイルを決めて別スレッドで読み込み、領域を差し替えて照合に渡す流れ">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+        <marker id="a1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-accent"/></marker>
+      </defs>
+      <text x="20" y="22" class="small muted-text">オフライン（1 回だけ）</text>
+      <rect class="box" x="20" y="36" width="130" height="64" rx="5"/>
+      <text x="85" y="62" text-anchor="middle" class="title">統合済みの地図</text>
+      <text x="85" y="82" text-anchor="middle" class="small">PCD（1 ファイル）</text>
+      <rect class="box" x="185" y="36" width="170" height="64" rx="5"/>
+      <text x="270" y="58" text-anchor="middle" class="code">tiled_pcd_map_tiler</text>
+      <text x="270" y="76" text-anchor="middle" class="small">0.2 m に間引き → 共分散</text>
+      <text x="270" y="92" text-anchor="middle" class="small">→ 20 m タイルに分割</text>
+      <rect class="box" x="390" y="36" width="170" height="64" rx="5"/>
+      <text x="475" y="60" text-anchor="middle" class="code">tiles/&lt;ix&gt;_&lt;iy&gt;.bin</text>
+      <text x="475" y="80" text-anchor="middle" class="code">tile_index.yaml</text>
+      <line class="arrow" x1="150" y1="68" x2="183" y2="68" marker-end="url(#a1)"/>
+      <line class="arrow" x1="355" y1="68" x2="388" y2="68" marker-end="url(#a1)"/>
+      <text x="572" y="62" class="small muted-text">索引: 各タイルの範囲と点数</text>
+      <text x="572" y="80" class="small muted-text">本体: 点と点ごとの共分散</text>
+
+      <line class="lane" x1="20" y1="128" x2="740" y2="128"/>
+      <text x="20" y="150" class="small muted-text">走行中</text>
+      <rect class="box" x="20" y="176" width="120" height="72" rx="5"/>
+      <text x="80" y="204" text-anchor="middle" class="title">自己位置</text>
+      <text x="80" y="224" text-anchor="middle" class="small">位置・向き・速さ</text>
+      <rect class="box" x="185" y="176" width="150" height="72" rx="5"/>
+      <text x="260" y="200" text-anchor="middle" class="code">update()</text>
+      <text x="260" y="220" text-anchor="middle" class="small">要るタイルを決める</text>
+      <text x="260" y="236" text-anchor="middle" class="small">（すぐ戻る）</text>
+      <rect class="box" x="390" y="176" width="150" height="72" rx="5"/>
+      <text x="465" y="198" text-anchor="middle" class="title">ロードスレッド</text>
+      <text x="465" y="218" text-anchor="middle" class="small">足りないタイルを読む</text>
+      <text x="465" y="234" text-anchor="middle" class="small">遠いタイルを捨てる</text>
+      <rect class="box-accent" x="600" y="176" width="140" height="72" rx="5"/>
+      <text x="670" y="204" text-anchor="middle" class="title">領域</text>
+      <text x="670" y="224" text-anchor="middle" class="small">読み込み中のタイル</text>
+      <line class="arrow" x1="140" y1="212" x2="183" y2="212" marker-end="url(#a1)"/>
+      <line class="arrow" x1="335" y1="212" x2="388" y2="212" marker-end="url(#a1)"/>
+      <text x="361" y="204" text-anchor="middle" class="small">通知</text>
+      <line class="arrow-accent" x1="540" y1="212" x2="598" y2="212" marker-end="url(#a1g)"/>
+      <text x="569" y="204" text-anchor="middle" class="small accent-text">差し替え</text>
+      <line class="arrow" x1="465" y1="100" x2="465" y2="174" marker-end="url(#a1)"/>
+      <text x="473" y="146" class="small">要るタイルだけ読む</text>
+      <line class="arrow" x1="670" y1="248" x2="670" y2="284" marker-end="url(#a1)"/>
+      <text x="660" y="276" text-anchor="end" class="small">照合（GICP など）が使う</text>
+    </svg>
+    <figcaption><b>図 1　オフラインのタイル化と、走行中の部分ロード。</b> 走行中にディスクから読むのは、自己位置の周りのタイルの本体だけ。<code>update()</code> は要るタイルを決めて通知するだけなので、呼び出し側（自己位置の計算）は待たされない。</figcaption>
+  </figure>
+
+  <h2 id="tiling">3. 地図をタイルにする</h2>
+  <p><code>tiled_pcd_map_tiler</code> は、外部のツールで作った統合済みの点群（PCD）を読み、次の順に処理する。</p>
+  <ol>
+    <li><b>間引く</b>: 0.2 m のボクセルごとに点を平均して 1 点にする（既定）。</li>
+    <li><b>点ごとの共分散を計算する</b>: 各点の近くの 20 点から、その点の周りの面の形（平面なら 1 方向だけ薄い楕円体）を求める。GICP の位置合わせに使う。</li>
+    <li><b>タイルに分ける</b>: 地図座標を 20 m で割って切り捨てた番号 <code>(ix, iy)</code> ごとに、点をタイルファイルに書く。</li>
+  </ol>
+  <p>共分散はタイルに分ける<b>前</b>に、地図全体で計算する。分けた後で計算すると、タイルの境目の近くの点は、隣のタイルにある近傍点を使えないからである。</p>
+
+  <figure>
+    <svg viewBox="0 0 760 190" role="img" aria-label="タイルに分けてから共分散を計算すると境目の点は片側の近傍しか使えず、分ける前に計算すれば両側の近傍を使える">
+      <g transform="translate(20,0)">
+        <text x="0" y="16" class="title">分けてから計算する（しない）</text>
+        <line class="grid" x1="180" y1="34" x2="180" y2="174" stroke-dasharray="5 4"/>
+        <text x="90" y="178" text-anchor="middle" class="small muted-text">タイル A</text>
+        <text x="270" y="178" text-anchor="middle" class="small muted-text">タイル B</text>
+        <g class="pt">
+          <circle cx="40" cy="100" r="3"/><circle cx="62" cy="99" r="3"/><circle cx="84" cy="101" r="3"/><circle cx="106" cy="100" r="3"/><circle cx="128" cy="99" r="3"/><circle cx="150" cy="101" r="3"/>
+        </g>
+        <g class="pt-faint">
+          <circle cx="194" cy="100" r="3"/><circle cx="216" cy="99" r="3"/><circle cx="238" cy="101" r="3"/><circle cx="260" cy="100" r="3"/><circle cx="282" cy="99" r="3"/><circle cx="304" cy="101" r="3"/>
+        </g>
+        <circle cx="168" cy="100" r="5" class="pose"/>
+        <circle cx="168" cy="100" r="52" class="s" stroke-dasharray="4 4"/>
+        <text x="168" y="38" text-anchor="middle" class="small">近傍</text>
+        <text x="270" y="150" text-anchor="middle" class="small red-text">B の点が使えない</text>
+      </g>
+      <g transform="translate(400,0)">
+        <text x="0" y="16" class="title accent-text">分ける前に計算する（実装）</text>
+        <line class="grid" x1="180" y1="34" x2="180" y2="174" stroke-dasharray="5 4"/>
+        <text x="90" y="178" text-anchor="middle" class="small muted-text">タイル A</text>
+        <text x="270" y="178" text-anchor="middle" class="small muted-text">タイル B</text>
+        <g class="pt">
+          <circle cx="40" cy="100" r="3"/><circle cx="62" cy="99" r="3"/><circle cx="84" cy="101" r="3"/><circle cx="106" cy="100" r="3"/><circle cx="128" cy="99" r="3"/><circle cx="150" cy="101" r="3"/>
+          <circle cx="194" cy="100" r="3"/><circle cx="216" cy="99" r="3"/><circle cx="238" cy="101" r="3"/><circle cx="260" cy="100" r="3"/><circle cx="282" cy="99" r="3"/><circle cx="304" cy="101" r="3"/>
+        </g>
+        <circle cx="168" cy="100" r="5" class="pose"/>
+        <circle cx="168" cy="100" r="52" class="ring-load"/>
+        <text x="168" y="38" text-anchor="middle" class="small accent-text">近傍（両側）</text>
+      </g>
+    </svg>
+    <figcaption><b>図 2　共分散を計算する順番。</b> 左のように分けてから計算すると、境目の点（橙）は片側の近傍だけで面の形を決めることになり、形がゆがむ。実装は右のとおり地図全体で計算してから分けるので、境目でも共分散は変わらない。</figcaption>
+  </figure>
+
+  <p>出力は、タイルごとの本体ファイル <code>tiles/&lt;ix&gt;_&lt;iy&gt;.bin</code>（点の xyz と共分散の上三角 6 要素、いずれも float32）と、全タイルの索引 <code>tile_index.yaml</code>（番号・ファイル名・点数・範囲）である。起動時に読むのは索引だけで、数百枚のタイルでも一瞬で済む。</p>
+
+  <h2 id="which">4. どのタイルを読むか</h2>
+  <p>自己位置を与えるたびに、各タイルについて「読むべきか」「持ち続けてよいか」を決める。距離は、タイルの中心ではなく<b>タイルの四角形まで</b>の最短距離で測る。</p>
+  <ul>
+    <li><b>読み込む</b>: 現在位置から 60 m（<code>load_radius</code>）以内のタイル。加えて、進行方向へ「速さ × 3 秒（<code>lookahead_time</code>）」進んだ先読み位置から 60 m 以内のタイル。</li>
+    <li><b>持ち続ける</b>: 読み込む範囲からは外れたが、現在位置から 90 m（<code>unload_radius</code>）以内のタイル。</li>
+    <li><b>捨てる</b>: 現在位置から 90 m より遠くなったタイル。</li>
+  </ul>
+  <p>読み込む距離（60 m）と捨てる距離（90 m）の間に差があるので、境目の近くを行ったり来たりしても、同じタイルを読んでは捨てる、を繰り返さない。</p>
+
+  <figure>
+    <svg viewBox="0 0 760 460" role="img" aria-label="自己位置の周り 60 m と先読み位置の周り 60 m のタイルを読み込み、通り過ぎたタイルは 90 m 以内なら持ち続け、90 m を超えたら捨てる">
+      <g>
+<rect class="t-none" x="20" y="20" width="40" height="40"/>
+<rect class="t-none" x="20" y="60" width="40" height="40"/>
+<rect class="t-none" x="20" y="100" width="40" height="40"/>
+<rect class="t-none" x="20" y="140" width="40" height="40"/>
+<rect class="t-none" x="20" y="180" width="40" height="40"/>
+<rect class="t-none" x="20" y="220" width="40" height="40"/>
+<rect class="t-none" x="20" y="260" width="40" height="40"/>
+<rect class="t-none" x="20" y="300" width="40" height="40"/>
+<rect class="t-none" x="20" y="340" width="40" height="40"/>
+<rect class="t-none" x="20" y="380" width="40" height="40"/>
+<rect class="t-none" x="60" y="20" width="40" height="40"/>
+<rect class="t-none" x="60" y="60" width="40" height="40"/>
+<rect class="t-none" x="60" y="100" width="40" height="40"/>
+<rect class="t-drop" x="62" y="142" width="36" height="36"/>
+<rect class="t-drop" x="62" y="182" width="36" height="36"/>
+<rect class="t-drop" x="62" y="222" width="36" height="36"/>
+<rect class="t-drop" x="62" y="262" width="36" height="36"/>
+<rect class="t-none" x="60" y="300" width="40" height="40"/>
+<rect class="t-none" x="60" y="340" width="40" height="40"/>
+<rect class="t-none" x="60" y="380" width="40" height="40"/>
+<rect class="t-none" x="100" y="20" width="40" height="40"/>
+<rect class="t-none" x="100" y="60" width="40" height="40"/>
+<rect class="t-drop" x="102" y="102" width="36" height="36"/>
+<rect class="t-drop" x="102" y="142" width="36" height="36"/>
+<rect class="t-drop" x="102" y="182" width="36" height="36"/>
+<rect class="t-drop" x="102" y="222" width="36" height="36"/>
+<rect class="t-drop" x="102" y="262" width="36" height="36"/>
+<rect class="t-drop" x="102" y="302" width="36" height="36"/>
+<rect class="t-none" x="100" y="340" width="40" height="40"/>
+<rect class="t-none" x="100" y="380" width="40" height="40"/>
+<rect class="t-none" x="140" y="20" width="40" height="40"/>
+<rect class="t-none" x="140" y="60" width="40" height="40"/>
+<rect class="t-drop" x="142" y="102" width="36" height="36"/>
+<rect class="t-drop" x="142" y="142" width="36" height="36"/>
+<rect class="t-drop" x="142" y="182" width="36" height="36"/>
+<rect class="t-drop" x="142" y="222" width="36" height="36"/>
+<rect class="t-drop" x="142" y="262" width="36" height="36"/>
+<rect class="t-drop" x="142" y="302" width="36" height="36"/>
+<rect class="t-none" x="140" y="340" width="40" height="40"/>
+<rect class="t-none" x="140" y="380" width="40" height="40"/>
+<rect class="t-none" x="180" y="20" width="40" height="40"/>
+<rect class="t-drop" x="182" y="62" width="36" height="36"/>
+<rect class="t-drop" x="182" y="102" width="36" height="36"/>
+<rect class="t-drop" x="182" y="142" width="36" height="36"/>
+<rect class="t-kept" x="180" y="180" width="40" height="40"/>
+<rect class="t-kept" x="180" y="220" width="40" height="40"/>
+<rect class="t-drop" x="182" y="262" width="36" height="36"/>
+<rect class="t-drop" x="182" y="302" width="36" height="36"/>
+<rect class="t-drop" x="182" y="342" width="36" height="36"/>
+<rect class="t-none" x="180" y="380" width="40" height="40"/>
+<rect class="t-none" x="220" y="20" width="40" height="40"/>
+<rect class="t-drop" x="222" y="62" width="36" height="36"/>
+<rect class="t-kept" x="220" y="100" width="40" height="40"/>
+<rect class="t-kept" x="220" y="140" width="40" height="40"/>
+<rect class="t-kept" x="220" y="180" width="40" height="40"/>
+<rect class="t-kept" x="220" y="220" width="40" height="40"/>
+<rect class="t-kept" x="220" y="260" width="40" height="40"/>
+<rect class="t-kept" x="220" y="300" width="40" height="40"/>
+<rect class="t-drop" x="222" y="342" width="36" height="36"/>
+<rect class="t-none" x="220" y="380" width="40" height="40"/>
+<rect class="t-none" x="260" y="20" width="40" height="40"/>
+<rect class="t-kept" x="260" y="60" width="40" height="40"/>
+<rect class="t-kept" x="260" y="100" width="40" height="40"/>
+<rect class="t-need" x="260" y="140" width="40" height="40"/>
+<rect class="t-need" x="260" y="180" width="40" height="40"/>
+<rect class="t-need" x="260" y="220" width="40" height="40"/>
+<rect class="t-need" x="260" y="260" width="40" height="40"/>
+<rect class="t-kept" x="260" y="300" width="40" height="40"/>
+<rect class="t-kept" x="260" y="340" width="40" height="40"/>
+<rect class="t-none" x="260" y="380" width="40" height="40"/>
+<rect class="t-none" x="300" y="20" width="40" height="40"/>
+<rect class="t-kept" x="300" y="60" width="40" height="40"/>
+<rect class="t-need" x="300" y="100" width="40" height="40"/>
+<rect class="t-need" x="300" y="140" width="40" height="40"/>
+<rect class="t-need" x="300" y="180" width="40" height="40"/>
+<rect class="t-need" x="300" y="220" width="40" height="40"/>
+<rect class="t-need" x="300" y="260" width="40" height="40"/>
+<rect class="t-need" x="300" y="300" width="40" height="40"/>
+<rect class="t-kept" x="300" y="340" width="40" height="40"/>
+<rect class="t-none" x="300" y="380" width="40" height="40"/>
+<rect class="t-none" x="340" y="20" width="40" height="40"/>
+<rect class="t-kept" x="340" y="60" width="40" height="40"/>
+<rect class="t-need" x="340" y="100" width="40" height="40"/>
+<rect class="t-need" x="340" y="140" width="40" height="40"/>
+<rect class="t-need" x="340" y="180" width="40" height="40"/>
+<rect class="t-need" x="340" y="220" width="40" height="40"/>
+<rect class="t-need" x="340" y="260" width="40" height="40"/>
+<rect class="t-need" x="340" y="300" width="40" height="40"/>
+<rect class="t-kept" x="340" y="340" width="40" height="40"/>
+<rect class="t-none" x="340" y="380" width="40" height="40"/>
+<rect class="t-none" x="380" y="20" width="40" height="40"/>
+<rect class="t-need" x="380" y="60" width="40" height="40"/>
+<rect class="t-need" x="380" y="100" width="40" height="40"/>
+<rect class="t-need" x="380" y="140" width="40" height="40"/>
+<rect class="t-need" x="380" y="180" width="40" height="40"/>
+<rect class="t-need" x="380" y="220" width="40" height="40"/>
+<rect class="t-need" x="380" y="260" width="40" height="40"/>
+<rect class="t-need" x="380" y="300" width="40" height="40"/>
+<rect class="t-need" x="380" y="340" width="40" height="40"/>
+<rect class="t-none" x="380" y="380" width="40" height="40"/>
+<rect class="t-none" x="420" y="20" width="40" height="40"/>
+<rect class="t-need" x="420" y="60" width="40" height="40"/>
+<rect class="t-need" x="420" y="100" width="40" height="40"/>
+<rect class="t-need" x="420" y="140" width="40" height="40"/>
+<rect class="t-need" x="420" y="180" width="40" height="40"/>
+<rect class="t-need" x="420" y="220" width="40" height="40"/>
+<rect class="t-need" x="420" y="260" width="40" height="40"/>
+<rect class="t-need" x="420" y="300" width="40" height="40"/>
+<rect class="t-need" x="420" y="340" width="40" height="40"/>
+<rect class="t-none" x="420" y="380" width="40" height="40"/>
+<rect class="t-none" x="460" y="20" width="40" height="40"/>
+<rect class="t-none" x="460" y="60" width="40" height="40"/>
+<rect class="t-need" x="460" y="100" width="40" height="40"/>
+<rect class="t-need" x="460" y="140" width="40" height="40"/>
+<rect class="t-need" x="460" y="180" width="40" height="40"/>
+<rect class="t-need" x="460" y="220" width="40" height="40"/>
+<rect class="t-need" x="460" y="260" width="40" height="40"/>
+<rect class="t-need" x="460" y="300" width="40" height="40"/>
+<rect class="t-none" x="460" y="340" width="40" height="40"/>
+<rect class="t-none" x="460" y="380" width="40" height="40"/>
+<rect class="t-none" x="500" y="20" width="40" height="40"/>
+<rect class="t-none" x="500" y="60" width="40" height="40"/>
+<rect class="t-need" x="500" y="100" width="40" height="40"/>
+<rect class="t-need" x="500" y="140" width="40" height="40"/>
+<rect class="t-need" x="500" y="180" width="40" height="40"/>
+<rect class="t-need" x="500" y="220" width="40" height="40"/>
+<rect class="t-need" x="500" y="260" width="40" height="40"/>
+<rect class="t-need" x="500" y="300" width="40" height="40"/>
+<rect class="t-none" x="500" y="340" width="40" height="40"/>
+<rect class="t-none" x="500" y="380" width="40" height="40"/>
+<rect class="t-none" x="540" y="20" width="40" height="40"/>
+<rect class="t-none" x="540" y="60" width="40" height="40"/>
+<rect class="t-none" x="540" y="100" width="40" height="40"/>
+<rect class="t-need" x="540" y="140" width="40" height="40"/>
+<rect class="t-need" x="540" y="180" width="40" height="40"/>
+<rect class="t-need" x="540" y="220" width="40" height="40"/>
+<rect class="t-need" x="540" y="260" width="40" height="40"/>
+<rect class="t-none" x="540" y="300" width="40" height="40"/>
+<rect class="t-none" x="540" y="340" width="40" height="40"/>
+<rect class="t-none" x="540" y="380" width="40" height="40"/>
+<rect class="t-none" x="580" y="20" width="40" height="40"/>
+<rect class="t-none" x="580" y="60" width="40" height="40"/>
+<rect class="t-none" x="580" y="100" width="40" height="40"/>
+<rect class="t-none" x="580" y="140" width="40" height="40"/>
+<rect class="t-none" x="580" y="180" width="40" height="40"/>
+<rect class="t-none" x="580" y="220" width="40" height="40"/>
+<rect class="t-none" x="580" y="260" width="40" height="40"/>
+<rect class="t-none" x="580" y="300" width="40" height="40"/>
+<rect class="t-none" x="580" y="340" width="40" height="40"/>
+<rect class="t-none" x="580" y="380" width="40" height="40"/>
+<rect class="t-none" x="620" y="20" width="40" height="40"/>
+<rect class="t-none" x="620" y="60" width="40" height="40"/>
+<rect class="t-none" x="620" y="100" width="40" height="40"/>
+<rect class="t-none" x="620" y="140" width="40" height="40"/>
+<rect class="t-none" x="620" y="180" width="40" height="40"/>
+<rect class="t-none" x="620" y="220" width="40" height="40"/>
+<rect class="t-none" x="620" y="260" width="40" height="40"/>
+<rect class="t-none" x="620" y="300" width="40" height="40"/>
+<rect class="t-none" x="620" y="340" width="40" height="40"/>
+<rect class="t-none" x="620" y="380" width="40" height="40"/>
+<rect class="t-none" x="660" y="20" width="40" height="40"/>
+<rect class="t-none" x="660" y="60" width="40" height="40"/>
+<rect class="t-none" x="660" y="100" width="40" height="40"/>
+<rect class="t-none" x="660" y="140" width="40" height="40"/>
+<rect class="t-none" x="660" y="180" width="40" height="40"/>
+<rect class="t-none" x="660" y="220" width="40" height="40"/>
+<rect class="t-none" x="660" y="260" width="40" height="40"/>
+<rect class="t-none" x="660" y="300" width="40" height="40"/>
+<rect class="t-none" x="660" y="340" width="40" height="40"/>
+<rect class="t-none" x="660" y="380" width="40" height="40"/>
+
+      </g>
+      <polyline class="trail" points="200,220 400,220"/>
+      <circle class="ring-unload" cx="400" cy="220" r="180"/>
+      <circle class="ring-ahead" cx="440" cy="220" r="120"/>
+      <circle class="ring-load" cx="400" cy="220" r="120"/>
+      <circle cx="440" cy="220" r="4.5" class="pose"/>
+      <line x1="400" y1="220" x2="436" y2="220" class="s" stroke-dasharray="3 3"/>
+      <path d="M414,220 L392,210 L396,220 L392,230 z" class="pose"/>
+      <text x="400" y="252" text-anchor="middle" class="small pose-text halo">自己位置</text>
+      <text x="452" y="212" class="small pose-text halo">先読み</text>
+      <text x="210" y="252" class="small pose-text halo">走ってきた道</text>
+      <text x="400" y="94" text-anchor="middle" class="small accent-text halo">load 60 m</text>
+      <text x="400" y="34" text-anchor="middle" class="small muted-text halo">unload 90 m</text>
+      <g transform="translate(20,440)">
+        <rect class="t-need" x="0" y="-11" width="14" height="14"/><text x="20" y="1" class="small">読み込む（領域に入る）</text>
+        <rect class="t-kept" x="170" y="-11" width="14" height="14"/><text x="190" y="1" class="small">持ち続ける（60〜90 m）</text>
+        <rect class="t-drop" x="350" y="-11" width="14" height="14"/><text x="370" y="1" class="small">捨てる（90 m 超）</text>
+        <rect class="t-none" x="490" y="-11" width="14" height="14"/><text x="510" y="1" class="small">読んでいない</text>
+      </g>
+    </svg>
+    <figcaption><b>図 3　読み込む・持ち続ける・捨てるタイル（1 マス = 20 m）。</b> 西から走ってきて、いま中央にいる。赤枠は、通り過ぎて 90 m より遠くなったので捨てたタイル。実線の緑の破線円が現在位置の周り 60 m、細い破線円が先読み位置の周り 60 m、灰の破線円が捨てる距離 90 m。先読みは見やすいように 20 m 先に描いた（既定の 1.5 m/s・3 秒なら 4.5 m 先）。持ち続けているタイルも、照合の領域には入る。</figcaption>
+  </figure>
+
+  <div class="callout">「持ち続ける」タイルも、キャッシュにある限り照合の領域に入る（領域 = アクティブグループの読み込み済みタイル全部）。捨てる距離を読み込む距離より大きくしてあるのは、読み込み直しの手間を減らすためで、その分だけ領域は少し広くなる。</div>
+
+  <h2 id="when">5. いつ見直すか</h2>
+  <p><code>update()</code> は自己位置が来るたびに呼んでよいが、実際に見直すのは次のどちらかのときだけである。</p>
+  <ul>
+    <li>前回見直した位置から 1 m（<code>update_distance</code>）以上動いた。</li>
+    <li>前回から 1 秒（<code>update_interval</code>）以上たった（止まっていても、先読みやグループの判定を更新するため）。</li>
+  </ul>
+  <p>見直した結果、要るタイルの組もアクティブグループ（8 章）も変わらなければ、何もしない。変わったときだけロードスレッドに通知して、すぐ戻る。タイルは 20 m 四方なので、1.5 m/s で走っていても、組が変わるのは数秒に 1 回程度である。</p>
+
+  <h2 id="swap">6. 読み込みと差し替え</h2>
+  <p>ロードスレッドは通知を受けると、足りないタイルをファイルから読み、捨てるタイルをキャッシュから消し、読み込み済みのタイルで新しい「領域」を作る。できあがったら、今の領域と差し替える（ダブルバッファ）。</p>
+  <p>領域は <code>shared_ptr</code> で受け渡しする。照合の途中で差し替わっても、照合しているスレッドは古い領域を持ったまま最後まで計算でき、終わって手放した時点で古い領域が解放される。照合する側は、ロックを持ったまま待つ必要がない。</p>
+
+  <figure>
+    <svg viewBox="0 0 760 250" role="img" aria-label="update はすぐ戻り、ロードスレッドが読み込みと領域の作成を行って差し替える。照合中のスレッドは古い領域 A を使い終えてから次の照合で新しい領域 B を使う">
+      <defs>
+        <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+        <marker id="a4g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-accent"/></marker>
+      </defs>
+      <text x="20" y="54" class="small">呼び出し側</text>
+      <text x="20" y="124" class="small">ロードスレッド</text>
+      <text x="20" y="194" class="small">照合スレッド</text>
+      <line class="lane" x1="120" y1="50" x2="740" y2="50"/>
+      <line class="lane" x1="120" y1="120" x2="740" y2="120"/>
+      <line class="lane" x1="120" y1="190" x2="740" y2="190"/>
+      <line class="arrow" x1="120" y1="232" x2="738" y2="232" marker-end="url(#a4)"/>
+      <text x="740" y="248" text-anchor="end" class="small muted-text">時間</text>
+
+      <rect class="bar" x="170" y="40" width="16" height="20"/>
+      <text x="178" y="32" text-anchor="middle" class="code">update()</text>
+      <line class="arrow" x1="186" y1="60" x2="208" y2="108" marker-end="url(#a4)"/>
+      <text x="206" y="82" class="small">通知</text>
+      <rect class="bar" x="210" y="108" width="170" height="24"/>
+      <text x="295" y="125" text-anchor="middle" class="small">タイルを読む・捨てる</text>
+      <rect class="bar-accent" x="380" y="108" width="140" height="24"/>
+      <text x="450" y="125" text-anchor="middle" class="small">領域 B を作る</text>
+      <line class="arrow-accent" x1="520" y1="100" x2="520" y2="210"/>
+      <text x="520" y="94" text-anchor="middle" class="small accent-text">差し替え</text>
+
+      <rect class="bar" x="130" y="178" width="110" height="24"/>
+      <text x="185" y="195" text-anchor="middle" class="small">照合（A）</text>
+      <rect class="bar" x="260" y="178" width="110" height="24"/>
+      <text x="315" y="195" text-anchor="middle" class="small">照合（A）</text>
+      <rect class="bar" x="440" y="178" width="130" height="24"/>
+      <text x="505" y="195" text-anchor="middle" class="small">照合（A）</text>
+      <rect class="bar-accent" x="590" y="178" width="110" height="24"/>
+      <text x="645" y="195" text-anchor="middle" class="small">照合（B）</text>
+      <text x="575" y="222" text-anchor="middle" class="small muted-text">A を解放</text>
+      <line class="s" x1="570" y1="203" x2="575" y2="212"/>
+    </svg>
+    <figcaption><b>図 4　非同期の読み込みとダブルバッファ。</b> <code>update()</code> は通知してすぐ戻る。差し替えの時点で照合中だった 3 回目の照合は古い領域 A のまま最後まで計算し、次の照合から新しい領域 B を使う。A は最後の使い手が手放したときに解放される。</figcaption>
+  </figure>
+
+  <p>テストなどで順番を決めて動かしたいときは、<code>async = false</code> にすると、読み込みと領域の作成を <code>update()</code> の中で行う。<code>waitIdle()</code> で、読み込みが終わるのを待つこともできる。</p>
+
+  <h2 id="region">7. 領域の中身を決める</h2>
+  <p>「領域」に何を持たせるかは、使う側が決められる。<code>MapTileManager</code> には、読み込み済みのタイルから領域を作る関数（<code>RegionBuilder</code>）を渡す。この関数はロードスレッドで呼ばれるので、重い前処理（KdTree の構築など）をしても、使う側は止まらない。</p>
+
+  <figure>
+    <svg viewBox="0 0 760 210" role="img" aria-label="読み込み済みのタイルを RegionBuilder に渡すと、既定ではタイルを並べるだけの TileSetRegion、自己位置推定では点を結合して KdTree を作った GICP のターゲット、ほかの用途では独自の検索構造ができる">
+      <defs>
+        <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+      </defs>
+      <rect class="box" x="20" y="70" width="170" height="70" rx="5"/>
+      <text x="105" y="98" text-anchor="middle" class="title">読み込み済みのタイル</text>
+      <text x="105" y="118" text-anchor="middle" class="small">点・共分散（地図座標）</text>
+      <rect class="box-accent" x="250" y="80" width="150" height="50" rx="5"/>
+      <text x="325" y="110" text-anchor="middle" class="code">RegionBuilder</text>
+      <line class="arrow" x1="190" y1="105" x2="248" y2="105" marker-end="url(#a5)"/>
+      <rect class="box" x="470" y="14" width="270" height="52" rx="5"/>
+      <text x="484" y="36" class="title">既定: TileSetRegion</text>
+      <text x="484" y="55" class="small">タイルを並べるだけ（点はコピーしない）</text>
+      <rect class="box" x="470" y="80" width="270" height="52" rx="5"/>
+      <text x="484" y="102" class="title">自己位置推定: GICP のターゲット</text>
+      <text x="484" y="121" class="small">点を結合し、KdTree を作る（gll_core）</text>
+      <rect class="box" x="470" y="146" width="270" height="52" rx="5"/>
+      <text x="484" y="168" class="title">ほかの用途: 独自の構造</text>
+      <text x="484" y="187" class="small">NDT のボクセル地図など</text>
+      <path class="arrow" d="M400,98 C430,98 440,40 468,40" marker-end="url(#a5)"/>
+      <line class="arrow" x1="400" y1="105" x2="468" y2="105" marker-end="url(#a5)"/>
+      <path class="arrow" d="M400,112 C430,112 440,172 468,172" marker-end="url(#a5)"/>
+    </svg>
+    <figcaption><b>図 5　領域の作り方を差し替える。</b> どの領域にも、グループ名・アンカー（地図座標 ⇔ UTM）・含まれるタイル・点数が付く。使う側は <code>currentRegionAs&lt;型&gt;()</code> で、自分が作った型として受け取る。差し替わるたびに呼ばれる関数（<code>setRegionCallback</code>）も登録できる。</figcaption>
+  </figure>
+
+  <h2 id="groups">8. 複数の地図</h2>
+  <p>座標系の違う複数の点群地図（地図グループ）を扱える。各グループには、地図の 1 点の緯度経度と地図の向き（アンカー）を与え、タイルの四隅を UTM に直して判定する。すべてのグループのタイルが読み込みの対象になるが、<b>領域を作るのは 1 つのグループ（アクティブグループ）だけ</b>で、別のグループの点を混ぜない。</p>
+  <ul>
+    <li>アクティブグループは、<b>現在位置</b>（先読みは使わない）から 60 m 以内にあるグループのうち、タイルまでが最も近いもの。</li>
+    <li>今のグループより 10 m（<code>group_switch_margin</code>）以上近いグループが現れたときだけ切り替える。境目で行ったり来たりしない。</li>
+    <li>次のグループのタイルは、先読みで先にキャッシュに入る。切り替えた時点で、すぐに領域を作れる。</li>
+  </ul>
+
+  <figure>
+    <svg viewBox="0 0 760 230" role="img" aria-label="地図グループ A と B の間を走っているとき、B のタイルは先に読み込まれてキャッシュに入るが、領域は A のまま。B が 10 m 以上近くなると B に切り替わる">
+      <defs>
+        <marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+      </defs>
+      <g>
+        <rect class="t-none" x="40" y="60" width="40" height="40"/>
+        <rect class="t-none" x="80" y="60" width="40" height="40"/>
+        <rect class="t-none" x="120" y="60" width="40" height="40"/>
+        <rect class="t-none" x="160" y="60" width="40" height="40"/>
+        <rect class="t-need" x="200" y="60" width="40" height="40"/>
+        <rect class="t-need" x="240" y="60" width="40" height="40"/>
+        <rect class="t-kept" x="490" y="60" width="40" height="40"/>
+        <rect class="t-none" x="530" y="60" width="40" height="40"/>
+        <rect class="t-none" x="570" y="60" width="40" height="40"/>
+        <rect class="t-none" x="610" y="60" width="40" height="40"/>
+        <rect class="t-none" x="650" y="60" width="40" height="40"/>
+        <rect class="t-none" x="690" y="60" width="40" height="40"/>
+        <rect class="t-none" x="40" y="100" width="40" height="40"/>
+        <rect class="t-none" x="80" y="100" width="40" height="40"/>
+        <rect class="t-none" x="120" y="100" width="40" height="40"/>
+        <rect class="t-none" x="160" y="100" width="40" height="40"/>
+        <rect class="t-need" x="200" y="100" width="40" height="40"/>
+        <rect class="t-need" x="240" y="100" width="40" height="40"/>
+        <rect class="t-kept" x="490" y="100" width="40" height="40"/>
+        <rect class="t-none" x="530" y="100" width="40" height="40"/>
+        <rect class="t-none" x="570" y="100" width="40" height="40"/>
+        <rect class="t-none" x="610" y="100" width="40" height="40"/>
+        <rect class="t-none" x="650" y="100" width="40" height="40"/>
+        <rect class="t-none" x="690" y="100" width="40" height="40"/>
+      </g>
+      <text x="160" y="46" text-anchor="middle" class="title">地図グループ A</text>
+      <text x="610" y="46" text-anchor="middle" class="title">地図グループ B</text>
+      <text x="385" y="46" text-anchor="middle" class="small muted-text">GNSS 区間（地図なし）</text>
+      <line class="grid" x1="280" y1="100" x2="490" y2="100" stroke-dasharray="2 4"/>
+      <path d="M400,100 L380,91 L384,100 L380,109 z" class="pose"/>
+      <line class="arrow" x1="282" y1="160" x2="388" y2="160" marker-start="url(#a6)" marker-end="url(#a6)"/>
+      <text x="335" y="178" text-anchor="middle" class="small">A まで 55 m</text>
+      <line class="arrow" x1="392" y1="160" x2="488" y2="160" marker-start="url(#a6)" marker-end="url(#a6)"/>
+      <text x="440" y="178" text-anchor="middle" class="small">B まで 50 m</text>
+      <text x="385" y="212" text-anchor="middle" class="small">B の方が近いが、差が 10 m 未満なので、領域を作るのは A のまま</text>
+    </svg>
+    <figcaption><b>図 6　グループの切り替えと先読み。</b> 緑の塗りは A の領域に入っているタイル（通り過ぎて持ち続けているものを含む）、緑の破線は 60 m 以内に入ったので先に読み込んだ B のタイル（キャッシュにだけあり、領域には入らない）。あと 3 m ほど東へ進んで B が 10 m 以上近くなると、アクティブが B に切り替わり、キャッシュ済みの B のタイルで領域を作る。</figcaption>
+  </figure>
+
+  <h2 id="memory">9. メモリの使用量</h2>
+  <p>RAM に載るのは、読み込み中のタイルの分だけである。地図全体について持つのは、各タイルの範囲と点数の索引（数百 KB）だけで、点群本体は持たない。したがって、メモリは地図の広さではなく、読み込む半径の中にある点の数で決まる。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>持つもの</th><th>範囲</th><th>西新宿（936 タイル）で走ったとき</th></tr></thead>
+      <tbody>
+        <tr><td>タイルの索引</td><td>全タイル</td><td class="num">数百 KB</td></tr>
+        <tr><td>タイルのキャッシュ（点と共分散。1 点 36 バイト）</td><td>読み込み中のタイル</td><td class="num">25〜58 枚（中央値 47）、最大 約 41 万点 ≒ 15 MB</td></tr>
+        <tr><td>GICP のターゲット（点をまとめ直したものと KdTree。1 点 約 170 バイト）</td><td>同じタイル</td><td class="num">最大 約 70 MB</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>自己位置推定（gll_core）では、キャッシュと GICP のターゲットの両方に同じ点が入る（GICP の検索構造はタイル単位で点を消せないので、組が変わるたびにまとめ直す）。領域を作り直している間は古い領域も残るので、一時的に最大 2 倍になる。数字は点数とデータ形式からの見積もりで、実際のプロセスのメモリは測っていない。</p>
+
+  <h2 id="params">10. パラメータ</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>名前</th><th>既定</th><th>意味</th></tr></thead>
+      <tbody>
+        <tr><td><code>--tile-size</code>（タイル化）</td><td class="num">20 m</td><td>タイルの一辺</td></tr>
+        <tr><td><code>--voxel-size</code>（タイル化）</td><td class="num">0.2 m</td><td>間引きのボクセルの一辺</td></tr>
+        <tr><td><code>--num-neighbors</code>（タイル化）</td><td class="num">20</td><td>点ごとの共分散に使う近傍点数（<code>--no-covariance</code> で計算しない）</td></tr>
+        <tr><td><code>load_radius</code></td><td class="num">60 m</td><td>現在位置と先読み位置から、これ以内のタイルを読み込む。LiDAR の届く範囲（既定の切り取り 50 m）より大きくする</td></tr>
+        <tr><td><code>unload_radius</code></td><td class="num">90 m</td><td>現在位置から、これより遠いタイルを捨てる。<code>load_radius</code> より大きくする</td></tr>
+        <tr><td><code>lookahead_time</code></td><td class="num">3 s</td><td>先読み位置 = 速さ × この時間だけ進行方向に進んだ位置</td></tr>
+        <tr><td><code>update_distance</code> / <code>update_interval</code></td><td class="num">1 m / 1 s</td><td>見直す間隔</td></tr>
+        <tr><td><code>group_switch_margin</code></td><td class="num">10 m</td><td>アクティブグループを切り替えるときのヒステリシス</td></tr>
+        <tr><td><code>min_target_points</code></td><td class="num">500</td><td>点がこれ未満の領域は作らない（地図の端など）</td></tr>
+        <tr><td><code>async</code></td><td class="num">true</td><td>読み込みを別スレッドで行う</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="meta">詳しい使い方とコードの例は <a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/main/tiled_pcd_map/README.md">tiled_pcd_map の README</a>、設計の背景は<a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/main/docs/design.md">設計書</a> 5 章にある。</p>
+</main>
