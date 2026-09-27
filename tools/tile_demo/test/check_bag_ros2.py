@@ -37,11 +37,24 @@ def durability(profiles):
     """TopicMetadata.offered_qos_profiles（版によって文字列か QoS の一覧）から durability を読む。"""
     if isinstance(profiles, str):
         return "transient_local" if "transient_local" in profiles else "volatile"
+    found = []
     for p in profiles:
         d = getattr(p, "durability", None)
-        if d is not None and (str(d).upper().endswith("TRANSIENT_LOCAL") or int(d) == 1):
+        if callable(d):  # rosbag2_py（Jazzy）では rclcpp::QoS のバインディングで、durability() はメソッド
+            d = d()
+        s = str(d).upper()
+        if "TRANSIENT_LOCAL" in s:
             return "transient_local"
-    return "volatile"
+        if "VOLATILE" in s:
+            found.append("volatile")
+            continue
+        try:
+            if int(d) == 1:  # RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL
+                return "transient_local"
+            found.append("volatile")
+        except (TypeError, ValueError):
+            fail(f"cannot read durability from {d!r}")
+    return "volatile" if found else "unknown"
 
 
 def read_bag(path):
