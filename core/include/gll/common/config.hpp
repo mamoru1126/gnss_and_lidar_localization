@@ -2,7 +2,7 @@
 #pragma once
 
 #include "gll/common/types.hpp"
-#include "gll/map/map_manager_config.hpp"
+#include "tiled_pcd_map/map_manager_config.hpp"
 
 #include <Eigen/Geometry>
 
@@ -130,7 +130,7 @@ struct LidarConfig {
   bool async = true;                 ///< 別スレッドで照合する（テストでは false にして同期で処理する）
 };
 
-// 地図タイルの管理の設定 MapManagerConfig は gll_map の gll/map/map_manager_config.hpp（設計書 5 章）。
+// 地図タイルの管理の設定 MapManagerConfig は tiled_pcd_map の tiled_pcd_map/map_manager_config.hpp（設計書 5 章）。
 
 /// 地図上での初期化と再位置推定（設計書 3.11 節・3.13.4 節）。
 struct RelocalizeConfig {

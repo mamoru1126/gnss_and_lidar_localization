@@ -61,11 +61,11 @@ CMD ["bash"]
 FROM base AS build
 ARG ROS_DISTRO
 WORKDIR /ws
-COPY map src/gnss_and_lidar_localization/map
+COPY tiled_pcd_map src/gnss_and_lidar_localization/tiled_pcd_map
 COPY core src/gnss_and_lidar_localization/core
 COPY ros2 src/gnss_and_lidar_localization/ros2
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
- && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DGLL_BUILD_TESTS=OFF -DGLL_MAP_BUILD_TESTS=OFF
+ && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DGLL_BUILD_TESTS=OFF -DTILED_PCD_MAP_BUILD_TESTS=OFF
 
 # ---------------------------------------------------------------------------
 FROM ros:${ROS_DISTRO}-ros-core AS runtime

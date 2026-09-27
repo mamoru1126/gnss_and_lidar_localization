@@ -2,7 +2,7 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Eigen3 NO_MODULE)
-find_dependency(gll_map)
+find_dependency(tiled_pcd_map)
 # gll_core は静的ライブラリなので、非公開の依存もリンク時に必要になる
 find_dependency(OpenMP COMPONENTS CXX)
 find_dependency(small_gicp)

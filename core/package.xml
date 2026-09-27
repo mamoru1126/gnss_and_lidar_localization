@@ -9,7 +9,7 @@
 
   <buildtool_depend>cmake</buildtool_depend>
   <depend>eigen</depend>
-  <depend>gll_map</depend>
+  <depend>tiled_pcd_map</depend>
   <!-- small_gicp（v1.0.1）はソースからビルドしてインストールしておく（docker/Dockerfile、README） -->
   <test_depend>gtest</test_depend>
 

@@ -5,7 +5,7 @@
 
 各 lanelet の中心線の点をつなぎ、2.5 m 以内の点どうし（隣の lanelet・車線）もつないだ無向グラフで、
 目標点に最も近い点を順に最短経路で結ぶ。進行方向（一方通行）は見ない。座標はノードの local_x / local_y。
-出力は 3 m 間隔の「x y」の行（gll_tile_demo の経路ファイル）。numpy と scipy が必要。
+出力は 3 m 間隔の「x y」の行（tiled_pcd_map_demo の経路ファイル）。numpy と scipy が必要。
 """
 import heapq
 import json

@@ -1,7 +1,7 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md) / [検証計画: i2Nav-Robot](./validation_i2nav.md)
-- 状態: ドラフト（v0.11。Phase 2 を実装済み。地図のライブラリ gll_map を切り出した）
+- 状態: ドラフト（v0.11。Phase 2 を実装済み。地図のライブラリ tiled_pcd_map を切り出した）
 
 | 版 | 変更内容 |
 |---|---|
@@ -15,7 +15,7 @@
 | v0.8 | ROS 2 Jazzy と Docker 環境を確定し、ROS 1 対応は後回しに。出力 TF を `map` → `base_link`（`map` = UTM）とし、地図グループの座標系を `pcd_<group_id>` に改名。ODOM を `nav_msgs/Odometry`（twist を使用）に確定し、横方向の速度も予測に使えるようにした |
 | v0.9 | 運用上の前提（点群地図と GNSS 区間の間には必要十分な距離を設ける。要件定義 3 章）を反映。**デッドレコニング距離の監視**を追加し、位置の観測なしで一定距離を走ったら diagnostics で ERROR を通知するようにした（3.12 節）。GNSS のメッセージが途切れた後は FIX の安定待ちをやり直す（3.6 節）。複数の地図グループの扱いを見直した: アクティブグループを現在位置で決める、LiDAR の結果は照合に使ったターゲットのグループのアンカーで変換する、タイル ID にグループを含める、z を楕円体高で保持する、グループの重なりを起動時に検出する（3.9 節、5 章） |
 | v0.10 | **Phase 2（スキャンマッチング）を実装**し、実装に合わせて更新。**GNSS 区間が無く点群地図だけがある現場**も対象にした: 初期姿勢（外部から与える、または前回保存した位置）の周りで位置合わせして地図上で初期化する（3.11 節）。スキャンマッチングの共分散の式と品質の指標（overlap）を確定し（6.2 節）、多仮説の探索（6.4 節）、再位置推定の探索範囲の下限（3.13.4 節）、タイルと地図設定の形式（5.2 節）、アンカーの UTM での直接指定と `local`（4.2 節）、点群の時刻の扱い（6.1 節）を追記 |
-| v0.11 | 地図のタイル化・動的ロードを、単体でも使える ROS 非依存のライブラリ **`gll_map`**（`map/`）に切り出した（7.2 節・7.7 節）。`MapTileManager` は、読み込み中のタイルをまとめた「領域」を、差し替えられる関数（`RegionBuilder`）で作る。`gll_core` はそこに GICP のターゲットを作る関数を渡す。small_gicp は `gll_map` では任意（あればタイル化のときに点ごとの共分散を計算する） |
+| v0.11 | 地図のタイル化・動的ロードを、単体でも使える ROS 非依存のライブラリ **`tiled_pcd_map`**（`tiled_pcd_map/`。gll に依存しないので、名前空間も `tiled_pcd_map`。最初は `gll_map` という名前で切り出した）に切り出した（7.2 節・7.7 節）。タイルの形式名も `tiled_pcd_map_v1` / `TPCMTIL1` にした（前の `gll_tiles_v1` / `GLLTILE1` も読める）。`MapTileManager` は、読み込み中のタイルをまとめた「領域」を、差し替えられる関数（`RegionBuilder`）で作る。`gll_core` はそこに GICP のターゲットを作る関数を渡す。small_gicp は `tiled_pcd_map` では任意（あればタイル化のときに点ごとの共分散を計算する） |
 
 ### 前提ハードウェア・運用条件（v0.2〜v0.3、v0.9 で確定）
 
@@ -73,7 +73,7 @@ flowchart LR
     GM[GNSS 観測モデル<br/>RTK-FIX 判定・レバーアーム]
     LM[LiDAR 観測モデル<br/>地図座標 → UTM]
     SM[スキャンマッチャ<br/>small_gicp]
-    MTM[地図タイルマネージャ<br/>ロード / アンロード<br/>（gll_map）]
+    MTM[地図タイルマネージャ<br/>ロード / アンロード<br/>（tiled_pcd_map）]
     OS[出力整形<br/>補正量のレート制限]
     ST[状態監視<br/>モード判定]
   end
@@ -176,7 +176,7 @@ X = \hat{X}\,\mathrm{Exp}(\xi),\quad \xi = \begin{bmatrix} \rho_x & \rho_y & \va
 \mathrm{Ad}_{(\mathbf{R},\mathbf{t})} = \begin{bmatrix} \mathbf{R} & -\mathbf{J}\mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}
 ```
 
-$`\mathrm{Log}`$ は $`\mathrm{Exp}`$ の逆写像で、$`\varphi \to 0`$ ではテイラー展開で評価する。これらは `gll/common/se2.hpp` に自前で実装する（数十行程度。単体テストで数値微分と照合する）。外部ライブラリ（manif 等）には依存しない。
+$`\mathrm{Log}`$ は $`\mathrm{Exp}`$ の逆写像で、$`\varphi \to 0`$ ではテイラー展開で評価する。これらは `tiled_pcd_map/se2.hpp` に自前で実装する（数十行程度。単体テストで数値微分と照合する）。外部ライブラリ（manif 等）には依存しない。
 
 $`s`$ の推定は、設定で無効にできるようにする（推定する量が増えると、GNSS と LiDAR が両方無い区間での振る舞いが不安定になりうるため）。
 
@@ -668,9 +668,9 @@ UTM 座標は $`10^5`$〜$`10^6`$ m のオーダーになる。`float32` では�
 
 ### 5.2 タイル化とメタデータ
 
-オフラインツール `gll_map_tiler` で、外部ツールが出力した統合済みの点群を正方形のタイルに分割する。
+オフラインツール `tiled_pcd_map_tiler` で、外部ツールが出力した統合済みの点群を正方形のタイルに分割する。
 
-- 使い方: `gll_map_tiler -i map.pcd [-i more.pcd ...] -o <出力先> [--tile-size 20] [--voxel-size 0.2] [--num-neighbors 20]`。1 回の実行で 1 つの地図グループを作る。入力の PCD は、DATA が ascii / binary / binary_compressed で、x / y / z が float32 か float64 のもの（PCL には依存しない独自の読み込み。v0.10）
+- 使い方: `tiled_pcd_map_tiler -i map.pcd [-i more.pcd ...] -o <出力先> [--tile-size 20] [--voxel-size 0.2] [--num-neighbors 20]`。1 回の実行で 1 つの地図グループを作る。入力の PCD は、DATA が ascii / binary / binary_compressed で、x / y / z が float32 か float64 のもの（PCL には依存しない独自の読み込み。v0.10）
 - タイルサイズ: 既定 20 m（地図座標系、xy 平面）
 - 前処理: ボクセルダウンサンプリング（既定 0.2 m）。点ごとの共分散は、分割する前の点群全体で近傍 20 点から計算する（6.2 節）
 - 出力: `tiles/<ix>_<iy>.bin`（独自のバイナリ形式。下記）と `tile_index.yaml`
@@ -700,8 +700,8 @@ map_groups:
 ```
 
 ```yaml
-# area_a/tile_index.yaml（gll_map_tiler が生成）
-format: gll_tiles_v1
+# area_a/tile_index.yaml（tiled_pcd_map_tiler が生成）
+format: tiled_pcd_map_v1
 tile_size: 20
 voxel_size: 0.2
 num_neighbors: 20
@@ -709,7 +709,7 @@ tiles:
   - {ix: 3, iy: -1, file: tiles/3_-1.bin, num_points: 18234, bounds_min: [60.000, -20.000, -5.200], bounds_max: [80.000, 0.000, 12.300]}
 ```
 
-**タイルファイルの形式**（リトルエンディアン）: 先頭 8 バイトが `GLLTILE1`、続いて点数（uint64）、フラグ（uint32。ビット 0 が共分散あり）、点の xyz（float32 × 3 × 点数）、共分散の上三角 xx・xy・xz・yy・yz・zz（float32 × 6 × 点数）。
+**タイルファイルの形式**（リトルエンディアン）: 先頭 8 バイトが `TPCMTIL1`、続いて点数（uint64）、フラグ（uint32。ビット 0 が共分散あり）、点の xyz（float32 × 3 × 点数）、共分散の上三角 xx・xy・xz・yy・yz・zz（float32 × 6 × 点数）。前の形式（`GLLTILE1`、`format: gll_tiles_v1`）も読み込める。
 
 起動時に `MapTileManager` が全グループのタイルの四隅を UTM に変換して、タイルの範囲（四角形）を求める。この時点では点群本体は読み込まない。タイルの数は多くても数千枚の想定なので、範囲の判定は全タイルを順に調べる（見直しは `update_distance` 既定 1 m 動くか、`update_interval` 既定 1 s ごと）。
 
@@ -814,7 +814,7 @@ sequenceDiagram
 
 **ターゲット（地図）の構成**: small_gicp には、タイル ID 単位でターゲットの点を削除する仕組みが無い。そこで次のようにする。
 
-1. **点ごとの共分散はオフラインで計算**する。`gll_map_tiler` がグループ全体の点群に対して近傍 20 点から共分散を求め、タイルファイルに保存する。**分割前の点群で計算する**ことで、タイル境界で近傍点が欠けて共分散が劣化するのを防ぐ。
+1. **点ごとの共分散はオフラインで計算**する。`tiled_pcd_map_tiler` がグループ全体の点群に対して近傍 20 点から共分散を求め、タイルファイルに保存する。**分割前の点群で計算する**ことで、タイル境界で近傍点が欠けて共分散が劣化するのを防ぐ。
 2. タイルファイルは独自のバイナリ形式（5.2 節）とする。コアから PCL への依存を無くすため。
 3. アクティブグループのロード済みタイルの集合が変わったら、地図ロードワーカーが**結合した点群と KdTree を再構築**し、ダブルバッファで差し替える（5.3 節）。6 km/h ではタイル集合が変わるのは数秒〜数十秒に 1 回で、再構築は十分に間に合う。
 
@@ -902,21 +902,20 @@ flowchart TB
 
 ```
 gnss_and_lidar_localization/
-├── map/                        # gll_map（v0.11。単体でも使える地図のライブラリ。純粋な CMake。map/README.md）
-│   ├── include/gll/
-│   │   ├── common/             # math（型・角度）, se2, geodesy（UTM）, logger
-│   │   └── map/                # アンカー、maps.yaml、タイルと索引、PCD の読み書き、タイル化、MapTileManager、MapRegion
+├── tiled_pcd_map/              # tiled_pcd_map（v0.11。単体でも使える地図のライブラリ。gll に依存しない。純粋な CMake。README.md）
+│   ├── include/tiled_pcd_map/  # math（型・角度）, se2, geodesy（UTM）, logger, アンカー、maps.yaml、タイルと索引、
+│   │                           # PCD の読み書き、タイル化、MapTileManager、MapRegion（名前空間 tiled_pcd_map）
 │   ├── src/
-│   ├── tools/                  # gll_map_tiler（統合済みの PCD → タイル + tile_index.yaml）、gll_tile_demo
-│   ├── examples/               # find_package(gll_map) で使う例
+│   ├── tools/                  # tiled_pcd_map_tiler（統合済みの PCD → タイル + tile_index.yaml）、tiled_pcd_map_demo
+│   ├── examples/               # find_package(tiled_pcd_map) で使う例
 │   └── test/
-├── core/                       # gll_core（純粋な CMake。gll_map を使う。colcon / catkin からも plain CMake でビルド可能）
+├── core/                       # gll_core（純粋な CMake。tiled_pcd_map を使う。colcon / catkin からも plain CMake でビルド可能）
 │   ├── CMakeLists.txt
 │   ├── include/gll/
 │   │   ├── common/             # types（センサデータ・出力）, config, pose_store
 │   │   ├── estimation/         # 推定器（InvEkfSe2 / EsEkf2D）、履歴、ゲート、出力整形、状態監視、初期化、優先度、復帰
 │   │   ├── measurement/        # 姿勢推定器、予測入力、停止検出、GNSS / LiDAR の観測の生成
-│   │   ├── matching/           # IScanMatcher（MatchTarget は gll_map の MapRegion を継承）、GicpMatcher（small_gicp）、ScanPreprocessor
+│   │   ├── matching/           # IScanMatcher（MatchTarget は tiled_pcd_map の MapRegion を継承）、GicpMatcher（small_gicp）、ScanPreprocessor
 │   │   └── localizer.hpp       # ファサード
 │   ├── src/
 │   └── test/                   # GoogleTest（ROS 無しで実行可能。合成環境のレイキャストによる LiDAR の模擬を含む）
@@ -1032,16 +1031,16 @@ v0.8 で、ROS 1 対応の実装は後回しと決めた。コアの ROS 非依�
 
 ### 7.7 外部依存（コア）
 
-v0.11 で、地図の部分を `gll_map` に分けた。`gll_map` の必須の依存は Eigen3・GeographicLib・yaml-cpp だけで、small_gicp は任意（あればタイル化のときに点ごとの共分散を計算する。無ければ共分散なしのタイルを書き、`gll_core` の `GicpMatcher` がターゲットを作るときに計算する）。`gll_core` は `gll_map` と small_gicp・OpenMP を使う。
+v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` の必須の依存は Eigen3・GeographicLib・yaml-cpp だけで、small_gicp は任意（あればタイル化のときに点ごとの共分散を計算する。無ければ共分散なしのタイルを書き、`gll_core` の `GicpMatcher` がターゲットを作るときに計算する）。`gll_core` は `tiled_pcd_map` と small_gicp・OpenMP を使う。
 
 | ライブラリ | 使うパッケージ | 用途 |
 |---|---|---|
 | Eigen3 | 両方 | 線形代数 |
-| GeographicLib | gll_map | 緯度経度 ↔ UTM、子午線収差、縮尺係数 |
-| small_gicp（v1.0.1） | gll_core（gll_map は任意） | スキャンマッチング（GICP / VGICP）、共分散推定、KdTree。タグを固定してソースからビルドする（apt のパッケージは使わない）。GCC 13 と Eigen 3.3 の組み合わせでは、small_gicp の `kdtree.hpp` が `<cstdint>` を必要とするので、使う側で先に含める |
-| OpenMP | gll_core（gll_map は任意） | small_gicp の並列化（GCC の libgomp） |
-| （PCL） | 使わない | v0.10。PCD の読み込みとボクセルの間引きは `gll_map` の独自実装、PointCloud2 の変換は IF 層の独自実装 |
-| yaml-cpp | gll_map | maps.yaml・tile_index.yaml |
+| GeographicLib | tiled_pcd_map | 緯度経度 ↔ UTM、子午線収差、縮尺係数 |
+| small_gicp（v1.0.1） | gll_core（tiled_pcd_map は任意） | スキャンマッチング（GICP / VGICP）、共分散推定、KdTree。タグを固定してソースからビルドする（apt のパッケージは使わない）。GCC 13 と Eigen 3.3 の組み合わせでは、small_gicp の `kdtree.hpp` が `<cstdint>` を必要とするので、使う側で先に含める |
+| OpenMP | gll_core（tiled_pcd_map は任意） | small_gicp の並列化（GCC の libgomp） |
+| （PCL） | 使わない | v0.10。PCD の読み込みとボクセルの間引きは `tiled_pcd_map` の独自実装、PointCloud2 の変換は IF 層の独自実装 |
+| yaml-cpp | tiled_pcd_map | maps.yaml・tile_index.yaml |
 | GoogleTest | 両方 | 単体テスト |
 
 ---
@@ -1060,7 +1059,7 @@ v0.11 で、地図の部分を `gll_map` に分けた。`gll_map` の必須の�
 | VS Code | `.devcontainer/devcontainer.json`（任意。`dev` ステージを使う） |
 | CI | GitHub Actions で同じ Dockerfile の `dev` ステージをビルドし、その中で colcon ビルドと単体テストを実行する |
 
-- コア（`gll_core`）は ROS なしでもビルドできる構成を保つ。CI では、ROS なしでのコア単体のビルドとテストも別ジョブで行い、ROS への依存が紛れ込んでいないことを確かめる。`gll_map` は、small_gicp も無い環境で単体でビルド・テストし、インストールしたものを `find_package(gll_map)` で使う例もビルドする（v0.11）。
+- コア（`gll_core`）は ROS なしでもビルドできる構成を保つ。CI では、ROS なしでのコア単体のビルドとテストも別ジョブで行い、ROS への依存が紛れ込んでいないことを確かめる。`tiled_pcd_map` は、small_gicp も無い環境で単体でビルド・テストし、インストールしたものを `find_package(tiled_pcd_map)` で使う例もビルドする（v0.11）。
 - i2Nav-Robot の変換・評価スクリプト（[検証計画](./validation_i2nav.md)）も、`dev` ステージのコンテナ内で実行する。
 
 ## 8. パラメータ初期値（抜粋）
@@ -1170,7 +1169,7 @@ v0.11 で、地図の部分を `gll_map` に分けた。`gll_map` の必須の�
 | Phase | 内容 |
 |---|---|
 | 1 | **Docker 環境と CI**、コアの骨格（型、設定、ロガー）、SE(2) 演算、Invariant EKF、状態履歴バッファ、GNSS 観測、補助姿勢推定、出力整形、状態監視（デッドレコニング距離の監視を含む。v0.9）、GNSS の再アンカー / ROS 2 IF（IMU・ODOM・GNSS、diagnostics） / 単体テスト。**GNSS + デッドレコニングで動く状態**。シミュレーションで yaw の初期誤差に対する収束を ESEKF 版と比較し、Invariant EKF の優位を確認する |
-| 2（v0.10 で実装済み） | アンカー変換、タイルツール（`gll_map_tiler`）、地図タイルマネージャ（非同期ロード・ダブルバッファ・アクティブグループ・重なりの検出）、GICP の実装と LiDAR 観測、回転と並進の歪み補正、地図区間での初期化（初期姿勢・前回保存した位置）、GNSS FIX 中の LiDAR の食い違い判定と LiDAR の再アンカー、再位置推定、ROS 2 IF（PointCloud2・デバッグ出力・診断） |
+| 2（v0.10 で実装済み） | アンカー変換、タイルツール（`tiled_pcd_map_tiler`）、地図タイルマネージャ（非同期ロード・ダブルバッファ・アクティブグループ・重なりの検出）、GICP の実装と LiDAR 観測、回転と並進の歪み補正、地図区間での初期化（初期姿勢・前回保存した位置）、GNSS FIX 中の LiDAR の食い違い判定と LiDAR の再アンカー、再位置推定、ROS 2 IF（PointCloud2・デバッグ出力・診断） |
 | 3 | 実走行データ（i2Nav-Robot）での検証とパラメータ調整（`cov_scale`、品質の閾値、`dr_error_distance` など）、アンカー較正ツール、実機の CPU での処理時間の確認 |
 | 4（拡張） | SE₂(3) 上の 3D Invariant EKF + IMU バイアス（z / roll / pitch の出力）、地図アンカーオフセットのオンライン推定、ROS 1 IF |
 

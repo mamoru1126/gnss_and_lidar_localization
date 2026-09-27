@@ -2,7 +2,7 @@
 // 座標系: base_link は前・左・上（FLU）。map は UTM（Easting, Northing, 楕円体高）。
 #pragma once
 
-#include "gll/common/math.hpp"
+#include "gll/common/tiled_pcd_map.hpp"
 
 #include <optional>
 #include <string>

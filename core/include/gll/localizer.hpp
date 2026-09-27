@@ -4,7 +4,7 @@
 #pragma once
 
 #include "gll/common/config.hpp"
-#include "gll/common/logger.hpp"
+#include "tiled_pcd_map/logger.hpp"
 #include "gll/estimation/initializer.hpp"
 #include "gll/estimation/mahalanobis_gate.hpp"
 #include "gll/estimation/output_smoother.hpp"
@@ -13,7 +13,7 @@
 #include "gll/estimation/state_estimator.hpp"
 #include "gll/estimation/state_history.hpp"
 #include "gll/estimation/status_monitor.hpp"
-#include "gll/map/map_tile_manager.hpp"
+#include "tiled_pcd_map/map_tile_manager.hpp"
 #include "gll/matching/scan_matcher.hpp"
 #include "gll/matching/scan_preprocessor.hpp"
 #include "gll/measurement/attitude_estimator.hpp"
