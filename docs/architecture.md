@@ -1283,7 +1283,7 @@ sequenceDiagram
 
 | ディレクトリ | クラス / ファイル |
 |---|---|
-| `core/include/gll/common/` | `types.hpp`（センサデータ・出力の型）、`config.hpp`（`LocalizerConfig`）、`pose_store.hpp`（`SavedPose`、`savePose`、`loadPose`）。SE(2)・測地変換・ロガーは tiled_pcd_map の `gll/common/` |
+| `core/include/gll/common/` | `types.hpp`（センサデータ・出力の型）、`config.hpp`（`LocalizerConfig`）、`pose_store.hpp`（`SavedPose`、`savePose`、`loadPose`）。SE(2)・測地変換・ロガーは tiled_pcd_map（`tiled_pcd_map/se2.hpp` など）。`tiled_pcd_map.hpp` は、tiled_pcd_map の名前を `gll::` からも使えるようにする橋渡し |
 | `core/include/gll/estimation/` | `state.hpp`（`FilterState`、`MotionInput`、`Measurement`、`UpdateResult`）、`state_estimator.hpp`（`IStateEstimator`、`correct`）、`inv_ekf_se2.hpp`、`es_ekf_2d.hpp`、`state_history.hpp`、`mahalanobis_gate.hpp`、`output_smoother.hpp`、`status_monitor.hpp`、`initializer.hpp`、`source_arbiter.hpp`、`recovery_manager.hpp` |
 | `core/include/gll/measurement/` | `attitude_estimator.hpp`、`motion_input_builder.hpp`、`gnss_measurement_builder.hpp`、`lidar_measurement_builder.hpp`、`stop_detector.hpp` |
 | `core/include/gll/matching/` | `scan_matcher.hpp`（`IScanMatcher`、`MatchTarget`、`SourceCloud`、`RegistrationResult`、`PoseSearchRequest`、`PoseSearchResult`）、`gicp_matcher.hpp`（`GicpMatcher`）、`scan_preprocessor.hpp`（`ScanPreprocessor`、`ScanMotion`） |

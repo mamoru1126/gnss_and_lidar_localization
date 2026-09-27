@@ -169,6 +169,6 @@ std::string active = maps.activeGroup();  // いま領域を作っているグ�
 | `tiled_pcd_map/pcd_io.hpp` | `readPcd`、`writePcd` |
 | `tiled_pcd_map/map_anchor.hpp` | `MapAnchor`（地図座標 ⇔ UTM） |
 | `tiled_pcd_map/map_config.hpp` | `loadMapSetConfig`、`loadMapGroups`（maps.yaml） |
-| `gll/common/` | `math.hpp`（型・角度）、`se2.hpp`、`geodesy.hpp`（UTM）、`logger.hpp`（`ILogger`） |
+| `tiled_pcd_map/math.hpp`、`se2.hpp`、`geodesy.hpp`、`logger.hpp` | 基本の型と角度・`Pose2D`、`SE2`、`UtmProjector`（緯度経度 ⇔ UTM）、`ILogger` |
 
-名前空間は `gll`。
+ヘッダはすべて `tiled_pcd_map/` の下にあり、名前空間は `tiled_pcd_map`（gll には依存しない）。
