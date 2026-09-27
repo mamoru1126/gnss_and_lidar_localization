@@ -10,7 +10,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)
-- タイル読み込みのデモ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html)（ソース: [docs/demo/tile_loading.html](docs/demo/tile_loading.html)、作り方は [tools/tile_demo](tools/tile_demo/README.md)）
+- タイル読み込みのデモ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html)（小さい地図）、[https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html)（西新宿の約 1 km 四方の地図）。地図の出典とライセンスは [docs/demo](docs/demo/README.md)、作り方は [tools/tile_demo](tools/tile_demo/README.md)
 
 ## 実装の状況
 
@@ -139,4 +139,4 @@ DEAD_RECKONING: dead reckoning for 31.2 m without GNSS / LiDAR position (limit 3
 
 ## ライセンス
 
-MIT
+MIT。ただし、デモページのうち西新宿の地図を使ったもの（`docs/demo/nishishinjuku.html`）と、その経路（`tools/tile_demo/route_nishishinjuku.txt`）は、元の地図と同じく CC BY-NC 4.0（非営利に限る）。詳しくは [docs/demo/README.md](docs/demo/README.md)。

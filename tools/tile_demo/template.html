@@ -1,4 +1,4 @@
-<title>gll タイル読み込みデモ</title>
+<title>__TITLE__</title>
 <meta name="description" content="MapTileManager が自己位置の移動に合わせて点群地図のタイルを読み込み・破棄する様子">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,9 +41,10 @@
   aside { display: flex; flex-direction: column; gap: 14px; }
   .box { border: 1px solid var(--line); background: var(--panel); padding: 12px 14px; }
   .box h2 { margin: 0 0 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-  .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; }
-  .kv dt { color: var(--muted); }
-  .kv dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .kv { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+  .kv > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; }
+  .kv dt { color: var(--muted); white-space: nowrap; }
+  .kv dd { margin: 0 0 0 auto; font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
   .big { font-family: var(--mono); font-size: 30px; font-weight: 500; color: var(--loaded); line-height: 1.1; font-variant-numeric: tabular-nums; }
   .big small { font-size: 14px; color: var(--muted); font-weight: 400; }
   .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -65,7 +66,7 @@
 <script>const DEMO=__DEMO_DATA__;</script>
 <div class="wrap">
   <header>
-    <h1>タイル読み込みデモ <span class="code">MapTileManager</span></h1>
+    <h1>__HEADING__ <span class="code">MapTileManager</span></h1>
     <p>自己位置が動くと、周り 60 m（と 3 秒先の先読み位置の周り 60 m）のタイルを読み込み、90 m より離れたタイルを捨てる。実際のコードを経路に沿って動かした記録を再生している。</p>
   </header>
 
@@ -73,16 +74,13 @@
     <div>
       <div class="stage">
         <canvas id="view" aria-label="点群地図の上面図。白が地図全体、緑が読み込み中のタイル"></canvas>
-        <div class="axes">↓ 地図の x　→ 地図の y　（1 マス = タイル 20 m）</div>
+        <div class="axes" id="axes"></div>
       </div>
       <div class="controls">
         <button id="play" type="button">一時停止</button>
         <input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置">
         <span class="time" id="time">0.0 s</span>
         <select id="speed" aria-label="再生速度">
-          <option value="5">5 倍速</option>
-          <option value="10" selected>10 倍速</option>
-          <option value="20">20 倍速</option>
         </select>
         <label class="chk"><input id="follow" type="checkbox"> 自己位置を追う</label>
       </div>
@@ -97,10 +95,10 @@
       <div class="box">
         <h2>状態</h2>
         <dl class="kv">
-          <dt>ターゲットの点数</dt><dd id="nPts">0</dd>
-          <dt>読み込んだ回数（累計）</dt><dd id="nLoads" class="flash">0</dd>
-          <dt>ターゲットの再構築</dt><dd id="nBuilds">0</dd>
-          <dt>自己位置 (x, y)</dt><dd id="pos">0, 0</dd>
+          <div><dt>ターゲットの点数</dt><dd id="nPts">0</dd></div>
+          <div><dt>読み込んだ回数（累計）</dt><dd id="nLoads" class="flash">0</dd></div>
+          <div><dt>ターゲットの再構築</dt><dd id="nBuilds">0</dd></div>
+          <div><dt>自己位置 (x, y)</dt><dd id="pos">0, 0</dd></div>
         </dl>
       </div>
       <div class="box">
@@ -116,8 +114,7 @@
       </div>
       <div class="box note">
         <h2>条件</h2>
-        タイル 20 m、load 60 m / unload 90 m、先読み 3 s（既定値）。1.5 m/s で南の通路から広場を一周して戻る 200 s の経路。<code>MapTileManager</code> を同期モードで 0.1 s ごとに更新し、0.5 s ごとに記録した。<br>
-        点群: <a href="https://github.com/koide3/hdl_localization" target="_blank" rel="noopener">koide3/hdl_localization</a> の <code>data/map.pcd</code>（BSD-2-Clause）を <code>gll_map_tiler</code> でタイル化（表示は 0.2 m に間引き）。
+        __NOTE__
       </div>
     </aside>
   </div>
@@ -139,15 +136,20 @@
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const dv = new DataView(bytes.buffer);
   const N = D.n, px = new Float32Array(N), py = new Float32Array(N), pb = new Uint8Array(N);
-  for (let i = 0; i < N; i++) { px[i] = dv.getInt16(i * 5, true) * 0.05; py[i] = dv.getInt16(i * 5 + 2, true) * 0.05; pb[i] = dv.getUint8(i * 5 + 4); }
+  const [ox0, oy0] = D.origin, q = D.quant;
+  for (let i = 0; i < N; i++) { px[i] = ox0 + dv.getInt16(i * 5, true) * q; py[i] = oy0 + dv.getInt16(i * 5 + 2, true) * q; pb[i] = dv.getUint8(i * 5 + 4); }
 
   // 表示範囲（タイルの外枠）。画面の右 = 地図の +y、下 = 地図の +x
   let xmin = 1e9, xmax = -1e9, ymin = 1e9, ymax = -1e9;
   for (const [ix, iy] of tiles) { xmin = Math.min(xmin, ix * T); xmax = Math.max(xmax, (ix + 1) * T); ymin = Math.min(ymin, iy * T); ymax = Math.max(ymax, (iy + 1) * T); }
   xmin -= 10; xmax += 10; ymin -= 10; ymax += 10;
-  const S = 8;  // レイヤーの解像度 [px/m]
-  const LW = Math.ceil((ymax - ymin) * S), LH = Math.ceil((xmax - xmin) * S);
-  const toL = (x, y) => [(y - ymin) * S, (x - xmin) * S];
+  // 長い方の軸を横にする。rot なら画面の右 = 地図の +y、下 = 地図の +x。そうでなければ右 = +x、上 = +y
+  const rot = (ymax - ymin) > (xmax - xmin);
+  const S = Math.min(8, 3072 / Math.max(xmax - xmin, ymax - ymin));  // レイヤーの解像度 [px/m]
+  const LW = Math.ceil((rot ? ymax - ymin : xmax - xmin) * S), LH = Math.ceil((rot ? xmax - xmin : ymax - ymin) * S);
+  const toL = rot ? (x, y) => [(y - ymin) * S, (x - xmin) * S] : (x, y) => [(x - xmin) * S, (ymax - y) * S];
+  const headingL = yaw => rot ? [Math.sin(yaw), Math.cos(yaw)] : [Math.cos(yaw), -Math.sin(yaw)];
+  document.getElementById('axes').textContent = (rot ? '↓ 地図の x　→ 地図の y' : '→ 地図の x　↑ 地図の y') + `　（1 マス = タイル ${T} m）`;
 
   function makeLayer(r, g, b, gain) {
     const cv = document.createElement('canvas'); cv.width = LW; cv.height = LH;
@@ -178,7 +180,12 @@
   }
   new ResizeObserver(() => { resize(); draw(); }).observe(view);
 
-  let t = 0, playing = !reduce, speed = 10, follow = false, lastNow = null, seeking = false;
+  const speeds = [5, 10, 20, 50, 100];
+  const want = Math.min(50, duration / 25);
+  let speed = speeds.reduce((a, b) => Math.abs(b - want) < Math.abs(a - want) ? b : a);
+  const sel = document.getElementById('speed');
+  for (const v of speeds) { const o = document.createElement('option'); o.value = v; o.textContent = v + ' 倍速'; o.selected = v === speed; sel.appendChild(o); }
+  let t = 0, playing = !reduce, follow = false, lastNow = null, seeking = false;
   const flashes = new Map();  // タイル → {kind, start}
   let lastFrame = -1;
 
@@ -200,7 +207,7 @@
     lastFrame = i;
   }
 
-  function tileRect(k) { const [ix, iy] = tiles[k]; const [u0, v0] = toL(ix * T, iy * T); return [u0, v0, T * S, T * S]; }
+  function tileRect(k) { const [ix, iy] = tiles[k]; const [ua, va] = toL(ix * T, iy * T), [ub, vb] = toL((ix + 1) * T, (iy + 1) * T); return [Math.min(ua, ub), Math.min(va, vb), T * S, T * S]; }
 
   function draw(now = performance.now()) {
     if (!W) return;
@@ -208,7 +215,7 @@
     const f = frames[i], p = poseAt(t);
     const [pu, pv] = toL(p.x, p.y);
     let k = W / LW, ox = 0, oy = 0;
-    if (follow) { k *= 2.4; ox = W / 2 - pu * k; oy = H / 2 - pv * k; ox = Math.min(0, Math.max(W - LW * k, ox)); oy = Math.min(0, Math.max(H - LH * k, oy)); }
+    if (follow) { k = Math.max(k, W / (D.follow_view * S)); ox = W / 2 - pu * k; oy = H / 2 - pv * k; ox = Math.min(0, Math.max(W - LW * k, ox)); oy = Math.min(0, Math.max(H - LH * k, oy)); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * ox, dpr * oy);
@@ -219,7 +226,7 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = lw;
     for (let q = 0; q < tiles.length; q++) { const r = tileRect(q); ctx.strokeRect(r[0], r[1], r[2], r[3]); }
     // 地図の全体（白）
-    ctx.globalAlpha = 0.62; ctx.drawImage(white, 0, 0); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.8; ctx.drawImage(white, 0, 0); ctx.globalAlpha = 1;
     // 読み込み中のタイル（緑）
     for (const q of f.tiles) {
       const r = tileRect(q);
@@ -246,7 +253,7 @@
     ring(pu, pv, LR, 'rgba(63,224,127,0.95)', [8, 5], 1.6);
     // 先読み位置と自己位置
     ctx.fillStyle = COL.pose; ctx.beginPath(); ctx.arc(au, av, 3.2 * lw, 0, Math.PI * 2); ctx.fill();
-    const hx = Math.sin(p.yaw), hy = Math.cos(p.yaw), sz = 11 * lw;
+    const [hx, hy] = headingL(p.yaw), sz = 11 * lw;
     ctx.beginPath(); ctx.moveTo(pu + hx * sz * 1.3, pv + hy * sz * 1.3);
     ctx.lineTo(pu - hx * sz * 0.8 + hy * sz * 0.7, pv - hy * sz * 0.8 - hx * sz * 0.7);
     ctx.lineTo(pu - hx * sz * 0.8 - hy * sz * 0.7, pv - hy * sz * 0.8 + hx * sz * 0.7);
@@ -274,7 +281,8 @@
     cctx.font = '10px ' + C('--mono'); cctx.fillStyle = COL.muted; cctx.textAlign = 'right'; cctx.textBaseline = 'middle';
     for (let n = 0; n <= ymaxC; n += 20) { cctx.strokeStyle = 'rgba(255,255,255,0.08)'; cctx.beginPath(); cctx.moveTo(L, Y(n)); cctx.lineTo(w - R, Y(n)); cctx.stroke(); cctx.fillText(n, L - 4, Y(n)); }
     cctx.textAlign = 'center'; cctx.textBaseline = 'top';
-    for (let s = 50; s <= duration; s += 50) cctx.fillText(s + ' s', Math.min(w - R - 10, X(s)), h - B + 4);
+    const stp = [50, 100, 200, 250, 500, 1000, 2000].find(v => duration / v <= 5) || 5000;
+    for (let s = stp; s <= duration; s += stp) cctx.fillText(s + ' s', Math.min(w - R - 14, X(s)), h - B + 4);
     cctx.beginPath(); frames.forEach((x, j) => { const u = X(x.t), v = Y(x.tiles.length); j ? cctx.lineTo(u, v) : cctx.moveTo(u, v); });
     cctx.strokeStyle = 'rgba(63,224,127,0.35)'; cctx.lineWidth = 1.5; cctx.stroke();
     cctx.beginPath(); frames.slice(0, i + 1).forEach((x, j) => { const u = X(x.t), v = Y(x.tiles.length); j ? cctx.lineTo(u, v) : cctx.moveTo(u, v); });
