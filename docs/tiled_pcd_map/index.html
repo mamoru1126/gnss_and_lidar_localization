@@ -66,6 +66,7 @@
   .lead { font-size: 17px; color: var(--muted); max-width: 64ch; }
   .meta { font-size: 13px; color: var(--muted); }
   nav.toc { margin: 16px 0 0; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  nav.toc .toc-h { margin: 6px 0 2px; font-size: 13px; font-weight: 500; color: var(--muted); }
   nav.toc ol { margin: 0; padding-left: 1.4em; columns: 2 16em; column-gap: 32px; font-size: 14.5px; }
   figure { margin: 18px 0 10px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
   figure svg { display: block; width: 100%; height: auto; color: var(--text); font-family: var(--sans); }
@@ -111,17 +112,44 @@
   .head { fill: currentColor; }
   .head-accent { fill: var(--green); }
   .head-red { fill: var(--red); }
+
+  /* 第 2 部: コードの抜粋・構造体の図 */
+  .part { margin: 48px 0 0; padding: 10px 14px; font-size: 19px; font-weight: 700; background: var(--green-fill); border-radius: 6px; max-width: none; }
+  .src { margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden; }
+  .src-head { padding: 6px 12px; font-size: 13px; background: var(--faint); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .src-head a { font-family: var(--mono); }
+  .src-head .ln { font-family: var(--mono); color: var(--muted); margin-left: 4px; }
+  .src-head .what { color: var(--muted); margin-left: 8px; }
+  pre { margin: 0; overflow-x: auto; }
+  pre code { display: block; padding: 10px 12px; background: none; font-size: 12.5px; line-height: 1.6; tab-size: 2; white-space: pre; }
+  pre.plain { margin: 10px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  pre .c { color: var(--muted); }
+  .formula { font-size: 15px; overflow-x: auto; }
+  ol.steps li { margin: 5px 0; }
+  figure.wide { overflow-x: auto; }
+  @media (max-width: 640px) { figure.wide svg { min-width: 640px; } }
+  .st-head { fill: var(--faint); stroke: none; }
+  svg text.st-title { font-weight: 500; font-size: 12.5px; }
+  svg text.fld { font-size: 11.5px; }
+  svg tspan.ty { fill: var(--muted); }
+  .box-inner { stroke: currentColor; fill: var(--surface); stroke-width: 1; stroke-opacity: 0.7; }
+  .idx { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; }
+  .inh { fill: var(--surface); stroke: currentColor; stroke-width: 1; }
+  .bbox { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+  .brace { fill: none; stroke: var(--muted); stroke-width: 1; }
+  .step { fill: none; stroke: var(--green); stroke-width: 2; }
 </style>
 
 <main>
   <header>
     <p class="meta">tiled_pcd_map ／ gnss_and_lidar_localization</p>
     <h1>点群地図の部分ロード</h1>
-    <p class="lead">大きな点群地図を 20 m 四方のタイルに分けておき、自己位置の周りのタイルだけをメモリに読み込む。自己位置が動くと、前方のタイルを先に読み、遠くなったタイルを捨てる。その仕組みを図で説明する。</p>
+    <p class="lead">大きな点群地図を 20 m 四方のタイルに分けておき、自己位置の周りのタイルだけをメモリに読み込む。自己位置が動くと、前方のタイルを先に読み、遠くなったタイルを捨てる。第 1 部で仕組みを図で説明し、第 2 部で関数とデータ構造を示しながら実装を追う。</p>
     <p class="meta">実装: <a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/tree/main/tiled_pcd_map">tiled_pcd_map</a>（ROS 非依存の C++ ライブラリ）／ 動きを見るデモ: <a href="../demo/tile_loading.html">小さい地図</a>・<a href="../demo/nishishinjuku.html">西新宿の約 1 km 四方の地図</a></p>
   </header>
 
   <nav class="toc" aria-label="目次">
+    <p class="toc-h">第 1 部　仕組み</p>
     <ol>
       <li><a href="#why">なぜ部分ロードか</a></li>
       <li><a href="#overview">全体の流れ</a></li>
@@ -131,11 +159,24 @@
       <li><a href="#swap">読み込みと差し替え</a></li>
       <li><a href="#region">領域の中身を決める</a></li>
       <li><a href="#groups">複数の地図</a></li>
-      <li><a href="#memory">メモリの使用量</a></li>
+    </ol>
+    <p class="toc-h">第 2 部　実装を追う</p>
+    <ol start="9">
+      <li><a href="#files">コードの構成</a></li>
+      <li><a href="#data">データ構造</a></li>
+      <li><a href="#tiler">タイル化とファイルの形式</a></li>
+      <li><a href="#startup">起動時の準備</a></li>
+      <li><a href="#update"><code>update()</code> の中身</a></li>
+      <li><a href="#worker">ロードスレッド</a></li>
+      <li><a href="#locks">スレッドとロック</a></li>
+      <li><a href="#builder">領域の作り方とグループの切り替え</a></li>
+      <li><a href="#usage">自己位置推定からの使い方</a></li>
+      <li><a href="#perf">かかる時間とメモリ</a></li>
       <li><a href="#params">パラメータ</a></li>
     </ol>
   </nav>
 
+  <p class="part" id="part1">第 1 部　仕組み</p>
   <h2 id="why">1. なぜ部分ロードか</h2>
   <p>LiDAR で自己位置を推定するときは、スキャンを点群地図に重ねて（位置合わせして）位置を求める。位置合わせに要るのは、LiDAR が届く範囲（数十 m）の地図だけで、地図全体は要らない。</p>
   <ul>
@@ -589,13 +630,738 @@
     <figcaption><b>図 6　グループの切り替えと先読み。</b> 緑の塗りは A の領域に入っているタイル（通り過ぎて持ち続けているものを含む）、緑の破線は 60 m 以内に入ったので先に読み込んだ B のタイル（キャッシュにだけあり、領域には入らない）。あと 3 m ほど東へ進んで B が 10 m 以上近くなると、アクティブが B に切り替わり、キャッシュ済みの B のタイルで領域を作る。</figcaption>
   </figure>
 
-  <h2 id="memory">9. メモリの使用量</h2>
+  <p class="part" id="part2">第 2 部　実装を追う</p>
+  <p>ここからは、第 1 部の仕組みが、どの関数とどのデータで書かれているかを追う。コードの抜粋はリポジトリのファイルからそのまま切り出したもの（コミット <code>c8df621</code> の時点）で、抜粋の見出しのリンクから GitHub の該当行に飛べる。</p>
+
+  <h2 id="files">9. コードの構成</h2>
+  <p>ライブラリは <code>tiled_pcd_map/</code> にあり、ヘッダが <code>include/tiled_pcd_map/</code>、実装が <code>src/</code>。名前空間は <code>tiled_pcd_map</code>。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ファイル（.hpp / .cpp）</th><th>中身</th><th>主な型・関数</th></tr></thead>
+      <tbody>
+        <tr><td><code>tile</code></td><td>タイルの型、索引とタイルファイルの読み書き</td><td><code>TileId</code> <code>TileMeta</code> <code>TileData</code> <code>TileIndex::load</code> <code>readTileFile</code> <code>writeTileFile</code> <code>BinaryTileLoader</code></td></tr>
+        <tr><td><code>map_tiler</code></td><td>タイル化（<code>tiled_pcd_map_tiler</code> の中身）</td><td><code>voxelDownsample</code> <code>tileMap</code> <code>writeTiles</code></td></tr>
+        <tr><td><code>map_config</code></td><td>maps.yaml と地図グループ</td><td><code>loadMapSetConfig</code> <code>loadMapGroups</code> <code>MapGroup</code></td></tr>
+        <tr><td><code>map_anchor</code></td><td>地図座標 ⇔ UTM の変換</td><td><code>MapAnchor::fromConfig</code> <code>mapToUtm</code> <code>utmToMap</code></td></tr>
+        <tr><td><code>map_manager_config</code></td><td>部分ロードの設定</td><td><code>MapManagerConfig</code></td></tr>
+        <tr><td><code>map_region</code></td><td>領域</td><td><code>MapRegion</code> <code>TileSetRegion</code> <code>RegionBuilder</code> <code>buildTileSetRegion</code></td></tr>
+        <tr><td><code>map_tile_manager</code></td><td>部分ロードの本体</td><td><code>MapTileManager</code>（<code>update</code> <code>workerLoop</code> <code>processPending</code> <code>distanceToTile</code> <code>currentRegion</code>）</td></tr>
+        <tr><td><code>pcd_io</code></td><td>PCD の読み書き（PCL を使わない）</td><td><code>readPcd</code> <code>writePcd</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="data">10. データ構造</h2>
+  <p>型は 3 つのまとまりに分かれる。左は、ファイルから読む地図の情報で、起動時に読んだら変わらない。中央は <code>MapTileManager</code> の中の状態。右は、タイルの点群と、それから作る領域。</p>
+
+  <figure class="wide">
+    <svg viewBox="0 0 820 460" role="img" aria-label="MapGroup が TileIndex を持ち、TileIndex が TileMeta の配列を持つ。MapTileManager は全タイルを TileEntry の配列 tiles_ に並べ、要求・キャッシュ・領域のタイルの組を tiles_ の添字で持つ。キャッシュは TileData を shared_ptr で持ち、TileSetRegion も同じ TileData を指す。front_ は今の領域 MapRegion を指す">
+<defs><marker id="d-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker><marker id="d-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-accent"/></marker><marker id="d-inh" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0,0 L11,6 L0,12 z" class="inh"/></marker></defs>
+<text x="16" y="14" class="small muted-text">地図の情報（起動時に読む）</text>
+<text x="246" y="14" class="small muted-text">部分ロードの状態</text>
+<text x="566" y="14" class="small muted-text">点群と領域</text>
+<rect class="box" x="16" y="24" width="210" height="80" rx="4"/>
+<path class="st-head" d="M16,28 a4,4 0 0 1 4,-4 h202 a4,4 0 0 1 4,4 v20 h-210 z"/>
+<line class="s" x1="16" y1="48" x2="226" y2="48" stroke-width="1"/>
+<text x="24" y="40.5" class="code st-title">MapGroup</text>
+<text x="26" y="61" class="code fld">id: <tspan class="ty">string</tspan></text>
+<text x="26" y="77" class="code fld">anchor: <tspan class="ty">MapAnchor</tspan></text>
+<text x="26" y="93" class="code fld">index: <tspan class="ty">TileIndex</tspan></text>
+<line class="arrow" x1="56" y1="104" x2="56" y2="130" marker-end="url(#d-a)"/>
+<rect class="box" x="16" y="132" width="210" height="80" rx="4"/>
+<path class="st-head" d="M16,136 a4,4 0 0 1 4,-4 h202 a4,4 0 0 1 4,4 v20 h-210 z"/>
+<line class="s" x1="16" y1="156" x2="226" y2="156" stroke-width="1"/>
+<text x="24" y="148.5" class="code st-title">TileIndex</text>
+<text x="26" y="169" class="code fld">tile_size: <tspan class="ty">double</tspan></text>
+<text x="26" y="185" class="code fld"><tspan class="ty">voxel_size, num_neighbors</tspan></text>
+<text x="26" y="201" class="code fld">tiles: <tspan class="ty">vector&lt;TileMeta&gt;</tspan></text>
+<line class="arrow" x1="56" y1="212" x2="56" y2="238" marker-end="url(#d-a)"/>
+<text x="64" y="230" class="small muted-text">要素</text>
+<rect class="box" x="16" y="240" width="210" height="96" rx="4"/>
+<path class="st-head" d="M16,244 a4,4 0 0 1 4,-4 h202 a4,4 0 0 1 4,4 v20 h-210 z"/>
+<line class="s" x1="16" y1="264" x2="226" y2="264" stroke-width="1"/>
+<text x="24" y="256.5" class="code st-title">TileMeta</text>
+<text x="26" y="277" class="code fld">id: <tspan class="ty">TileId</tspan></text>
+<text x="26" y="293" class="code fld">file: <tspan class="ty">string</tspan></text>
+<text x="26" y="309" class="code fld"><tspan class="ty">bounds_min, bounds_max</tspan></text>
+<text x="26" y="325" class="code fld">num_points: <tspan class="ty">size_t</tspan></text>
+<line class="arrow" x1="56" y1="336" x2="56" y2="362" marker-end="url(#d-a)"/>
+<rect class="box" x="16" y="364" width="210" height="64" rx="4"/>
+<path class="st-head" d="M16,368 a4,4 0 0 1 4,-4 h202 a4,4 0 0 1 4,4 v20 h-210 z"/>
+<line class="s" x1="16" y1="388" x2="226" y2="388" stroke-width="1"/>
+<text x="24" y="380.5" class="code st-title">TileId</text>
+<text x="26" y="401" class="code fld">group: <tspan class="ty">string</tspan></text>
+<text x="26" y="417" class="code fld">ix, iy: <tspan class="ty">int</tspan></text>
+<text x="16" y="446" class="small muted-text">tile_index.yaml の 1 行 = TileMeta 1 つ</text>
+<rect class="box" x="246" y="24" width="300" height="426" rx="4"/>
+<path class="st-head" d="M246,28 a4,4 0 0 1 4,-4 h292 a4,4 0 0 1 4,4 v20 h-300 z"/>
+<line class="s" x1="246" y1="48" x2="546" y2="48" stroke-width="1"/>
+<text x="254" y="40.5" class="code st-title">MapTileManager</text>
+<text x="256" y="66" class="small accent-text">起動時に作る（以後は読むだけ）</text>
+<text x="264" y="85" class="code fld">tiles_: <tspan class="ty">vector&lt;TileEntry&gt;</tspan></text>
+<rect class="box-inner" x="272" y="92" width="258" height="96" rx="4"/>
+<path class="st-head" d="M272,96 a4,4 0 0 1 4,-4 h250 a4,4 0 0 1 4,4 v20 h-258 z"/>
+<line class="s" x1="272" y1="116" x2="530" y2="116" stroke-width="1"/>
+<text x="280" y="108.5" class="code st-title">TileEntry</text>
+<text x="282" y="129" class="code fld">group_index: <tspan class="ty">size_t</tspan></text>
+<text x="282" y="145" class="code fld">meta: <tspan class="ty">TileMeta</tspan></text>
+<text x="282" y="161" class="code fld">corners[4]: <tspan class="ty">Vec2（UTM）</tspan></text>
+<text x="282" y="177" class="code fld">bb_min, bb_max: <tspan class="ty">Vec2</tspan></text>
+<text x="264" y="207" class="code fld">group_bounds_: <tspan class="ty">グループごとの範囲</tspan></text>
+<text x="256" y="228" class="small accent-text">update() とロードスレッドが共有（mtx_ で保護）</text>
+<text x="264" y="247" class="code fld">requested_tiles_: <tspan class="ty">set&lt;size_t&gt;</tspan></text>
+<text x="264" y="263" class="code fld">requested_active_: <tspan class="ty">int</tspan></text>
+<text x="264" y="279" class="code fld">requested_position_: <tspan class="ty">Vec2</tspan></text>
+<text x="264" y="295" class="code fld">active_: <tspan class="ty">int</tspan></text>
+<text x="264" y="311" class="code fld">pending_, busy_: <tspan class="ty">bool</tspan></text>
+<text x="256" y="332" class="small accent-text">ロードスレッドだけが触る</text>
+<text x="264" y="351" class="code fld">cache_: <tspan class="ty">map&lt;size_t,</tspan></text>
+<text x="319.2" y="367" class="code fld"><tspan class="ty">shared_ptr&lt;TileData&gt;&gt;</tspan></text>
+<text x="264" y="383" class="code fld">target_tiles_: <tspan class="ty">set&lt;size_t&gt;</tspan></text>
+<text x="264" y="399" class="code fld">target_group_: <tspan class="ty">int</tspan></text>
+<text x="256" y="420" class="small accent-text">差し替える領域（mtx_ で保護）</text>
+<text x="264" y="439" class="code fld">front_: <tspan class="ty">shared_ptr&lt;MapRegion&gt;</tspan></text>
+<path class="idx" d="M261,243 h-5 V81 h5"/>
+<path class="idx" d="M261,347 h-5 V81 h5"/>
+<path class="idx" d="M261,379 h-5 V81 h5"/>
+<path class="idx" d="M256,81 h6" marker-end="url(#d-a)"/>
+<text x="242" y="222" class="small"></text>
+<path class="arrow" d="M226,252 H236 V141 H278" marker-end="url(#d-a)"/>
+<text x="218" y="256" text-anchor="end" class="small muted-text">コピー →</text>
+<rect class="box" x="566" y="24" width="238" height="80" rx="4"/>
+<path class="st-head" d="M566,28 a4,4 0 0 1 4,-4 h230 a4,4 0 0 1 4,4 v20 h-238 z"/>
+<line class="s" x1="566" y1="48" x2="804" y2="48" stroke-width="1"/>
+<text x="574" y="40.5" class="code st-title">TileData</text>
+<text x="576" y="61" class="code fld">id: <tspan class="ty">TileId</tspan></text>
+<text x="576" y="77" class="code fld">points: <tspan class="ty">vector&lt;Vec3f&gt;</tspan></text>
+<text x="576" y="93" class="code fld">covs: <tspan class="ty">vector&lt;PackedCov&gt;</tspan></text>
+<text x="574" y="120" class="small muted-text">1 点 = xyz 12 B + 共分散 24 B</text>
+<rect class="box" x="566" y="210" width="238" height="96" rx="4"/>
+<path class="st-head" d="M566,214 a4,4 0 0 1 4,-4 h230 a4,4 0 0 1 4,4 v20 h-238 z"/>
+<line class="s" x1="566" y1="234" x2="804" y2="234" stroke-width="1"/>
+<text x="574" y="226.5" class="code st-title">MapRegion</text>
+<text x="576" y="247" class="code fld">group: <tspan class="ty">string</tspan></text>
+<text x="576" y="263" class="code fld">anchor: <tspan class="ty">MapAnchor</tspan></text>
+<text x="576" y="279" class="code fld">tiles: <tspan class="ty">vector&lt;TileId&gt;</tspan></text>
+<text x="576" y="295" class="code fld">num_points: <tspan class="ty">size_t</tspan></text>
+<rect class="box" x="566" y="346" width="114" height="64" rx="4"/>
+<path class="st-head" d="M566,350 a4,4 0 0 1 4,-4 h106 a4,4 0 0 1 4,4 v20 h-114 z"/>
+<line class="s" x1="566" y1="370" x2="680" y2="370" stroke-width="1"/>
+<text x="574" y="362.5" class="code st-title">GicpTarget</text>
+<text x="576" y="383" class="code fld"><tspan class="ty">cloud</tspan></text>
+<text x="576" y="399" class="code fld"><tspan class="ty">tree</tspan></text>
+<text x="574" y="426" class="small muted-text">gll_core（MatchTarget</text>
+<text x="574" y="441" class="small muted-text">を経由）</text>
+<rect class="box" x="690" y="346" width="114" height="48" rx="4"/>
+<path class="st-head" d="M690,350 a4,4 0 0 1 4,-4 h106 a4,4 0 0 1 4,4 v20 h-114 z"/>
+<line class="s" x1="690" y1="370" x2="804" y2="370" stroke-width="1"/>
+<text x="698" y="362.5" class="code st-title">TileSetRegion</text>
+<text x="700" y="383" class="code fld"><tspan class="ty">tile_data</tspan></text>
+<text x="698" y="410" class="small muted-text">既定</text>
+<line class="arrow" x1="623" y1="346" x2="623" y2="307" marker-end="url(#d-inh)"/>
+<line class="arrow" x1="747" y1="346" x2="747" y2="307" marker-end="url(#d-inh)"/>
+<text x="685" y="330" text-anchor="middle" class="small muted-text">継承</text>
+<path class="arrow-accent" stroke-dasharray="4 3" d="M804,379 H814 V44 H806" marker-end="url(#d-g)"/>
+<path class="arrow-accent" d="M546,347 H553 V36 H564" marker-end="url(#d-g)"/>
+<path class="arrow" d="M546,435 H559 V222 H564" marker-end="url(#d-a)"/>
+    </svg>
+    <figcaption><b>図 7　主な型と、<code>MapTileManager</code> のメンバー。</b> 緑の見出しは、そのメンバーを誰が触るか（15 章）。点線のかぎは、<code>requested_tiles_</code>・<code>cache_</code>・<code>target_tiles_</code> のキーが <code>tiles_</code> の添字であることを示す。<code>shared_ptr</code> の中身はどれも <code>const</code>（図では省いた）。</figcaption>
+  </figure>
+
+  <ul>
+    <li><b>タイルの識別</b>: ファイルには番号 <code>ix</code>・<code>iy</code> しか書かれていない（タイルファイルの中身には番号も無い）。番号はグループの中でしか一意でないので、読み込むときにグループ名を付けて <code>TileId</code>（グループ名・<code>ix</code>・<code>iy</code>）にする（<code>TileIndex::load(path, group)</code> が付け、<code>BinaryTileLoader</code> が読んだ <code>TileData</code> にも写す）。</li>
+    <li><b>添字で扱う</b>: <code>MapTileManager</code> の中では、全グループの全タイルを 1 列に並べた <code>tiles_</code>（<code>vector&lt;TileEntry&gt;</code>）を起動時に作り、以後はその<b>添字</b>（<code>size_t</code>）でタイルを指す。要るタイルの組・キャッシュ・領域に入れた組は、どれも添字の <code>std::set</code> / <code>std::map</code> なので、「前と同じ組か」は <code>set</code> の <code>==</code> で比べられる。</li>
+    <li><b>点はコピーしない</b>: タイルの点群 <code>TileData</code> は <code>shared_ptr&lt;const TileData&gt;</code> で持つ。キャッシュと既定の領域（<code>TileSetRegion</code>）は同じ <code>TileData</code> を指す。キャッシュから消しても、その <code>TileData</code> を指す領域が残っている間は解放されない。</li>
+    <li><b>数値の型</b>: 点は <code>float</code> の xyz（<code>Vec3f</code>）、共分散は上三角 6 要素の <code>float</code>（<code>PackedCov = std::array&lt;float, 6&gt;</code>）。距離の判定は UTM の <code>double</code>（<code>Vec2</code>）で行う。</li>
+  </ul>
+
+  <h2 id="tiler">11. タイル化とファイルの形式</h2>
+  <p>コマンド <code>tiled_pcd_map_tiler</code> は、<code>readPcd()</code> で PCD を読み、<code>tileMap()</code> でタイルに分け、<code>writeTiles()</code> で書く。<code>tileMap()</code> の中身は次の順になる。</p>
+  <ol>
+    <li><b><code>voxelDownsample()</code></b>: 点群の最小値 <code>lo</code> を原点にして、<code>(p − lo) / voxel_size</code> を切り捨てた整数 <code>(ix, iy, iz)</code> を 21 ビットずつ 64 ビットのキーに詰め、<code>unordered_map</code> で点の和と個数を数える。出力はボクセルごとの平均で、そのボクセルの点が最初に現れた順に並ぶ（同じ入力なら、同じ出力になる）。1 軸 2<sup>21</sup> 個までなので、0.2 m なら約 419 km まで。超えると例外を投げる。</li>
+    <li><b>共分散</b>（small_gicp 付きでビルドしたとき）: 間引いた点全体で KdTree を作り、<code>estimate_covariances_omp()</code> で各点の近くの <code>num_neighbors</code> 点から 4×4 の共分散を求め、上三角 6 要素を <code>float</code> で取り出す。<code>--no-covariance</code> のときや small_gicp なしでは、共分散を付けない。</li>
+    <li><b>分割</b>: <code>std::map&lt;pair&lt;int,int&gt;, TileData&gt;</code> に、<code>tileCoord(x)</code>・<code>tileCoord(y)</code> をキーにして点を入れる。<code>tileCoord(v) = floor(v / tile_size)</code> なので、負の座標でも境目がずれない（x = −0.1 m は −1 番）。<code>std::map</code> なので、タイルは <code>(ix, iy)</code> の順に並ぶ。</li>
+    <li><b>索引</b>: タイルごとに点の最小・最大（<code>bounds_min</code> / <code>bounds_max</code>）と点数を <code>TileMeta</code> にまとめ、<code>TileIndex</code> を作る。</li>
+  </ol>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tiler.cpp#L41-L54">map_tiler.cpp</a> <span class="ln">L41–54</span> <span class="what">voxelDownsample()（ボクセルのキー）</span></div><pre><code>for (const auto&amp; p : points) {
+  const Eigen::Vector3d q = (p.cast&lt;double&gt;() - lo) / voxel_size;
+  const std::int64_t ix = static_cast&lt;std::int64_t&gt;(std::floor(q.x()));
+  const std::int64_t iy = static_cast&lt;std::int64_t&gt;(std::floor(q.y()));
+  const std::int64_t iz = static_cast&lt;std::int64_t&gt;(std::floor(q.z()));
+  if (ix &gt; kMax || iy &gt; kMax || iz &gt; kMax)
+    throw std::runtime_error("voxelDownsample: the point cloud is too large for the voxel size");
+  const std::uint64_t key = (static_cast&lt;std::uint64_t&gt;(ix) &lt;&lt; (2 * kBits)) |
+                            (static_cast&lt;std::uint64_t&gt;(iy) &lt;&lt; kBits) | static_cast&lt;std::uint64_t&gt;(iz);
+  Acc&amp; a = cells[key];
+  if (a.n == 0) order.push_back(key);
+  a.sum += p.cast&lt;double&gt;();
+  ++a.n;
+}</code></pre></div>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tiler.cpp#L72-L116">map_tiler.cpp</a> <span class="ln">L72–116</span> <span class="what">tileMap()（抜粋）</span></div><pre><code>const std::vector&lt;Vec3f&gt; pts = voxelDownsample(points, opt.voxel_size);
+res.output_points = pts.size();
+
+<span class="c">// 点ごとの共分散は、分割する前の点群全体で計算する（タイルの境界で近傍点が欠けないように。設計書 6.2 節）</span>
+std::vector&lt;PackedCov&gt; covs;
+<span class="c">// …small_gicp で点ごとの共分散を計算して covs に入れる（省略）…</span>
+res.has_covariance = !covs.empty();
+
+std::map&lt;std::pair&lt;int, int&gt;, TileData&gt; tiles;
+for (std::size_t i = 0; i &lt; pts.size(); ++i) {
+  const Vec3f&amp; p = pts[i];
+  const auto key = std::make_pair(tileCoord(p.x(), opt.tile_size), tileCoord(p.y(), opt.tile_size));
+  TileData&amp; t = tiles[key];
+  t.points.push_back(p);
+  if (res.has_covariance) t.covs.push_back(covs[i]);
+}
+for (auto&amp; [key, t] : tiles) {
+  t.id = TileId{group, key.first, key.second};
+  TileMeta m;
+  m.id = t.id;
+  m.file = "tiles/" + std::to_string(key.first) + "_" + std::to_string(key.second) + ".bin";
+  m.num_points = t.points.size();
+  Vec3f lo = t.points.front(), hi = t.points.front();
+  for (const auto&amp; q : t.points) {
+    lo = lo.cwiseMin(q);
+    hi = hi.cwiseMax(q);
+  }
+  m.bounds_min = lo.cast&lt;double&gt;();
+  m.bounds_max = hi.cast&lt;double&gt;();
+  res.index.tiles.push_back(m);
+  res.tiles.push_back(std::move(t));
+}</code></pre></div>
+
+  <h3>タイルファイル（<code>tiles/&lt;ix&gt;_&lt;iy&gt;.bin</code>）</h3>
+  <p>20 バイトのヘッダの後に、全点の xyz を並べ、続けて全点の共分散を並べる（点ごとに交互ではなく、配列を 2 つ続けた形）。値はメモリの表現のまま書く（x86・ARM ではリトルエンディアン）。<code>readTileFile()</code> は、先頭 8 バイトが <code>TPCMTIL1</code>（または名前を変える前の <code>GLLTILE1</code>）でなければ例外を投げる。</p>
+  <figure>
+    <svg viewBox="0 0 760 202" role="img" aria-label="タイルファイルは、8 バイトの識別子 TPCMTIL1、8 バイトの点数 n、4 バイトのフラグの計 20 バイトのヘッダに続き、float32 の xyz が n 点分、共分散の上三角 6 要素が n 点分並ぶ">
+<rect class="bar" x="20" y="46" width="100" height="42"/>
+<text x="70" y="72" text-anchor="middle" class="code">TPCMTIL1</text>
+<text x="70" y="106" text-anchor="middle" class="small muted-text">char[8]</text>
+<rect class="bar" x="120" y="46" width="90" height="42"/>
+<text x="165" y="72" text-anchor="middle" class="code">n</text>
+<text x="165" y="106" text-anchor="middle" class="small muted-text">uint64</text>
+<rect class="bar" x="210" y="46" width="80" height="42"/>
+<text x="250" y="72" text-anchor="middle" class="code">flags</text>
+<text x="250" y="106" text-anchor="middle" class="small muted-text">uint32</text>
+<rect class="bar" x="290" y="46" width="230" height="42"/>
+<text x="405" y="72" text-anchor="middle">x y z × n</text>
+<text x="405" y="106" text-anchor="middle" class="small muted-text">float32 × 3 × n</text>
+<rect class="bar-accent" x="520" y="46" width="220" height="42"/>
+<text x="630" y="72" text-anchor="middle">共分散 × n</text>
+<text x="630" y="106" text-anchor="middle" class="small muted-text">float32 × 6 × n</text>
+<text x="20" y="38" text-anchor="start" class="code small">0</text>
+<text x="120" y="38" text-anchor="middle" class="code small">8</text>
+<text x="210" y="38" text-anchor="middle" class="code small">16</text>
+<text x="290" y="38" text-anchor="middle" class="code small">20</text>
+<text x="520" y="38" text-anchor="middle" class="code small">20 + 12n</text>
+<text x="740" y="38" text-anchor="end" class="code small">20 + 36n</text>
+<text x="20" y="18" class="small muted-text">バイト位置</text>
+<path class="brace" d="M20,118 v6 H290 v-6"/>
+<text x="155" y="140" text-anchor="middle" class="small">ヘッダ 20 バイト</text>
+<rect class="bar-accent" x="500" y="148" width="40" height="24"/>
+<text x="520" y="164" text-anchor="middle" class="code small">xx</text>
+<rect class="bar-accent" x="540" y="148" width="40" height="24"/>
+<text x="560" y="164" text-anchor="middle" class="code small">xy</text>
+<rect class="bar-accent" x="580" y="148" width="40" height="24"/>
+<text x="600" y="164" text-anchor="middle" class="code small">xz</text>
+<rect class="bar-accent" x="620" y="148" width="40" height="24"/>
+<text x="640" y="164" text-anchor="middle" class="code small">yy</text>
+<rect class="bar-accent" x="660" y="148" width="40" height="24"/>
+<text x="680" y="164" text-anchor="middle" class="code small">yz</text>
+<rect class="bar-accent" x="700" y="148" width="40" height="24"/>
+<text x="720" y="164" text-anchor="middle" class="code small">zz</text>
+<line class="s" x1="520" y1="88" x2="500" y2="148" stroke-dasharray="2 3"/>
+<line class="s" x1="740" y1="88" x2="740" y2="148" stroke-dasharray="2 3"/>
+<text x="492" y="164" text-anchor="end" class="small">1 点分（上三角）</text>
+<text x="740" y="192" text-anchor="end" class="small muted-text">flags の bit 0 が 0 なら、この部分は無い</text>
+    </svg>
+    <figcaption><b>図 8　タイルファイルの中身。</b> 大きさは、共分散ありで 20 + 36n バイト、なしで 20 + 12n バイト。例えば西新宿の <code>4057_2487.bin</code> は 6 点で 20 + 36 × 6 = 236 バイト（名前を変える前に作ったので、先頭は <code>GLLTILE1</code>）。</figcaption>
+  </figure>
+
+  <h3>索引（<code>tile_index.yaml</code>）</h3>
+  <p>1 タイル 1 行。<code>TileIndex::load()</code> は、<code>file</code> を YAML のあるディレクトリを基準に解決し（絶対パスならそのまま）、各行を <code>TileMeta</code> にする（<code>TileId</code> のグループ名は、呼び出し側が渡す）。<code>format</code> は <code>tiled_pcd_map_v1</code> か、名前を変える前の <code>gll_tiles_v1</code> を受け付ける。下は西新宿の地図の索引の 1 行（今のツールで作ると <code>format</code> は <code>tiled_pcd_map_v1</code> になる）。</p>
+<pre class="plain"><code>format: tiled_pcd_map_v1
+tile_size: 20
+voxel_size: 0.2
+num_neighbors: 20
+tiles:
+  - {ix: 4057, iy: 2488, file: tiles/4057_2488.bin, num_points: 601, bounds_min: [81149.094, 49760.023, 40.458], bounds_max: [81159.984, 49779.969, 40.781]}
+  - …</code></pre>
+  <div class="callout"><code>bounds_min</code> / <code>bounds_max</code> は<b>点</b>の範囲で、部分ロードの距離の判定には使わない。判定に使うのは、番号から決まる<b>タイルの四角形</b>（x が <code>ix·s</code>〜<code>(ix+1)·s</code>、y が <code>iy·s</code>〜<code>(iy+1)·s</code>）である。点が隅に少ししか無いタイルでも、四角形で判定するので、読むタイミングが点の配置に左右されない。</div>
+
+  <h2 id="startup">12. 起動時の準備</h2>
+  <p>起動時は、設定を読んで <code>MapTileManager</code> を作るところまで。ここでは点群本体を読まない。</p>
+  <ol>
+    <li><code>loadMapSetConfig("maps.yaml")</code> → <code>MapSetConfig</code>（グループごとの ID・<code>tile_index.yaml</code> のパス・アンカーの設定）。</li>
+    <li><code>loadMapGroups(cfg, utm)</code> → <code>vector&lt;MapGroup&gt;</code>。グループごとに、アンカーを <code>MapAnchor::fromConfig()</code>（<code>anchor: local</code> なら恒等変換）で作り、索引を <code>TileIndex::load()</code> で読む。</li>
+    <li><code>MapTileManager(cfg, groups, loader, builder, logger)</code>。コンストラクタは全タイルについて <code>TileEntry</code> を作り、<code>tiles_</code> に並べる。非同期モードなら、ここでロードスレッド（<code>workerLoop()</code>）を起動する。</li>
+  </ol>
+  <p><code>TileEntry</code> を作るときに、タイルの四隅を地図座標から UTM に直しておく。以後の距離の判定は、すべて UTM のこの四角形で行う。地図座標の点 p を UTM に直す <code>MapAnchor::mapToUtm()</code> は、水平は相似変換、高さは平行移動である。</p>
+  <p class="formula"><code>q<sub>xy</sub> = a<sub>utm</sub> + k · R(φ) · (p<sub>xy</sub> − a<sub>map</sub>)</code>　　<code>q<sub>z</sub> = a<sub>utm,z</sub> + (p<sub>z</sub> − a<sub>map,z</sub>)</code></p>
+  <p>ここで <code>a<sub>map</sub></code> と <code>a<sub>utm</sub></code> はアンカー点の地図座標と UTM 座標、<code>φ</code> は地図の x 軸の東からの角度（反時計回り）、<code>k</code> はアンカー点での UTM の縮尺係数（地図の実距離を UTM 上の距離に直す。1 に近く、中央子午線で 0.9996。設定の <code>use_scale_factor: false</code> なら 1）。回転があるので、UTM では四角形が傾く。</p>
+
+  <figure>
+    <svg viewBox="0 0 760 282" role="img" aria-label="地図座標で軸にそろったタイルの四角形を mapToUtm で UTM に直すと傾いた四角形になる。点 p からの距離は、内側なら 0、外側なら 4 辺までの最短距離。外接矩形までの距離で先にふるい落とす">
+<defs><marker id="q-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker></defs>
+<text x="20" y="20" class="small muted-text">地図座標（グループの座標系）</text>
+<rect class="t-need" x="90" y="70" width="120" height="120"/>
+<text x="150" y="134" text-anchor="middle" class="code">(ix, iy)</text>
+<circle cx="90" cy="190" r="3" class="pt"/>
+<text x="86" y="208" text-anchor="middle" class="code small">(ix·s, iy·s)</text>
+<circle cx="210" cy="70" r="3" class="pt"/>
+<text x="214" y="62" text-anchor="middle" class="code small">((ix+1)·s, (iy+1)·s)</text>
+<text x="150" y="234" text-anchor="middle" class="small muted-text">s = tile_size（20 m）</text>
+<line class="arrow" x1="300" y1="130" x2="372" y2="130" marker-end="url(#q-a)"/>
+<text x="336" y="120" text-anchor="middle" class="code small">mapToUtm()</text>
+<text x="336" y="148" text-anchor="middle" class="small muted-text">回転 φ・縮尺 k</text>
+<text x="400" y="20" class="small muted-text">UTM（判定はこちらで行う）</text>
+<rect class="bbox" x="439.3" y="55.3" width="161.4" height="161.4"/>
+<polygon class="t-need" points="485.7,216.7 600.7,170.3 554.3,55.3 439.3,101.7"/>
+<circle cx="485.7" cy="216.7" r="3" class="pt"/>
+<text x="469.74" y="220.711" text-anchor="middle" class="code small">c0</text>
+<circle cx="600.7" cy="170.3" r="3" class="pt"/>
+<text x="614.711" y="182.26" text-anchor="middle" class="code small">c1</text>
+<circle cx="554.3" cy="55.3" r="3" class="pt"/>
+<text x="568.26" y="51.289" text-anchor="middle" class="code small">c2</text>
+<circle cx="439.3" cy="101.7" r="3" class="pt"/>
+<text x="425.289" y="95.7402" text-anchor="middle" class="code small">c3</text>
+<text x="600.711" y="234.711" text-anchor="end" class="small muted-text">bb_min〜bb_max（外接矩形）</text>
+<line class="arrow-red" x1="700.0" y1="250.0" x2="600.7" y2="170.3"/>
+<circle cx="700.0" cy="250.0" r="4.5" class="pose"/>
+<text x="708" y="266" class="code pose-text">p</text>
+<text x="658.356" y="204.13" class="code red-text halo">d</text>
+<circle cx="525.0" cy="116.0" r="4.5" class="pose"/>
+<text x="534" y="120" class="code pose-text">q</text>
+<text x="525" y="146" text-anchor="middle" class="small pose-text">内側なら d = 0</text>
+    </svg>
+    <figcaption><b>図 9　タイルの四角形と距離。</b> 左の四隅（<code>x0 = ix·s</code>、<code>y0 = iy·s</code>）<code>(x0, y0)</code>・<code>(x0+s, y0)</code>・<code>(x0+s, y0+s)</code>・<code>(x0, y0+s)</code> を <code>mapToUtm()</code> で右の <code>corners[0..3]</code> にする。距離 <code>distanceToTile(e, p)</code> は、p が内側なら 0、外側なら 4 辺までの最短距離。破線は外接矩形（<code>bb_min</code>〜<code>bb_max</code>）で、ここまでの距離 <code>boxDistance()</code> が半径より大きいタイルは、四角形の計算をせずに飛ばす。</figcaption>
+  </figure>
+
+  <p>内側かどうかは、4 辺それぞれについて、辺のベクトルと「辺の始点 → p」の外積（z 成分）が 0 以上かで判定する。地図座標の四隅は反時計回りに並べてあり、回転と正の縮尺では向きが変わらないので、UTM でも反時計回りのまま。4 辺すべてで外積が 0 以上なら内側である。外接矩形までの距離は四角形までの距離以下なので、外接矩形の段階で遠いタイルを飛ばしても、読むべきタイルを落とすことはない。</p>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L59-L82">map_tile_manager.cpp</a> <span class="ln">L59–82</span> <span class="what">MapTileManager のコンストラクタ（抜粋）</span></div><pre><code>for (std::size_t g = 0; g &lt; groups_.size(); ++g) {
+  const MapGroup&amp; grp = groups_[g];
+  const double ts = grp.index.tile_size;
+  Vec2 glo(kInf, kInf), ghi(-kInf, -kInf);
+  for (const TileMeta&amp; m : grp.index.tiles) {
+    TileEntry e;
+    e.group_index = g;
+    e.meta = m;
+    const double x0 = m.id.ix * ts, y0 = m.id.iy * ts;
+    const Vec2 c[4] = {Vec2(x0, y0), Vec2(x0 + ts, y0), Vec2(x0 + ts, y0 + ts), Vec2(x0, y0 + ts)};
+    e.bb_min = Vec2(kInf, kInf);
+    e.bb_max = Vec2(-kInf, -kInf);
+    for (int k = 0; k &lt; 4; ++k) {
+      e.corners[k] = grp.anchor.mapToUtm(Vec3(c[k].x(), c[k].y(), 0.0)).head&lt;2&gt;();
+      e.bb_min = e.bb_min.cwiseMin(e.corners[k]);
+      e.bb_max = e.bb_max.cwiseMax(e.corners[k]);
+    }
+    glo = glo.cwiseMin(e.bb_min);
+    ghi = ghi.cwiseMax(e.bb_max);
+    tiles_.push_back(e);
+  }
+  group_bounds_.emplace_back(glo, ghi);
+}
+if (cfg_.async) worker_ = std::thread([this] { workerLoop(); });</code></pre></div>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L22-L101">map_tile_manager.cpp</a> <span class="ln">L22–101</span> <span class="what">boxDistance() と distanceToTile()</span></div><pre><code>double boxDistance(const Vec2&amp; lo, const Vec2&amp; hi, const Vec2&amp; p) {
+  return (lo - p).cwiseMax(p - hi).cwiseMax(Vec2::Zero()).norm();
+}
+<span class="c">// …（中略）…</span>
+double MapTileManager::distanceToTile(const TileEntry&amp; e, const Vec2&amp; p) const {
+  bool inside = true;
+  for (int k = 0; k &lt; 4 &amp;&amp; inside; ++k) inside = cross2(e.corners[(k + 1) % 4] - e.corners[k], p - e.corners[k]) &gt;= 0.0;
+  if (inside) return 0.0;
+  double d = kInf;
+  for (int k = 0; k &lt; 4; ++k) d = std::min(d, pointSegmentDistance(p, e.corners[k], e.corners[(k + 1) % 4]));
+  return d;
+}</code></pre></div>
+
+  <h2 id="update">13. <code>update()</code> の中身</h2>
+  <p><code>void update(double t, const Vec2&amp; position, double yaw, double speed, bool force = false)</code>。位置と向きは UTM（x = 東、y = 北、yaw は東から反時計回り）、速さは m/s。呼び出し側のスレッドで、次の順に動く。</p>
+  <ol class="steps">
+    <li><b>間引く</b>: <code>force</code> でなく、前回の見直しから <code>update_distance</code> 未満しか動いておらず、<code>update_interval</code> 未満しかたっていなければ、すぐ戻る（<code>last_position_</code>・<code>last_t_</code> は <code>update_mtx_</code> で守る）。</li>
+    <li><b>グループごとの距離 <code>dg[g]</code></b>: 全タイルを回って、グループごとに「現在位置からそのグループのタイルまでの最短距離」を求める。外接矩形までの距離が今の最小以上のタイルは飛ばし、最小が 0 になったグループは以後飛ばす。</li>
+    <li><b>最も近いグループ <code>best</code></b>: <code>dg[g] ≤ load_radius</code> のうち最小のもの（無ければ −1）。</li>
+    <li><b>先読み位置</b>: <code>ahead = p + lookahead_time · speed · (cos yaw, sin yaw)</code>。</li>
+    <li><b>要るタイル <code>needed</code></b>: 全タイルについて、<code>p</code> か <code>ahead</code> から <code>load_radius</code> 以内なら添字を入れる。アクティブでないグループのタイルも入る（8 章の先読みはこれで起きる）。</li>
+    <li><b><code>mtx_</code> を取って要求を書く</b>: アクティブグループをヒステリシス付きで決め（16 章）、<code>changed = (needed != requested_tiles_) || (active != requested_active_)</code> を計算し、<code>requested_tiles_</code>・<code>requested_active_</code>・<code>requested_position_</code> を上書きする。<code>changed</code> なら <code>pending_ = true</code>。</li>
+    <li><b>知らせる</b>: <code>changed</code> のときだけ、非同期モードなら <code>cv_.notify_one()</code> でロードスレッドを起こし、同期モードなら <code>processPending()</code> をその場で呼ぶ。</li>
+  </ol>
+  <p>どの手順も、全タイルを 1 回ずつ見る線形の走査で、空間索引（格子や木）は使っていない。西新宿の 936 タイルで、見直し 1 回が中央値 約 11 µs だった（18 章）。数万タイルの地図なら、ここを格子で引く形にする余地がある。</p>
+  <div class="callout">「捨てる」判定は <code>update()</code> ではなく、ロードスレッドの <code>processPending()</code> で行う。<code>update()</code> が決めるのは「要る組」と「アクティブグループ」だけで、それ以外のタイルをいつ消すかはキャッシュを持つ側が決める。</div>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L103-L164">map_tile_manager.cpp</a> <span class="ln">L103–164</span> <span class="what">MapTileManager::update()</span></div><pre><code>void MapTileManager::update(double t, const Vec2&amp; p, double yaw, double speed, bool force) {
+  std::lock_guard&lt;std::mutex&gt; ulk(update_mtx_);
+  if (!force &amp;&amp; have_last_ &amp;&amp; (p - last_position_).norm() &lt; cfg_.update_distance &amp;&amp; t - last_t_ &lt; cfg_.update_interval)
+    return;
+  have_last_ = true;
+  last_position_ = p;
+  last_t_ = t;
+
+  <span class="c">// グループごとの、現在位置からタイルまでの距離</span>
+  std::vector&lt;double&gt; dg(groups_.size(), kInf);
+  for (const TileEntry&amp; e : tiles_) {
+    double&amp; d = dg[e.group_index];
+    if (d == 0.0 || boxDistance(e.bb_min, e.bb_max, p) &gt;= d) continue;
+    d = std::min(d, distanceToTile(e, p));
+  }
+  int best = -1;
+  for (std::size_t g = 0; g &lt; groups_.size(); ++g)
+    if (dg[g] &lt;= cfg_.load_radius &amp;&amp; (best &lt; 0 || dg[g] &lt; dg[static_cast&lt;std::size_t&gt;(best)])) best = static_cast&lt;int&gt;(g);
+
+  <span class="c">// 必要なタイル（現在位置と、先読みした位置のまわり）</span>
+  const Vec2 ahead = p + cfg_.lookahead_time * speed * Vec2(std::cos(yaw), std::sin(yaw));
+  const double R = cfg_.load_radius;
+  std::set&lt;std::size_t&gt; needed;
+  for (std::size_t i = 0; i &lt; tiles_.size(); ++i) {
+    const TileEntry&amp; e = tiles_[i];
+    const bool near_p = boxDistance(e.bb_min, e.bb_max, p) &lt;= R &amp;&amp; distanceToTile(e, p) &lt;= R;
+    const bool near_a = !near_p &amp;&amp; boxDistance(e.bb_min, e.bb_max, ahead) &lt;= R &amp;&amp; distanceToTile(e, ahead) &lt;= R;
+    if (near_p || near_a) needed.insert(i);
+  }
+
+  bool changed = false;
+  {
+    std::lock_guard&lt;std::mutex&gt; lk(mtx_);
+    int active = active_;
+    if (active &gt;= 0 &amp;&amp; dg[static_cast&lt;std::size_t&gt;(active)] &lt;= cfg_.load_radius) {
+      <span class="c">// ヒステリシス: ほかのグループが group_switch_margin 以上近くなったときだけ切り替える</span>
+      if (best &gt;= 0 &amp;&amp; best != active &amp;&amp;
+          dg[static_cast&lt;std::size_t&gt;(best)] &lt; dg[static_cast&lt;std::size_t&gt;(active)] - cfg_.group_switch_margin)
+        active = best;
+    } else {
+      active = best;
+    }
+    if (active != active_) {
+      const std::string from = active_ &gt;= 0 ? groups_[static_cast&lt;std::size_t&gt;(active_)].id : "(none)";
+      const std::string to = active &gt;= 0 ? groups_[static_cast&lt;std::size_t&gt;(active)].id : "(none)";
+      logger_-&gt;info("active map group: " + from + " -&gt; " + to);
+    }
+    active_ = active;
+    stats_.active_group = active &gt;= 0 ? groups_[static_cast&lt;std::size_t&gt;(active)].id : "";
+    changed = needed != requested_tiles_ || active != requested_active_;
+    requested_tiles_ = std::move(needed);
+    requested_active_ = active;
+    requested_position_ = p;
+    if (changed) pending_ = true;
+  }
+  if (!changed) return;
+  if (cfg_.async) {
+    cv_.notify_one();
+  } else {
+    processPending();
+  }
+}</code></pre></div>
+
+  <h2 id="worker">14. ロードスレッド（<code>processPending()</code>）</h2>
+  <p>ロードスレッドの本体 <code>workerLoop()</code> は、<code>cv_</code> で <code>pending_</code>（または終了の <code>stop_</code>）を待ち、立っていれば <code>processPending()</code> を呼ぶ、を繰り返すだけである。</p>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L166-L175">map_tile_manager.cpp</a> <span class="ln">L166–175</span> <span class="what">MapTileManager::workerLoop()</span></div><pre><code>void MapTileManager::workerLoop() {
+  std::unique_lock&lt;std::mutex&gt; lk(mtx_);
+  while (true) {
+    cv_.wait(lk, [this] { return stop_ || pending_; });
+    if (stop_) break;
+    lk.unlock();
+    processPending();
+    lk.lock();
+  }
+}</code></pre></div>
+  <p><code>processPending()</code> は次の順に動く。<b>ディスクの読み込みと領域の作成は、ロックを持たずに行う</b>のが要点である。</p>
+  <ol class="steps">
+    <li><b>要求を取り出す</b>（<code>mtx_</code>）: <code>requested_tiles_</code>・<code>requested_active_</code>・<code>requested_position_</code> をローカルにコピーし、<code>pending_ = false</code>、<code>busy_ = true</code>。</li>
+    <li><b>足りないタイルを読む</b>（ロックなし）: <code>needed</code> のうち <code>cache_</code> に無いものを、<code>loader_-&gt;load(meta)</code> で 1 枚ずつ順に読む。読めなければログに出して数え、そのタイルはキャッシュに入らない（次に要求が変わったときに、もう一度読もうとする）。</li>
+    <li><b>捨てる</b>（ロックなし）: <code>needed</code> に無く、かつ現在位置から <code>unload_radius</code> より遠いタイルを <code>cache_</code> から消す。<code>needed</code> に無くても 90 m 以内なら残る（第 1 部の「持ち続ける」）。</li>
+    <li><b>作り直すか決める</b>: キャッシュにあるアクティブグループのタイルの組 <code>tset</code> を作り、アクティブグループか <code>tset</code> が前回（<code>target_group_</code> / <code>target_tiles_</code>）と違えば作り直す。アクティブグループのタイルを捨てただけでも組は変わるので、作り直しになる（ほかのグループのタイルの出入りでは作り直さない）。</li>
+    <li><b>領域を作る</b>（ロックなし）: <code>tset</code> の <code>TileData</code> を集めて <code>builder_(グループ ID, アンカー, タイル)</code> を呼ぶ。点数が <code>min_target_points</code> 未満なら警告を出して <code>nullptr</code> にする。アクティブグループが無いとき、そのグループの読み込み済みタイルが 1 枚も無いとき（ビルダーは呼ばない）、ビルダーが <code>nullptr</code> を返したときも <code>nullptr</code>。ビルダーの例外は捕まえないので、ビルダーは例外を投げないように書く（非同期モードでは、ロードスレッドから例外が出るとプロセスが終わる）。</li>
+    <li><b>差し替える</b>（<code>mtx_</code>）: 作り直したときだけ <code>front_ = target</code>。統計（<code>Stats</code>）もここで更新する。</li>
+    <li><b>コールバック</b>（ロックなし）: 作り直したときだけ、<code>setRegionCallback()</code> で登録した関数を新しい領域（<code>nullptr</code> のこともある）で呼ぶ。</li>
+    <li><b>終わり</b>: <code>busy_ = false</code> にして <code>idle_cv_</code> で知らせる（<code>waitIdle()</code> はここで戻る）。</li>
+  </ol>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L177-L256">map_tile_manager.cpp</a> <span class="ln">L177–256</span> <span class="what">MapTileManager::processPending()</span></div><pre><code>void MapTileManager::processPending() {
+  std::set&lt;std::size_t&gt; needed;
+  int active = -1;
+  Vec2 pos = Vec2::Zero();
+  {
+    std::lock_guard&lt;std::mutex&gt; lk(mtx_);
+    if (!pending_) return;
+    needed = requested_tiles_;
+    active = requested_active_;
+    pos = requested_position_;
+    pending_ = false;
+    busy_ = true;
+  }
+
+  std::size_t loads = 0, failures = 0;
+  for (const std::size_t i : needed) {
+    if (cache_.count(i)) continue;
+    try {
+      cache_[i] = loader_-&gt;load(tiles_[i].meta);
+      ++loads;
+    } catch (const std::exception&amp; e) {
+      ++failures;
+      logger_-&gt;error(std::string("failed to load tile ") + tiles_[i].meta.id.str() + ": " + e.what());
+    }
+  }
+  for (auto it = cache_.begin(); it != cache_.end();) {
+    if (!needed.count(it-&gt;first) &amp;&amp; distanceToTile(tiles_[it-&gt;first], pos) &gt; cfg_.unload_radius) {
+      it = cache_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  std::set&lt;std::size_t&gt; tset;
+  if (active &gt;= 0)
+    for (const auto&amp; [i, data] : cache_)
+      if (static_cast&lt;int&gt;(tiles_[i].group_index) == active) tset.insert(i);
+  const bool rebuild = active != target_group_ || tset != target_tiles_;
+  std::shared_ptr&lt;const MapRegion&gt; target;
+  if (rebuild &amp;&amp; active &gt;= 0 &amp;&amp; !tset.empty()) {
+    std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt; data;
+    for (const std::size_t i : tset) data.push_back(cache_.at(i));
+    const MapGroup&amp; g = groups_[static_cast&lt;std::size_t&gt;(active)];
+    target = builder_(g.id, g.anchor, data);
+    if (target &amp;&amp; static_cast&lt;int&gt;(target-&gt;num_points) &lt; cfg_.min_target_points) {
+      std::ostringstream os;
+      os &lt;&lt; "map group " &lt;&lt; g.id &lt;&lt; ": only " &lt;&lt; target-&gt;num_points &lt;&lt; " points around here (min_target_points "
+         &lt;&lt; cfg_.min_target_points &lt;&lt; "), no region";
+      logger_-&gt;warn(os.str());
+      target.reset();
+    }
+  }
+  if (rebuild) {
+    target_group_ = active;
+    target_tiles_ = tset;
+  }
+
+  RegionCallback cb;
+  {
+    std::lock_guard&lt;std::mutex&gt; lk(mtx_);
+    if (rebuild) {
+      front_ = target;
+      cb = on_region_;
+      ++stats_.target_builds;
+      stats_.target_tiles = target ? target-&gt;tiles.size() : 0;
+      stats_.target_points = target ? target-&gt;num_points : 0;
+    }
+    stats_.loaded_tiles = cache_.size();
+    stats_.loaded_tiles_per_group.clear();
+    for (const auto&amp; [i, data] : cache_) ++stats_.loaded_tiles_per_group[groups_[tiles_[i].group_index].id];
+    stats_.tile_loads += loads;
+    stats_.tile_load_failures += failures;
+  }
+  if (cb) cb(target);  <span class="c">// waitIdle() がこの呼び出しの後に戻るよう、busy_ はここで下ろす</span>
+  {
+    std::lock_guard&lt;std::mutex&gt; lk(mtx_);
+    busy_ = false;
+  }
+  idle_cv_.notify_all();
+}</code></pre></div>
+  <div class="callout"><code>processPending()</code> が走るのは、<code>update()</code> で要る組かアクティブグループが<b>変わったときだけ</b>である。読めなかったタイルの読み直し、遠くなったタイルの削除、領域の作り直しも、次に組が変わるまで起きない（止まっている間は何もしない）。なお <code>requested_position_</code>（捨てる判定の基準）は、組が変わらなくても見直しのたびに書き換わる。</div>
+  <p><code>activeGroup()</code> と <code>stats().active_group</code> は、<code>update()</code> が決めた時点で新しいグループになるが、<code>currentRegion()</code> は作り直しが終わるまで古いグループの領域のままである。どのグループの点で照合したかは、領域の <code>group</code> と <code>anchor</code> を見る（gll_core の照合は領域の <code>anchor</code> で UTM に直す。一方、診断に出す <code>active_map_group</code> は <code>activeGroup()</code> なので、切り替えの直後は照合に使っている領域より先に変わる）。</p>
+  <p><code>currentRegion()</code> が <code>nullptr</code> を返すのは、最初の処理が終わる前、アクティブグループが無いとき、アクティブグループの読み込み済みタイルが無いとき、点が <code>min_target_points</code> 未満のとき、ビルダーが <code>nullptr</code> を返したとき。</p>
+
+  <h3>要求は上書きされ、最新の 1 つだけが処理される</h3>
+  <p>要求は 1 組の変数（<code>requested_*</code>）で、キューではない。ロードスレッドが読み込み中に <code>update()</code> が何度か要求を書くと、前の要求は上書きされ、読み込みが終わった時点の最新の要求だけが処理される。古い位置のためのタイルを順に読む無駄が出ない。</p>
+  <figure>
+    <svg viewBox="0 0 760 290" role="img" aria-label="update ① の要求 R1 をロードスレッドが処理している間に、② と ③ が要求を R2、R3 と上書きする。R1 の処理が終わると pending_ がまだ true なので、最新の R3 を取り出して処理し、R2 は処理されない。組が変わらない update ④ は何もしない">
+<defs><marker id="c-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker><marker id="c-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-accent"/></marker></defs>
+<text x="20" y="60" class="small">呼び出し側</text>
+<text x="20" y="134" class="small">要求</text>
+<text x="20" y="150" class="code small muted-text">requested_*</text>
+<text x="20" y="184" class="code small">pending_</text>
+<text x="20" y="256" class="small">ロードスレッド</text>
+<line class="lane" x1="130" y1="56" x2="740" y2="56"/>
+<line class="lane" x1="130" y1="130" x2="740" y2="130"/>
+<line class="lane" x1="130" y1="252" x2="740" y2="252"/>
+<rect class="bar" x="153" y="46" width="14" height="20"/>
+<text x="160" y="38" text-anchor="middle" class="code small">update()①</text>
+<line class="arrow" x1="160" y1="66" x2="160" y2="116" marker-end="url(#c-a)"/>
+<rect class="bar" x="293" y="46" width="14" height="20"/>
+<text x="300" y="38" text-anchor="middle" class="code small">update()②</text>
+<line class="arrow" x1="300" y1="66" x2="300" y2="116" marker-end="url(#c-a)"/>
+<rect class="bar" x="393" y="46" width="14" height="20"/>
+<text x="400" y="38" text-anchor="middle" class="code small">update()③</text>
+<line class="arrow" x1="400" y1="66" x2="400" y2="116" marker-end="url(#c-a)"/>
+<rect class="bar" x="485" y="46" width="14" height="20"/>
+<text x="492" y="38" text-anchor="middle" class="code small">update()④</text>
+<text x="500" y="86" class="small muted-text">組が変わらない → 何もしない</text>
+<rect class="bar" x="160" y="118" width="140" height="24"/>
+<text x="230" y="134" text-anchor="middle" class="code">R1</text>
+<rect class="bar" x="300" y="118" width="100" height="24"/>
+<text x="350" y="134" text-anchor="middle" class="code">R2</text>
+<rect class="bar" x="400" y="118" width="340" height="24"/>
+<text x="440" y="134" text-anchor="middle" class="code">R3</text>
+<polyline class="step" points="130,192 160,192 160,176 176,176 176,192 300,192 300,176 520,176 520,192 740,192"/>
+<text x="124" y="179" text-anchor="end" class="code small muted-text">true</text>
+<text x="124" y="195" text-anchor="end" class="code small muted-text">false</text>
+<line class="s" x1="130" y1="252" x2="176" y2="252" stroke-dasharray="3 3" stroke-width="3"/>
+<text x="150" y="276" text-anchor="middle" class="small muted-text">待機（cv_）</text>
+<rect class="bar" x="176" y="240" width="330" height="24"/>
+<text x="341" y="256" text-anchor="middle" class="small">processPending()：R1 を処理</text>
+<rect class="bar-accent" x="520" y="240" width="190" height="24"/>
+<text x="615" y="256" text-anchor="middle" class="small">R3 を処理</text>
+<line class="arrow" x1="176" y1="142" x2="176" y2="238" marker-end="url(#c-a)"/>
+<line class="arrow-accent" x1="520" y1="142" x2="520" y2="238" marker-end="url(#c-g)"/>
+<text x="182" y="164" class="small">コピーして</text>
+<text x="182" y="178" class="code small">pending_ = false</text>
+<text x="526" y="164" class="small accent-text">まだ pending_ なので</text>
+<text x="526" y="178" class="small accent-text">続けて最新の R3 を取る</text>
+<text x="350" y="222" text-anchor="middle" class="small red-text">R2 は一度も処理されない（R3 で上書きされた）</text>
+    </svg>
+    <figcaption><b>図 10　要求のまとめ方。</b> ① で <code>pending_</code> が立ち、ロードスレッドが R1 をコピーして <code>pending_</code> を下ろす。R1 を処理している間に ② と ③ が要求を上書きして <code>pending_</code> を立てる。R1 が終わると <code>workerLoop()</code> は <code>pending_</code> を見て、すぐに次の <code>processPending()</code> に入り、その時点の R3 を取る。④ は組もアクティブグループも変わらないので、<code>pending_</code> を立てない。</figcaption>
+  </figure>
+
+  <h2 id="locks">15. スレッドとロック</h2>
+  <p>メンバーを「誰が触るか」で分け、それぞれの守り方を決めてある（図 7 の緑の見出し）。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>メンバー</th><th>触るスレッド</th><th>守り方</th></tr></thead>
+      <tbody>
+        <tr><td><code>cfg_</code> <code>groups_</code> <code>tiles_</code> <code>group_bounds_</code></td><td>全員（読むだけ）</td><td>不要（コンストラクタの後は変えない）</td></tr>
+        <tr><td><code>have_last_</code> <code>last_position_</code> <code>last_t_</code></td><td><code>update()</code> の呼び出し側</td><td><code>update_mtx_</code>（<code>update()</code> を複数のスレッドから呼んでもよいように）</td></tr>
+        <tr><td><code>requested_*</code> <code>pending_</code> <code>busy_</code> <code>stop_</code></td><td>呼び出し側とロードスレッド</td><td><code>mtx_</code></td></tr>
+        <tr><td><code>active_</code></td><td><code>update()</code> が書き、<code>activeGroup()</code> が読む</td><td><code>mtx_</code></td></tr>
+        <tr><td><code>front_</code></td><td>ロードスレッドが書き、<code>currentRegion()</code> が読む</td><td><code>mtx_</code></td></tr>
+        <tr><td><code>on_region_</code> <code>stats_</code></td><td>呼び出し側（<code>setRegionCallback()</code>、<code>update()</code> が <code>active_group</code> を書く）とロードスレッド</td><td><code>mtx_</code></td></tr>
+        <tr><td><code>cache_</code> <code>target_tiles_</code> <code>target_group_</code></td><td>ロードスレッドだけ（同期モードでは <code>update()</code> の中）</td><td>不要</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>条件変数は 2 つ。<code>cv_</code> は「要求が来た（または終了）」でロードスレッドを起こし、<code>idle_cv_</code> は「処理が終わった」で <code>waitIdle()</code> を起こす。デストラクタは <code>stop_ = true</code> にして <code>cv_</code> で知らせ、ロードスレッドの終了を <code>join()</code> で待つ。処理中の <code>processPending()</code>（コールバックを含む）は最後まで走り、まだ取り出されていない要求は捨てられる。</p>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L258-L261">map_tile_manager.cpp</a> <span class="ln">L258–261</span> <span class="what">currentRegion()</span></div><pre><code>std::shared_ptr&lt;const MapRegion&gt; MapTileManager::currentRegion() const {
+  std::lock_guard&lt;std::mutex&gt; lk(mtx_);
+  return front_;
+}</code></pre></div>
+  <div class="callout"><code>currentRegion()</code> は <code>mtx_</code> を取って <code>shared_ptr</code> をコピーするだけ。ロードスレッドが <code>mtx_</code> を持つのは、要求のコピーと差し替えの短い間だけなので、照合する側がディスクの読み込みや KdTree の構築を待たされることはない。ただし同期モード（<code>async = false</code>）では、読み込みも領域の作成もコールバックも <code>update()</code> の中（<code>update_mtx_</code> を持ったまま）で行うので、<code>update()</code> を呼んだスレッドが待つ。</div>
+
+  <h2 id="builder">16. 領域の作り方とグループの切り替え</h2>
+  <h3>RegionBuilder</h3>
+  <p>領域の基底クラス <code>MapRegion</code> は、グループ ID・アンカー・含まれるタイル・点数だけを持つ。何を足すかは <code>RegionBuilder</code>（<code>std::function</code>）で決める。<code>MapTileManager</code> はビルダーが返した型を知らず、<code>shared_ptr&lt;const MapRegion&gt;</code> として持つ。使う側は <code>currentRegionAs&lt;T&gt;()</code>（中身は <code>std::dynamic_pointer_cast</code>）で自分の型に戻す。型が違えば <code>nullptr</code> になる。</p>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/include/tiled_pcd_map/map_region.hpp#L18-L41">map_region.hpp</a> <span class="ln">L18–41</span> <span class="what">MapRegion・TileSetRegion・RegionBuilder</span></div><pre><code>class MapRegion {
+ public:
+  virtual ~MapRegion() = default;
+
+  std::string group;          <span class="c">///&lt; 地図グループ ID</span>
+  MapAnchor anchor;           <span class="c">///&lt; このグループのアンカー（地図座標 ⇔ UTM。領域の点はこれで UTM にする）</span>
+  std::vector&lt;TileId&gt; tiles;  <span class="c">///&lt; 含まれるタイル</span>
+  std::size_t num_points = 0;
+};
+
+<span class="c">/// 既定の領域: 読み込んだタイルをそのまま持つ（点はコピーしない）。</span>
+class TileSetRegion : public MapRegion {
+ public:
+  std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt; tile_data;  <span class="c">///&lt; tiles と同じ順</span>
+
+  <span class="c">/// 全タイルの点を 1 つの配列にまとめる（地図座標系）。</span>
+  std::vector&lt;Vec3f&gt; points() const;
+  <span class="c">/// 全タイルの点を UTM（x = Easting、y = Northing、z = 楕円体高）にしてまとめる。</span>
+  std::vector&lt;Vec3&gt; pointsUtm() const;
+};
+
+<span class="c">/// 領域を作る関数。tiles はアクティブグループの読み込み済みタイル（空のことはない）。</span>
+using RegionBuilder = std::function&lt;std::shared_ptr&lt;const MapRegion&gt;(
+    const std::string&amp; group, const MapAnchor&amp; anchor, const std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt;&amp; tiles)&gt;;</code></pre></div>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_region.cpp#L20-L31">map_region.cpp</a> <span class="ln">L20–31</span> <span class="what">buildTileSetRegion()（既定のビルダー）</span></div><pre><code>std::shared_ptr&lt;const MapRegion&gt; buildTileSetRegion(const std::string&amp; group, const MapAnchor&amp; anchor,
+                                                    const std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt;&amp; tiles) {
+  auto r = std::make_shared&lt;TileSetRegion&gt;();
+  r-&gt;group = group;
+  r-&gt;anchor = anchor;
+  r-&gt;tile_data = tiles;
+  for (const auto&amp; t : tiles) {
+    r-&gt;tiles.push_back(t-&gt;id);
+    r-&gt;num_points += t-&gt;points.size();
+  }
+  return r;
+}</code></pre></div>
+  <p>既定の <code>buildTileSetRegion()</code> は、<code>TileData</code> の <code>shared_ptr</code> を並べるだけで、点をコピーしない。<code>points()</code>・<code>pointsUtm()</code> は、呼んだときに全タイルの点を 1 つの配列にまとめて返す（こちらはコピーする）。</p>
+  <p>自己位置推定（gll_core）では、<code>GicpMatcher::buildTarget()</code> をビルダーにする。全タイルの点を small_gicp の点群 1 つにコピーし（点は同次座標の 4 次元、共分散は 4×4 に戻す）、KdTree を作る。共分散を持たないタイルが 1 枚でも混ざっていれば、領域の全点の共分散をここで計算し直す（近傍 20 点。タイルの共分散は使わない）。再位置推定用の粗いボクセル地図は、初めて使うときに作る（<code>std::call_once</code>）。<code>targetBuilder()</code> は、これを <code>RegionBuilder</code> の形に包むだけである。</p>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/core/include/gll/matching/scan_matcher.hpp#L91-L97">scan_matcher.hpp</a> <span class="ln">L91–97</span> <span class="what">targetBuilder()（gll_core）</span></div><pre><code>inline RegionBuilder targetBuilder(std::shared_ptr&lt;const IScanMatcher&gt; matcher) {
+  return [matcher](const std::string&amp; group, const MapAnchor&amp; anchor,
+                   const std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt;&amp; tiles) -&gt; std::shared_ptr&lt;const MapRegion&gt; {
+    return matcher-&gt;buildTarget(group, anchor, tiles);
+  };
+}
+</code></pre></div>
+
+  <h3>アクティブグループの決め方</h3>
+  <p><code>update()</code> の手順 6 で、次のように決める（<code>active_</code> は前回の結果）。</p>
+  <ul>
+    <li>今のアクティブグループが、まだ現在位置から <code>load_radius</code> 以内にある: <code>best</code> が別のグループで、<code>dg[best] &lt; dg[active] − group_switch_margin</code> のときだけ <code>best</code> に切り替える。</li>
+    <li>今のアクティブグループが無い、または <code>load_radius</code> より遠くなった: <code>best</code> にする（無ければ −1 = アクティブ無し）。</li>
+  </ul>
+  <p>切り替わると <code>requested_active_</code> が変わるので <code>changed</code> になり、ロードスレッドが新しいグループのタイルで領域を作り直す。新しいグループのタイルは先読みで既にキャッシュにあることが多く、その場合は読み込みなしで領域だけ作り直す。</p>
+
+  <h2 id="usage">17. 自己位置推定からの使い方</h2>
+  <p>gll_core と ROS のノードは、次のように呼んでいる。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>いつ</th><th>どこで</th><th>何をする</th></tr></thead>
+      <tbody>
+        <tr><td>起動時</td><td><code>localizer_node.cpp</code></td><td><code>loadMapSetConfig</code> → <code>loadMapGroups</code> → <code>GicpMatcher</code> を作り、<code>MapTileManager(cfg.map, groups, BinaryTileLoader, targetBuilder(matcher), logger)</code> を <code>Localizer::setMap()</code> に渡す</td></tr>
+        <tr><td>出力を作るたび</td><td><code>Localizer::getOutput()</code> → <code>updateMaps()</code></td><td>初期位置での位置合わせを待っている間は（フィルタが動いていても）初期位置で <code>update</code>（速さ 0）。それ以外でフィルタが動いていれば、最新の状態で <code>update(t, 位置, yaw, 車輪の速さ × 推定した縮尺)</code></td></tr>
+        <tr><td>初期位置が来たとき</td><td><code>Localizer</code>（初期化）</td><td><code>hasMapWithin(p, init_map_distance)</code> で地図の上か調べ、上なら <code>update(..., force = true)</code> で周りのタイルを読ませて、次のスキャンで位置合わせする</td></tr>
+        <tr><td>スキャンのたび</td><td><code>Localizer::processScan()</code></td><td><code>currentRegionAs&lt;MatchTarget&gt;()</code> で領域を取る。<code>nullptr</code> なら照合しない（診断の <code>lidar_no_target</code> を数える）。取れたら、領域の点（地図座標）にスキャンを合わせ、結果を領域の <code>anchor</code> で UTM に直す</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/core/src/localizer.cpp#L246-L254">localizer.cpp</a> <span class="ln">L246–254</span> <span class="what">Localizer::updateMaps()（gll_core）</span></div><pre><code>void Localizer::updateMaps(double t) {
+  if (!maps_) return;
+  if (pending_init_) {
+    maps_-&gt;update(t, Vec2(pending_init_-&gt;pose.x, pending_init_-&gt;pose.y), pending_init_-&gt;pose.yaw, 0.0);
+  } else if (filter_initialized_) {
+    const FilterState&amp; st = history_.latest();
+    maps_-&gt;update(st.t, st.X.t(), st.X.yaw(), last_input_.v * st.s);
+  }
+}</code></pre></div>
+  <p>ライブラリだけを使う最小の例は、<code>examples/follow_path</code> にある。地図グループを 1 つ作り、直線の上を動かしながら <code>update()</code> を呼び、領域の大きさを表示する。</p>
+  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/examples/follow_path/main.cpp#L18-L43">main.cpp</a> <span class="ln">L18–43</span> <span class="what">examples/follow_path（使い方の最小例）</span></div><pre><code><span class="c">// 地図グループ（maps.yaml を使う場合は tiled_pcd_map::loadMapSetConfig と tiled_pcd_map::loadMapGroups）</span>
+tiled_pcd_map::MapGroup group;
+group.id = "map";
+group.anchor = tiled_pcd_map::MapAnchor::identity();
+group.index = tiled_pcd_map::TileIndex::load(argv[1], group.id);
+
+tiled_pcd_map::MapManagerConfig cfg;  <span class="c">// 既定: load 60 m / unload 90 m / 先読み 3 s</span>
+cfg.async = true;           <span class="c">// 別スレッドで読み込む</span>
+tiled_pcd_map::MapTileManager maps(cfg, {group}, std::make_shared&lt;tiled_pcd_map::BinaryTileLoader&gt;());
+maps.setRegionCallback([](std::shared_ptr&lt;const tiled_pcd_map::MapRegion&gt; r) {
+  if (r) std::printf("  region updated: %zu tiles, %zu points\n", r-&gt;tiles.size(), r-&gt;num_points);
+});
+
+const tiled_pcd_map::Vec2 a(std::atof(argv[2]), std::atof(argv[3])), b(std::atof(argv[4]), std::atof(argv[5]));
+const double yaw = std::atan2(b.y() - a.y(), b.x() - a.x()), speed = 1.5, dt = 0.1;
+const double length = (b - a).norm();
+double t = 0.0;
+for (double s = 0.0; s &lt;= length; s += speed * dt, t += dt) {
+  maps.update(t, a + (b - a) * (s / length), yaw, speed);  <span class="c">// 自己位置が来るたびに呼ぶ（すぐ戻る）</span>
+  if (std::fmod(s, 20.0) &lt; speed * dt) {
+    maps.waitIdle();  <span class="c">// 例なので読み込みを待つ（実際の使い方では待たない）</span>
+    <span class="c">// 使う側は、今の領域を shared_ptr で受け取る。既定の領域はタイルの点をそのまま持つ</span>
+    if (const auto r = maps.currentRegionAs&lt;tiled_pcd_map::TileSetRegion&gt;())
+      std::printf("s = %5.1f m: %zu tiles loaded, %zu points\n", s, r-&gt;tiles.size(), r-&gt;points().size());
+  }
+}</code></pre></div>
+
+  <h2 id="perf">18. かかる時間とメモリ</h2>
+  <h3>時間</h3>
+  <p>西新宿の地図（936 タイル）の上の約 2.9 km の経路を 1.5 m/s で走らせ、0.1 秒ごとに <code>update()</code> を呼んで測った（計 19,475 回）。開発用のコンテナ（2 コア）で、タイルファイルは OS のファイルキャッシュに載った状態。電源を入れた直後などディスクから読む場合は、読み込みはもっと遅い。最大値はばらつきが大きかったので載せていない。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>測ったもの</th><th>結果</th></tr></thead>
+      <tbody>
+        <tr><td><code>update()</code> 1 回（毎回見直す <code>force = true</code>、非同期）</td><td class="num">中央値 11 µs、99% 点 44 µs</td></tr>
+        <tr><td>タイル 1 枚の読み込み（平均 約 4,900 点、共分散あり）</td><td class="num">中央値 0.28 ms</td></tr>
+        <tr><td>1 回の見直しで読んだタイルの数</td><td class="num">中央値 1 枚、最大 25 枚（走り始め）</td></tr>
+        <tr><td>走り始めの 25 枚の読み込みと <code>TileSetRegion</code> の作成（同期モード）</td><td class="num">5.1 ms</td></tr>
+        <tr><td>読み込みが起きた回数 / 領域を作り直した回数</td><td class="num">600 回 / 794 回</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>作り直しの回数が読み込みの回数より多いのは、タイルを捨てただけで組が変わった回を含むからである。GICP のターゲット（KdTree の構築）の時間は、この表に含まない（既定の <code>TileSetRegion</code> で測った）。</p>
+  <h3 id="memory">メモリ</h3>
   <p>RAM に載るのは、読み込み中のタイルの分だけである。地図全体について持つのは、各タイルの範囲と点数の索引（数百 KB）だけで、点群本体は持たない。したがって、メモリは地図の広さではなく、読み込む半径の中にある点の数で決まる。</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>持つもの</th><th>範囲</th><th>西新宿（936 タイル）で走ったとき</th></tr></thead>
       <tbody>
-        <tr><td>タイルの索引</td><td>全タイル</td><td class="num">数百 KB</td></tr>
+        <tr><td>タイルの索引（<code>tiles_</code>）</td><td>全タイル</td><td class="num">数百 KB（<code>tile_index.yaml</code> は約 150 KB）</td></tr>
         <tr><td>タイルのキャッシュ（点と共分散。1 点 36 バイト）</td><td>読み込み中のタイル</td><td class="num">25〜58 枚（中央値 47）、最大 約 41 万点 ≒ 15 MB</td></tr>
         <tr><td>GICP のターゲット（点をまとめ直したものと KdTree。1 点 約 170 バイト）</td><td>同じタイル</td><td class="num">最大 約 70 MB</td></tr>
       </tbody>
@@ -603,7 +1369,8 @@
   </div>
   <p>自己位置推定（gll_core）では、キャッシュと GICP のターゲットの両方に同じ点が入る（GICP の検索構造はタイル単位で点を消せないので、組が変わるたびにまとめ直す）。領域を作り直している間は古い領域も残るので、一時的に最大 2 倍になる。数字は点数とデータ形式からの見積もりで、実際のプロセスのメモリは測っていない。</p>
 
-  <h2 id="params">10. パラメータ</h2>
+  <h2 id="params">19. パラメータ</h2>
+  <p>タイル化の 3 つは <code>tiled_pcd_map_tiler</code> のオプション（<code>TilerOptions</code>）、ほかは <code>MapManagerConfig</code>（<code>map_manager_config.hpp</code>）のメンバー。</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>名前</th><th>既定</th><th>意味</th></tr></thead>
