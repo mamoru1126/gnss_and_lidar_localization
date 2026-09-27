@@ -1,9 +1,9 @@
 // tiled_pcd_map_demo: 地図タイルの読み込みのデモ用の記録（tools/tile_demo/README.md）。
 //
-//   tiled_pcd_map_demo tile_index.yaml route.txt out.json [--speed 1.5]
+//   tiled_pcd_map_demo tile_index.yaml route.txt out.json [--speed 1.5] [--record-interval 0.5]
 //
 // 実際の MapTileManager（既定の設定、同期モード）を、経路（route.txt の折れ線）に沿って一定の速さで動かし、
-// 0.5 s ごとに自己位置と、読み込み中の領域（MapRegion）に入っているタイルを JSON に書く。
+// record-interval [s]（0.1 の倍数）ごとに自己位置と、読み込み中の領域（MapRegion）に入っているタイルを JSON に書く。
 // route.txt は 1 行に「x y」（地図座標 [m]）。# で始まる行は無視する。
 #include "tiled_pcd_map/map_anchor.hpp"
 #include "tiled_pcd_map/map_config.hpp"
@@ -39,14 +39,22 @@ std::vector<tiled_pcd_map::Vec2> readRoute(const std::string& path) {
 
 int main(int argc, char** argv) {
   if (argc < 4) {
-    std::fprintf(stderr, "usage: tiled_pcd_map_demo tile_index.yaml route.txt out.json [--speed 1.5]\n");
+    std::fprintf(stderr,
+                 "usage: tiled_pcd_map_demo tile_index.yaml route.txt out.json [--speed 1.5] [--record-interval 0.5]\n");
     return 2;
   }
-  double speed = 1.5;
-  for (int i = 4; i + 1 < argc; ++i)
-    if (std::string(argv[i]) == "--speed") speed = std::atof(argv[++i]);
+  double speed = 1.5, record_interval = 0.5;
+  for (int i = 4; i + 1 < argc; ++i) {
+    const std::string a = argv[i];
+    if (a == "--speed") speed = std::atof(argv[++i]);
+    if (a == "--record-interval") record_interval = std::atof(argv[++i]);
+  }
   const double dt = 0.1;
-  const int record_every = 5;  // 0.5 s ごと
+  const long record_every = std::lround(record_interval / dt);  // 既定は 5 ステップ（0.5 s）ごと
+  if (speed <= 0.0 || record_every < 1) {
+    std::fprintf(stderr, "error: --speed must be > 0 and --record-interval >= 0.1\n");
+    return 2;
+  }
 
   try {
     using namespace tiled_pcd_map;

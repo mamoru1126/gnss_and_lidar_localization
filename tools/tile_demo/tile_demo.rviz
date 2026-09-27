@@ -1,0 +1,89 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: rviz_common/Time
+    Name: Time
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Map (whole)
+      Enabled: true
+      Topic:
+        Value: /tile_demo/map
+        Depth: 1
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+      Style: Points
+      Size (Pixels): 2
+      Alpha: 0.6
+      Color Transformer: Intensity
+      Channel Name: intensity
+      Use rainbow: false
+      Min Color: 70; 70; 70
+      Max Color: 255; 255; 255
+      Autocompute Intensity Bounds: false
+      Min Intensity: 0
+      Max Intensity: 8
+      Decay Time: 0
+      Use Fixed Frame: true
+    - Class: rviz_default_plugins/Path
+      Name: Route
+      Enabled: true
+      Topic:
+        Value: /tile_demo/route
+        Depth: 1
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+      Color: 255; 181; 71
+      Alpha: 0.6
+      Line Style: Lines
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Loaded tiles
+      Enabled: true
+      Topic:
+        Value: /tile_demo/tiles
+        Depth: 100
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Vehicle and radii
+      Enabled: true
+      Topic:
+        Value: /tile_demo/vehicle
+        Depth: 1
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+  Enabled: true
+  Global Options:
+    Background Color: 0; 0; 0
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Target Frame: base_link
+      Distance: 320
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 1.2
+      Yaw: 3.9
+      Near Clip Distance: 0.5
+      Value: Orbit (rviz)
+    Saved: ~

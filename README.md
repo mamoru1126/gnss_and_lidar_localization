@@ -14,7 +14,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
 - 検証計画（i2Nav-Robot）: [docs/validation_i2nav.md](docs/validation_i2nav.md)
-- タイル読み込みのデモ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html)（小さい地図）、[https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html)（西新宿の約 1 km 四方の地図）。地図の出典とライセンスは [docs/demo](docs/demo/README.md)、作り方は [tools/tile_demo](tools/tile_demo/README.md)
+- タイル読み込みのデモ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html)（小さい地図）、[https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html)（西新宿の約 1 km 四方の地図）。地図の出典とライセンスは [docs/demo](docs/demo/README.md)、作り方は [tools/tile_demo](tools/tile_demo/README.md)。同じ動きを rosbag（MCAP）にして RViz で再生することもできる（[tools/tile_demo](tools/tile_demo/README.md#rosbag-にして-rviz-で再生する)）
 
 ## 実装の状況
 
