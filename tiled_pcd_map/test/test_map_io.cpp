@@ -319,3 +319,29 @@ TEST(MapTiler, WithoutCovariance) {
   EXPECT_GT(r.tiles.size(), 50u);
   for (const auto& t : r.tiles) EXPECT_TRUE(t.covs.empty());
 }
+
+TEST(Tiles, ReadsLegacyFormat) {
+  // 名前を変える前（gll_map の頃）の形式（先頭が GLLTILE1、索引が gll_tiles_v1）も読める
+  const fs::path d = tempDir("legacy");
+  TileData t;
+  t.points = {Vec3f(1, 2, 3), Vec3f(4, 5, 6)};
+  writeTileFile((d / "a.bin").string(), t);
+  {
+    std::fstream f(d / "a.bin", std::ios::in | std::ios::out | std::ios::binary);
+    f.write("GLLTILE1", 8);
+  }
+  EXPECT_EQ(readTileFile((d / "a.bin").string()).points.size(), 2u);
+  {
+    std::ofstream os(d / "tile_index.yaml");
+    os << "format: gll_tiles_v1\ntile_size: 20\ntiles:\n  - {ix: 0, iy: 0, file: a.bin, num_points: 2, "
+          "bounds_min: [1, 2, 3], bounds_max: [4, 5, 6]}\n";
+  }
+  EXPECT_EQ(TileIndex::load((d / "tile_index.yaml").string(), "g").tiles.size(), 1u);
+  // 知らない形式は読まない
+  {
+    std::fstream f(d / "a.bin", std::ios::in | std::ios::out | std::ios::binary);
+    f.write("XXXXXXXX", 8);
+  }
+  EXPECT_THROW(readTileFile((d / "a.bin").string()), std::runtime_error);
+  fs::remove_all(d);
+}
