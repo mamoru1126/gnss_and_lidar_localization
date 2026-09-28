@@ -50,8 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-${ROS_DISTRO}-rviz2 \
       ros-${ROS_DISTRO}-ros2bag ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
-# 検証用の bag を読み書きするためのツール（docs/validation_grandtour.md）
-RUN pip3 install --no-cache-dir --break-system-packages rosbags
+# 検証用のツール（docs/validation_grandtour.md、tools/grandtour/）: bag の読み書き、GrandTour（Hugging Face の Zarr）の
+# ダウンロードと読み込み、緯度経度 → UTM の変換。numpy は apt の 1.26 のまま使う（2 系に上げると、apt の
+# matplotlib などが動かなくなり、pip も apt の numpy をアンインストールできずに止まる）ので "numpy<2" で固定する
+RUN pip3 install --no-cache-dir --break-system-packages rosbags huggingface_hub "zarr>=3.0.7,<4" pyproj "numpy<2"
 
 WORKDIR /ws
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \

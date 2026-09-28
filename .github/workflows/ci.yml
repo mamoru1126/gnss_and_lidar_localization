@@ -74,6 +74,23 @@ jobs:
                      colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
                      source install/setup.bash && \
                      src/gnss_and_lidar_localization/tools/tile_demo/test/run_bag_check.sh"
+      - name: GrandTour tools work in the dev image (apt numpy 1.26 + pip zarr / pyproj)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
+            bash -c "src/gnss_and_lidar_localization/tools/grandtour/test/run_tests.sh"
+
+  # tools/grandtour（GrandTour のダウンロード・事前確認）を、合成ミッションで確かめる
+  tools_grandtour:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install numpy matplotlib "zarr>=3.0.7,<4" pyproj
+      - name: Test
+        run: tools/grandtour/test/run_tests.sh
 
   # VS Code の Dev Container（.devcontainer/）を、VS Code と同じ仕組みの devcontainer CLI で起動し、中でビルド・テストする
   devcontainer:
