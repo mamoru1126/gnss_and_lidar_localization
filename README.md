@@ -13,7 +13,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 - 点群地図の部分ロードの図解: [https://mamoru1126.github.io/gnss_and_lidar_localization/tiled_pcd_map/](https://mamoru1126.github.io/gnss_and_lidar_localization/tiled_pcd_map/)（ソース: [docs/tiled_pcd_map/index.html](docs/tiled_pcd_map/index.html)）
 - アルゴリズム説明書（Invariant EKF の解説を含む）: [docs/algorithm.md](docs/algorithm.md)
 - 図解ページ: [https://mamoru1126.github.io/gnss_and_lidar_localization/explainer/](https://mamoru1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [docs/explainer/index.html](docs/explainer/index.html)）
-- 検証計画（KITTI で LiDAR の自己位置推定を検証）: [docs/validation_kitti.md](docs/validation_kitti.md)
+- 検証計画（GrandTour で LiDAR の自己位置推定を検証）: [docs/validation_grandtour.md](docs/validation_grandtour.md)
 - タイル読み込みのデモ: [https://mamoru1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html](https://mamoru1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html)（小さい地図）、[https://mamoru1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html](https://mamoru1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html)（西新宿の約 1 km 四方の地図）。地図の出典とライセンスは [docs/demo](docs/demo/README.md)、作り方は [tools/tile_demo](tools/tile_demo/README.md)。同じ動きを rosbag（MCAP）にして RViz で再生することもできる（[tools/tile_demo](tools/tile_demo/README.md#rosbag-にして-rviz-で再生する)）
 
 ## 実装の状況
@@ -22,7 +22,7 @@ RTK-GNSS が FIX する区間では GNSS、それ以外の区間では事前作�
 |---|---|---|
 | 1 | Docker・CI、コア（SE(2)・Invariant EKF・遅延観測・GNSS・姿勢推定・出力整形・状態監視・デッドレコニング距離の監視・GNSS の再アンカー）、ROS 2 IF（IMU・ODOM・GNSS・diagnostics） | 実装済み |
 | 2 | 地図のタイル化ツール（`tiled_pcd_map_tiler`）、地図タイル管理（非同期ロード・複数の地図グループの切り替え）、small_gicp（GICP）による LiDAR 観測とデスキュー、地図上での初期化、GNSS FIX 中の食い違い判定、LiDAR の再アンカーと再位置推定、ROS 2 IF（PointCloud2・デバッグ出力・前回位置の保存） | 実装済み（合成データのシミュレーションで確認。実データでの調整は Phase 3） |
-| 3 | 実データでの検証とパラメータ調整（まず KITTI で LiDAR の自己位置推定、その後に自社の車両のデータで GNSS を含めて）、アンカー較正ツール | 未着手（検証計画を作成済み） |
+| 3 | 実データでの検証とパラメータ調整（まず GrandTour で LiDAR の自己位置推定、次に GNSS と地図区間の切り替わり、最後に自社の車両のデータで）、アンカー較正ツール | 未着手（検証計画を作成済み） |
 
 ## 構成
 
