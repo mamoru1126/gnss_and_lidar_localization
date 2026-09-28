@@ -1,11 +1,11 @@
 # 検証計画: GrandTour を使った LiDAR 自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.13。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md)
-- 状態: ドラフト（v0.1。実データでの検証の最初として、点群地図と LiDAR による自己位置推定を GrandTour で確かめる。点群地図の作り方も本書で決める）
+- 状態: ドラフト（v0.2。サンプルのノートブックで配列名を確かめ、1.2 節の要確認の一部を解消した。ダウンロードと事前確認のスクリプト（`tools/grandtour/`）を作った）
 
 本書は、公開データセット **GrandTour**（ETH Zürich の Robotic Systems Lab。四足ロボット ANYmal に多数のセンサを載せたデータセット）を使って、本システムの **LiDAR による自己位置推定**（Phase 2 で実装した部分）を実データで検証する計画である。GNSS 区間と地図区間の切り替わりは、この後の第 2 段階とし、6.3 節に概要だけを書く。
 
-データセットの情報は、GrandTour の論文（arXiv 2602.18164。ミッションの一覧は同論文の Table 3）、公式ページ（grand-tour.leggedrobotics.com）、GitHub のリポジトリ（leggedrobotics/grand_tour_dataset）の README とサンプルコード、Hugging Face のファイル一覧とメタデータ（ミッション `2024-11-11-12-42-47` の `metadata/*.yaml`）で確認した内容に基づく。データの中身（配列の列や単位）は実データを開くまで分からない点があるので、「要確認」とし、3.3 節の事前確認で決める。
+データセットの情報は、GrandTour の論文（arXiv 2602.18164。ミッションの一覧は同論文の Table 3）、公式ページ（grand-tour.leggedrobotics.com）、GitHub のリポジトリ（leggedrobotics/grand_tour_dataset）の README とサンプルコード（`examples_hugging_face`。ノートブック `explore.ipynb` に、全トピックの配列名と説明の一覧がある）、Hugging Face のファイル一覧とメタデータ（ミッション `2024-11-11-12-42-47` の `metadata/*.yaml`）で確認した内容に基づく。実データを開かないと分からない点は「要確認」とし、3.3 節の事前確認（`tools/grandtour/inspect_grandtour.py`）で決める。
 
 ---
 
@@ -16,10 +16,10 @@
 | 項目 | GrandTour | 本システムの想定 | 扱い |
 |---|---|---|---|
 | 機体 | 四足ロボット ANYmal（歩行。1 ミッション 3〜16 分、36〜470 m） | 車輪型、最高 6 km/h | 速度は低く、想定より遅い側。歩行による胴体の揺れ（roll / pitch の周期的な変化）がある（1.2 節） |
-| LiDAR | **Livox Mid-360**（10 Hz。本番と同じ機種）。ほかに Hesai XT-32、Velodyne VLP-16 | Livox Mid-360 | **Mid-360 を使う**。動き補正済みの版（`livox_points_undistorted`）と、補正前の版（`livox_points`）がある |
+| LiDAR | **Livox Mid-360**（10 Hz。本番と同じ機種。**上下逆さまに取り付け**）。ほかに Hesai XT-32、Velodyne VLP-16 | Livox Mid-360 | **Mid-360 を使う**。脚のオドメトリで動き補正した版（`livox_points_undistorted`）と、補正前の版（`livox_points`）がある。**点ごとの時刻は無い**（1.2 節） |
 | IMU | 7 種類以上（ADIS16475 200 Hz、STIM320 500 Hz、Livox 内蔵、ANYmal 内蔵 400 Hz など） | 6 軸 IMU | まず ADIS16475 を使う（6.2 節） |
 | ODOM | **車輪は無い**。ANYmal の状態推定器（脚の運動学と IMU）のオドメトリ `anymal_state_odometry` | 前進速度（`nav_msgs/Odometry` の twist） | twist を ODOM として使う。横方向の速度も入る（本システムは横速度にも対応済み。設計書 v0.8） |
-| GNSS | NovAtel SPAN CPT7（アンテナ 2 本、RTK）。**配布されているのは Inertial Explorer で後処理した解**（`cpt7_ie_tc_*`、`cpt7_ie_rt_*`、`gnss_raw_cpt7_ie_*`、`navsatfix_cpt7_ie_tc`） | u-blox F9P の RTK-FIX（リアルタイム） | 第 1 段階では**入力に使わず、真値として使う**。第 2 段階で、後処理の解から GNSS 入力を作る（6.3 節） |
+| GNSS | NovAtel SPAN CPT7（アンテナ 2 本、RTK）。**配布されているのは Inertial Explorer で処理した解**: `ie_tc`（後処理の密結合解。最も精度が高い）と `ie_rt`（リアルタイムの PPP 解。精度が低い）。形式は、姿勢（`cpt7_ie_*_odometry`）、緯度経度（`navsatfix_cpt7_ie_tc`）、ECEF の位置と標準偏差・方位（`gnss_raw_cpt7_ie_*`） | u-blox F9P の RTK-FIX（リアルタイム） | 第 1 段階では**入力に使わず、`ie_tc` を真値として使う**。第 2 段階で、`gnss_raw_cpt7_ie_tc` から GNSS 入力を作る（6.3 節） |
 | 真値 | ① CPT7 の後処理解（屋外。全ミッション共通の地球座標に載る）、② Leica MS60 トータルステーションでのプリズム位置（±2 mm。ミッションごとの局所座標、見通しのある区間だけ） | — | 評価には ① を使う。② は ① の品質確認に使う（5.1 節） |
 | 点群地図 | **ミッションごとに DLIO（LiDAR 慣性オドメトリ）で作った点群**（`point_cloud_maps/<ミッション>_dlio.ply`。Hesai から作ったもの） | 統合済みの地図（外部ツールで作る） | 地図の作り方の候補の 1 つにする（4 章） |
 | 時刻同期 | LiDAR は PTP（ns 級）、IMU はハードウェアトリガ（1 ms 未満）、基準は CPT7 | — | 時刻ずれの補正は、まず要らない前提で始める |
@@ -30,10 +30,11 @@
 ### 1.2 データセットの注意点
 
 - **座標系**: 本システムでは **base_link = ANYmal の `base` フレーム**とする。センサは `base` → `box_base`（センサを載せた箱）→ 各センサ、の静的 TF（`tf`）でつながっている。CPT7 の IMU は `box_base` と同じ位置・向きである（`cpt7_ie_tc_tf` のメタデータ）。変換スクリプトで、IMU のデータを `base` の向きに回し、LiDAR の外部パラメータ（`lidar.extrinsic_*`）を `base` から見た値に直して出力する。
+- **姿勢と静的 TF の約束事（要確認）**: 静的 TF（`tf` の属性）は、GrandTour のサンプルの `get_static_transform` と同じ解釈で読む（各項目の値は、ROS の tf とは逆向きに格納されているように読める）。オドメトリの姿勢と速度（twist）がどの座標系で表されているかも、サンプルの間で扱いがそろっていない。どちらも決め打ちせず、事前確認で**データから確かめる**: オドメトリは、位置を微分した速度と twist の一致から姿勢の解釈と速度の座標系を決める。静的 TF は、真値（`box_base` の姿勢）と脚のオドメトリ（`base` の姿勢）の回転の変化から `base` → `box_base` の向きを求め、TF から計算したものと比べる（3.3 節のレポートの 3.1・3.2 節）。
 - **真値の座標**: CPT7 の後処理解は `enu_origin` フレーム（局所 ENU）で、原点はミッションごとに違う可能性がある。ミッションをまたいで比べるため、**緯度経度（`navsatfix_cpt7_ie_tc`）を UTM に投影して共通の座標にする**。姿勢（yaw）は ENU の東が基準なので、子午線収差を補正して UTM のグリッド基準にする（スイスは UTM の 32 帯。走行地の経度により約 0.3〜0.7°）。
-- **`ie_tc` と `ie_rt` の違い（要確認）**: `tc` は tightly coupled（GNSS の観測と IMU を密結合した後処理）と考えられる。`rt` の意味はメタデータから分からない。3.3 節で両者の差を見て、真値には `ie_tc` を使う。
-- **Livox の点群の列（要確認）**: サンプルコードでは、点群は `points`（座標）、`valid`（スキャンごとの有効な点数）、`timestamp`（スキャンの時刻）で読める。反射強度と**点ごとの時刻**が入っているかは、実データで確かめる。`livox_points_undistorted` はデータセット側で動き補正済みなので、まずこれをデスキューなしで使う。
-- **IMU の単位（要確認）**: Livox 内蔵の IMU は、ドライバの出力のままなら加速度が g 単位である（本システムでは `imu.acc_scale: 9.80665`）。ADIS16475 は m/s² のはずだが、どちらも静止時の値で確かめる。本システムは、静止時に z 方向へ約 +9.8 m/s² が出る比力を前提にしている。
+- **`ie_tc` と `ie_rt`**: ノートブックの説明によれば、`ie_tc` は Inertial Explorer の密結合の後処理解（最も精度が高い）、`ie_rt` はリアルタイムの PPP 解（精度が低い）。真値には `ie_tc` を使う。両者の差は 3.3 節のレポートに出る。
+- **Livox の点群**: 列は `points`（座標）、`intensity`、`line`、`tag`、`valid`（スキャンごとの有効な点数）、`timestamp`（スキャンの時刻）。**点ごとの時刻は無い**ので、本システムのデスキューは使えない。データセット側で脚のオドメトリを使って動き補正した `livox_points_undistorted` を、デスキューなしで使う。Mid-360 は**上下逆さまに取り付けられている**（説明の記載）。取り付けの向きは静的 TF に入っているので、変換スクリプトで `base` から見た値に直せばよい。
+- **IMU の単位（要確認）**: 各 IMU の列は `lin_acc`、`ang_vel`、`orien`（と共分散）。Livox 内蔵の IMU（TDK ICM40609）は、ドライバの出力のままなら加速度が g 単位である（本システムでは `imu.acc_scale: 9.80665`）。ADIS16475 は m/s² のはず。どちらも静止時の加速度の大きさで確かめる（3.3 節のレポートの 4 節）。本システムは、静止時に z 方向へ約 +9.8 m/s² が出る比力を前提にしている。
 - **歩行による揺れ**: 四足歩行では、胴体が歩調に合わせて揺れる。roll / pitch の推定（`AttitudeEstimator`）と、LiDAR の点群を水平面に投影するときの傾き補正に効く。車輪の車両より厳しい条件なので、結果を見るときに考慮する。
 - **階段と段差**: 本システムは x, y, yaw の 2 次元で推定し、同じ水平位置に高さの違う地図が重なる構成は対象外である（要件定義 4 章）。**最初は、タグに階段（Stairs）が無く、屋外の平らなミッションを選ぶ**（1.3 節）。
 - **起動時の静止**: 本システムは、起動直後の `attitude.static_init_time`（既定 3 s）の IMU の平均から、roll / pitch とジャイロのバイアスを決める（この間に動いていても判定しない）。ミッションの最初にロボットが止まっているかを 3.3 節で確かめる。止まっていなければ、止まっている時刻から bag を始めるか、`static_init_time` を小さくする。
@@ -97,18 +98,19 @@ flowchart LR
 
 ## 3. 準備
 
-### 3.1 ダウンロード（`tools/grandtour/download.py`、Claude が作成）
+### 3.1 ダウンロード（`tools/grandtour/download.py`、作成済み）
 
 GrandTour のサンプル（`examples_hugging_face/scripts/download_data.py`）と同じく、`huggingface_hub` の `snapshot_download` で、ミッションとトピックを絞って落とし、`.tar` を展開する。3 段階に分ける。
 
 | 段階 | トピック | 大きさの目安（1 ミッション） | 目的 |
 |---|---|---|---|
-| light | `cpt7_ie_tc_odometry`、`cpt7_ie_rt_odometry`、`navsatfix_cpt7_ie_tc`、`prism_position`、`anymal_state_odometry`、`dlio_map_odometry`、`tf`、`metadata/` | 数十 MB | 軌跡の重なりと真値の確認（3.3 節）。**候補の全ミッションについて落とす** |
-| lidar | light に加えて `livox_points_undistorted`、`livox_imu`、`adis_imu`（デスキューを試すときは `livox_points` も） | 数百 MB〜1 GB 程度 | 照合（変換して bag にする） |
+| light | `cpt7_ie_tc_odometry`、`cpt7_ie_rt_odometry`、`navsatfix_cpt7_ie_tc`、`gnss_raw_cpt7_ie_tc`、`prism_position`、`anymal_state_odometry`、`dlio_map_odometry`、`tf`、`metadata/` | 数十 MB | 軌跡の重なりと真値・約束事の確認（3.3 節）。**候補の全ミッションについて落とす**（`--missions candidates`） |
+| lidar | light に加えて `livox_points_undistorted`、`livox_imu`、`adis_imu`（`--topics livox_points` で補正前の点群も） | 数百 MB〜1 GB 程度 | 照合（変換して bag にする） |
 | map | `point_cloud_maps/<ミッション>_dlio.ply` | 数百 MB | 案 B の地図（4 章） |
 
 - 保存先はリポジトリの外（例: `$GLL_DATA/grandtour/<フォルダ名>/`）。
-- 必要な Python パッケージ（`huggingface_hub`、`zarr`、緯度経度 → UTM の変換の `pyproj`）は、スクリプトを作るときに Docker の `dev` ステージに追加する。
+- 必要な Python パッケージ（`huggingface_hub`、`zarr`、`pyproj`）は Docker の `dev` ステージに入れた。使い方は [tools/grandtour/README.md](../tools/grandtour/README.md)。
+- 一度展開したトピックは、次に実行したときは落とさない。展開した後の `.tar` は消す。
 
 ### 3.2 ROS 2 bag への変換（`tools/grandtour/grandtour_to_bag.py`、Claude が作成）
 
@@ -118,7 +120,7 @@ Docker の `dev` ステージのコンテナの中で実行する。ROS には�
 |---|---|---|
 | `adis_imu`（`--imu livox` / `anymal` で切り替え） | `/sensing/imu`（`sensor_msgs/Imu`、frame `base_link`） | 静的 TF で `base` の向きに回す。単位を m/s² にそろえる（1.2 節） |
 | `anymal_state_odometry` | `/sensing/odom`（`nav_msgs/Odometry`。twist だけを埋める） | twist を `base` の座標系で出す。劣化のオプション: 縮尺の誤差（`--odom-scale 1.03` など）、白色雑音（`--odom-noise 0.05`） |
-| `livox_points_undistorted`（`--points raw` で `livox_points`） | `/sensing/lidar/points`（`sensor_msgs/PointCloud2`、frame `livox_lidar`） | `valid` の点数だけを取り出す。反射強度と点ごとの時刻があれば列に入れる（点ごとの時刻は float32 の `time` 列 = stamp からの秒） |
+| `livox_points_undistorted`（`--points raw` で `livox_points`） | `/sensing/lidar/points`（`sensor_msgs/PointCloud2`、frame `livox_lidar`） | `valid` の点数だけを取り出し、`intensity` も列に入れる（点ごとの時刻は無い） |
 | `tf`（静的） | `/tf_static`（base_link → livox_lidar など）と、`lidar.extrinsic_*` に入れる値の表示 | `base` → `box_base` → `livox_lidar` をつなぐ |
 | 真値 + 誤差 | `/initialpose`（`geometry_msgs/PoseWithCovarianceStamped`。launch の `initial_pose_topic` の既定値） | 静止初期化の後の時刻に 1 回出す。`--init-error 2.0,15` で位置・yaw に誤差を与える（V-G2）。共分散も誤差に合わせて入れる |
 | `cpt7_ie_tc_odometry` + `navsatfix_cpt7_ie_tc` | `/groundtruth/pose`（評価用）と `groundtruth.csv` | `box_base` の姿勢を `base` に直し、UTM 32 帯に投影し、yaw を子午線収差で補正する（1.2 節） |
@@ -126,17 +128,18 @@ Docker の `dev` ステージのコンテナの中で実行する。ROS には�
 
 トピック名は launch の既定値（`/sensing/imu`、`/sensing/odom`、`/sensing/lidar/points`、`/initialpose`）に合わせる。第 1 段階では GNSS のトピックは作らない。再生は `ros2 bag play --clock` で行い、推定ノードは `use_sim_time:=true` で起動する。
 
-### 3.3 データの事前確認（`tools/grandtour/inspect_grandtour.py`、Claude が作成）
+### 3.3 データの事前確認（`tools/grandtour/inspect_grandtour.py`、作成済み）
 
-light の段階のデータで、次の項目を 1 枚のレポート（図付き）にまとめる。点群を含む項目は lidar の段階のデータで行う。結果を Claude に渡してもらい、ミッションの組と以降の設定を決める。
+light の段階のデータで、次の項目を 1 枚のレポート（`report.md` と図）にまとめる。点群と IMU の項目は lidar の段階のデータで行う。結果を Claude に渡してもらい、ミッションの組と以降の設定を決める。
 
 - **ミッションどうしの軌跡の重なり**: 候補のミッションの真値を UTM で重ね、同じ場所（5 m 以内）を通る区間の長さと、通る向き（同じ / 逆）を一覧にする。1.3 節の組を決める
-- `ie_tc` と `ie_rt` の差、`ie_tc` と MS60 のプリズム位置の差（剛体変換で合わせた後の残差）。真値の精度の目安にする
+- `ie_tc` と `ie_rt` の差、`ie_tc` と MS60 のプリズム位置の差（剛体変換とプリズムのレバーアームを同時に求めた後の残差）。真値の精度の目安にする
+- **オドメトリの姿勢の解釈と速度の座標系、静的 TF の解釈**（1.2 節）
 - 真値の時刻の間隔と欠落、GNSS の解が無い区間
 - ミッションの最初にロボットが止まっているか、止まっている時間
 - 速度の分布（前進・横）と、横方向の移動の多さ
 - 高さの変化（段差・坂）
-- （lidar の段階）Livox の点群の列（反射強度、点ごとの時刻の有無と単位）、1 スキャンの点数、ロボット自身に当たった点の範囲（クロップの箱を決める）
+- （lidar の段階）Livox の点群の列、1 スキャンの点数、`base` から見た LiDAR の位置と向き、ロボット自身に当たった点の範囲（クロップの箱を決める）
 - （lidar の段階）IMU の単位と、静止時の加速度の大きさ
 - （lidar の段階）地面から `base` までの高さ（`lidar.base_link_height` に入れる）
 
@@ -238,7 +241,7 @@ light の段階のデータで、次の項目を 1 枚のレポート（図付�
 
 | ID | ミッション | 地図 | 内容 | 主な確認点 |
 |---|---|---|---|---|
-| V-G0 | ETH-1 | 案 A（**同じミッション**） | 動作確認 | 変換・TF・外部パラメータ・IMU の単位・起動手順が正しいこと。地図上での初期化から追跡まで通ること。誤差は数 cm になるはず（楽観的な値なので精度の評価には使わない）。`livox_points_undistorted`（デスキューなし）と、`livox_points`（本システムでデスキュー。点ごとの時刻がある場合）を比べる |
+| V-G0 | ETH-1 | 案 A（**同じミッション**） | 動作確認 | 変換・TF・外部パラメータ・IMU の単位・起動手順が正しいこと。地図上での初期化から追跡まで通ること。誤差は数 cm になるはず（楽観的な値なので精度の評価には使わない）。`livox_points_undistorted` と `livox_points`（補正前。点ごとの時刻が無いのでデスキューなし）を比べ、歩く速さでの歪みの影響を見る |
 | V-G1 | ETH-3 | 案 A（ETH-1） | 別のミッションでの追跡 | 地図区間での精度、照合の採用率、共分散の整合性（→ `cov_scale`）、処理時間、タイルの読み込み（ターゲットが空にならないこと） |
 | V-G2 | ETH-3 | 案 A（ETH-1） | 地図上での初期化 | 初期姿勢に 1〜3 m・10〜30° の誤差を与え（位置と誤差を変えて 20 回程度）、成功率・時間・誤った位置で初期化しないことを確認する |
 | V-G3 | ETH-3 | 案 A（ETH-1） | ODOM を劣化させる | 脚のオドメトリはそれ自体がずれるが、さらに縮尺の誤差（+3〜5 %）と雑音を入れても、LiDAR の照合で位置が保たれること。`odom_scale` の推定が誤差の方へ動くこと |
@@ -307,8 +310,9 @@ light の段階のデータで、次の項目を 1 枚のレポート（図付�
 
 1. **ライセンスの表記**: 公式ページは CC BY-SA 4.0（データ）、Hugging Face のカードは MIT となっている。業務で使う前に、どちらが適用されるかを確認する。地図などの加工物を外部に出す場合は、出典の表示と同じライセンスでの公開が必要になりうる。
 2. **ETH-1 と ETH-3 の軌跡の重なり**（3.3 節。足りなければ SBB-1 / SBB-2 を主な組にする）。
-3. **Livox の点群の列**（反射強度、点ごとの時刻。3.3 節）と、IMU の単位。
-4. **`ie_tc` と `ie_rt` の違い**と、真値の精度（3.3 節）。
+3. ~~Livox の点群の列~~ → 反射強度あり、点ごとの時刻なし（v0.2）。**残り**: IMU の単位（3.3 節）。
+4. ~~`ie_tc` と `ie_rt` の違い~~ → 後処理の密結合解とリアルタイムの PPP 解（v0.2）。**残り**: 真値の精度（3.3 節）。
 5. **ミッションの最初にロボットが止まっているか**（3.3 節。`static_init_time` の値が決まる）。
 6. **DLIO の地図の重力方向**（4.4 節の傾きの補正で扱う）。
 7. **`debug_events_path` の実装**（5.3 節。V-G1 の前に）。
+8. **姿勢と静的 TF の約束事**（1.2 節。3.3 節のレポートの 3.1・3.2 節で決める）。

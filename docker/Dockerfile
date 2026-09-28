@@ -50,8 +50,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-${ROS_DISTRO}-rviz2 \
       ros-${ROS_DISTRO}-ros2bag ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
-# 検証用の bag を読み書きするためのツール（docs/validation_grandtour.md）
-RUN pip3 install --no-cache-dir --break-system-packages rosbags
+# 検証用のツール（docs/validation_grandtour.md、tools/grandtour/）: bag の読み書き、GrandTour（Hugging Face の Zarr）の
+# ダウンロードと読み込み、緯度経度 → UTM の変換
+RUN pip3 install --no-cache-dir --break-system-packages rosbags huggingface_hub "zarr>=3.0.7,<4" pyproj
 
 WORKDIR /ws
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \

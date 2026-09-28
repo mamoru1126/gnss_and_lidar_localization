@@ -35,6 +35,7 @@ docker/                Dockerfile（dev / devcontainer / runtime）と compose.y
 .devcontainer/         VS Code の Dev Container の設定
 tools/sim/             Invariant EKF と ESEKF の比較シミュレーション（Python）
 tools/tile_demo/       タイル読み込みのデモページを作るスクリプト
+tools/grandtour/       GrandTour での検証のスクリプト（ダウンロードと事前確認。tools/grandtour/README.md）
 docs/                  設計ドキュメント
 ```
 
