@@ -7,6 +7,7 @@
 <出力>/tiles/          地図（tiled_pcd_map_tiler と同じ形のタイルと tile_index.yaml。共分散なし）
 <出力>/map.pcd         同じ地図の PCD（tiled_pcd_map_tiler の入力。推定ノードで使うタイルはこれから作る）
 <出力>/route.txt       走った経路（「x y」の行）
+場所は、壁で囲んだ 70 m × 50 m に、中の建物、柱と箱（地図上の初期化で位置が一つに決まるように不規則に置く）。
 車は西新宿の地図座標のあたりで、最初に 5 s 止まり、40 m × 20 m の四角を 6 km/h で 1 周する（drive_core の追従で走らせる）。
 IMU と LiDAR の取り付けは、下の R_BASE_IMU と T_BASE_LIDAR（真値）。
 """
@@ -67,6 +68,17 @@ def world_points():
         s = np.linspace(0, 1, n)
         for z in np.arange(0.0, 6.0, 0.25):
             pts.append(np.c_[ax + s * (bx - ax), ay + s * (by - ay), np.full(n, z)])
+    # 形の手がかり（柱と箱を不規則に置く）。壁と建物だけだと四角が対称で、地図上の初期化で候補が絞れない
+    for cx, cy, r in [(-6, -5, 0.3), (12, -7, 0.5), (27, -4, 0.3), (47, 3, 0.4), (46, 26, 0.3), (18, 27, 0.6),
+                      (-5, 12, 0.4), (-8, 28, 0.3), (36, 10, 0.3)]:
+        a = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+        for z in np.arange(0.0, 5.0, 0.25):
+            pts.append(np.c_[ORIGIN[0] + cx + r * np.cos(a), ORIGIN[1] + cy + r * np.sin(a), np.full(len(a), z)])
+    for (bx, by, w, d, h) in [(4, -9, 3, 1.5, 1.5), (35, -9, 1.5, 2.5, 2.5), (48, 14, 2, 4, 1.2), (-9, 5, 2, 2, 3.0)]:
+        g = np.mgrid[0:w:0.2, 0:d:0.2, 0:h:0.2].reshape(3, -1).T
+        edge = (np.isclose(g[:, 0], 0) | (g[:, 0] > w - 0.21) | np.isclose(g[:, 1], 0) | (g[:, 1] > d - 0.21)
+                | (g[:, 2] > h - 0.21))
+        pts.append(g[edge] + [ORIGIN[0] + bx, ORIGIN[1] + by, 0.0])
     p = np.vstack(pts)
     return p + rng.normal(0, 0.01, p.shape)
 

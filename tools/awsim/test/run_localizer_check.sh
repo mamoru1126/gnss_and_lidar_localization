@@ -60,10 +60,13 @@ run() {  # $1 = bag（<stem>_params.yaml が隣にある）
 }
 
 run "$work/a/a.mcap"
-python3 "$tools/evaluate.py" "$work/a/a_output.csv" "$work/a/a_groundtruth.csv" --title "A: GNSS + LiDAR" \
+python3 "$tools/evaluate.py" "$work/a/a_output.csv" "$work/a/a_groundtruth.csv" --title "A: GNSS + LiDAR" --out "$work/a.md" \
   --max xy_rms=0.15 yaw_rms_deg=1.0 lost_share=0 --min lidar_share=0.2
 
 run "$work/b/b.mcap"
-python3 "$tools/evaluate.py" "$work/b/b_output.csv" "$work/b/b_groundtruth.csv" --title "B: 地図だけ（初期姿勢 1 m・10° ずれ）" \
+python3 "$tools/evaluate.py" "$work/b/b_output.csv" "$work/b/b_groundtruth.csv" --title "B: 地図だけ（初期姿勢 1 m・10° ずれ）" --out "$work/b.md" \
   --max xy_rms=0.15 yaw_rms_deg=1.0 lost_share=0 init_time=20 --min lidar_share=0.9
+# 通ったときも、指標の表を GitHub Actions の注釈に出す（ログを開かなくても値が見えるように）
+msg="$(cat "$work/a.md" "$work/b.md" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+echo "::notice title=AWSIM localizer check (synthetic data)::$msg"
 echo "localizer check passed"
