@@ -5,6 +5,8 @@
 #   B: GNSS なし。/initialpose（1 m・10° ずらす）から地図の上で初期化し、LiDAR だけで追う
 # 合成データなので誤差は小さいはず。ここで見るのは、変換・パラメータ・地図・起動手順がつながって動くこと。
 set -euo pipefail
+# ジョブ制御を有効にする（無効のままだと、バックグラウンドのノードが SIGINT を無視し、止められない）
+set -m
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tools="$(dirname "$here")"
 work="$(mktemp -d)"
@@ -41,10 +43,17 @@ run() {  # $1 = bag（<stem>_params.yaml が隣にある）
     > "${stem}_node.log" 2>&1 &
   local pid=$!
   sleep 5
-  ros2 bag play "$1" --clock 100 --disable-keyboard-controls
+  timeout 300 ros2 bag play "$1" --clock 100 --disable-keyboard-controls
   sleep 2
-  kill -INT "$pid" 2>/dev/null || true
-  wait "$pid" || true
+  # 止める: SIGINT → 30 s 待って SIGTERM → 30 s 待って SIGKILL（CSV は SIGINT で閉じられる）
+  local sig
+  for sig in INT TERM KILL; do
+    kill -"$sig" -- -"$pid" 2>/dev/null || kill -"$sig" "$pid" 2>/dev/null || true
+    for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    kill -0 "$pid" 2>/dev/null || break
+    echo "node did not stop on SIG$sig"
+  done
+  wait "$pid" 2>/dev/null || true
   echo "---- node log (last lines)"
   tail -n 25 "${stem}_node.log"
   test -s "${stem}_output.csv" || { echo "no output csv"; exit 1; }
