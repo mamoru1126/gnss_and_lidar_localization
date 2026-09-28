@@ -310,7 +310,7 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
       csv_ << "t,x,y,yaw,raw_x,raw_y,raw_yaw,var_x,var_y,var_yaw,raw_var_x,raw_var_y,raw_var_yaw,"
               "offset_x,offset_y,offset_yaw,status,recovery_state,active_map_group,roll,pitch,gyro_bias,odom_scale,"
               "dr_distance\n";
-      csv_.precision(10);
+      csv_.precision(15);  // UNIX 秒の時刻を 10 µs まで、UTM を 0.1 µm まで残す
     } else {
       RCLCPP_WARN(get_logger(), "cannot open debug_csv_path: %s", csv_path.c_str());
     }

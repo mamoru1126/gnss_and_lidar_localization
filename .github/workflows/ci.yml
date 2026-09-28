@@ -82,6 +82,28 @@ jobs:
                      source install/setup.bash && \
                      GLL_REQUIRE_ROS=1 src/gnss_and_lidar_localization/tools/grandtour/test/run_tests.sh"
 
+      - name: AWSIM tools - converted bag works with ROS 2 and the localizer tracks the ground truth
+        timeout-minutes: 25
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
+            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
+                     colcon build --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release && \
+                     source install/setup.bash && \
+                     src/gnss_and_lidar_localization/tools/awsim/test/run_localizer_check.sh"
+
+  # tools/awsim（AWSIM の bag の変換・走行・評価）を、合成の bag で確かめる
+  tools_awsim:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install numpy pyyaml pyproj
+      - name: Test
+        run: tools/awsim/test/run_tests.sh
+
   # tools/grandtour（GrandTour のダウンロード・事前確認）を、合成ミッションで確かめる
   tools_grandtour:
     runs-on: ubuntu-24.04

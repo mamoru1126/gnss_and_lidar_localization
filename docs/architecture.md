@@ -1294,7 +1294,8 @@ sequenceDiagram
 | `core/test/` | 単体テストと統合シミュレーション（`sim_world.hpp` の合成環境へのレイキャストで LiDAR を模擬し、`lidar_sim.hpp` で Localizer 全体を動かす） |
 | `ros2/gll_ros2/` | `localizer_node.cpp`（`LocalizerNode`、`RosLogger`）、`conversions.cpp`（メッセージ ⇔ コアの型）、`diagnostics.cpp`（`DiagnosticStatus` の生成）、`main.cpp`、`config/localizer.yaml`、`launch/localizer.launch.py` |
 | `tools/anchor_calibrator/` | `gll_anchor_calibrator`（Phase 3） |
-| `tools/grandtour/` | GrandTour のスクリプト（[検証計画](./validation_grandtour.md)）。ダウンロード（`download.py`）、事前確認（`inspect_grandtour.py`）、ROS 2 bag への変換（`grandtour_to_bag.py`）、案 A の地図（`build_map_from_gt.py`）は作成済み。案 B のアンカー決定と評価は作成予定 |
+| `tools/awsim/` | AWSIM での検証のスクリプト（[検証計画](./validation_awsim.md)）。走行（`awsim_drive.py`）、LiDAR の取り付け位置の確認（`check_lidar_extrinsic.py`）、ROS 2 bag への変換（`awsim_to_bag.py`）、評価（`evaluate.py`） |
+| `tools/grandtour/` | 公開データセット GrandTour の読み込みと変換のスクリプト（今は使っていない） |
 | `docker/` | `Dockerfile`（`dev` / `runtime` ステージ）、`compose.yaml`（設計書 7.8 節） |
 | `.devcontainer/` | VS Code 用の設定（任意） |
 | `.github/workflows/` | CI（Docker の `dev` ステージでの colcon ビルドと単体テスト、ROS なしでのコア単体のビルドとテスト） |
