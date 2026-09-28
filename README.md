@@ -31,7 +31,8 @@ tiled_pcd_map/         tiled_pcd_map: 点群地図のタイル化と動的ロー
                        small_gicp は任意）と、タイル化ツール tiled_pcd_map_tiler。単体でも使える（tiled_pcd_map/README.md）
 core/                  gll_core: ROS に依存しない自己位置推定のライブラリ（tiled_pcd_map, small_gicp）
 ros2/gll_ros2/         ROS 2 Jazzy のインターフェース（LocalizerNode, launch, パラメータ）
-docker/                Dockerfile（dev / runtime）と compose.yaml
+docker/                Dockerfile（dev / devcontainer / runtime）と compose.yaml
+.devcontainer/         VS Code の Dev Container の設定
 tools/sim/             Invariant EKF と ESEKF の比較シミュレーション（Python）
 tools/tile_demo/       タイル読み込みのデモページを作るスクリプト
 docs/                  設計ドキュメント
@@ -49,6 +50,18 @@ cd /ws
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 colcon test && colcon test-result --verbose
 ```
+
+### VS Code の Dev Container
+
+VS Code の拡張機能 [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) を入れ、リポジトリを開いて「Reopen in Container」を選ぶと、ROS 2 Jazzy の開発環境（`docker/Dockerfile` の `devcontainer` ステージ）の中で作業できる。初回はイメージの作成と最初の `colcon build` に数分かかる。
+
+- 構成は `docker/compose.yaml` と同じで、colcon のワークスペースが `/ws`、リポジトリが `/ws/src/gnss_and_lidar_localization`。`build/`・`install/`・`log/` は名前付きボリュームに置くので、ソースのディレクトリは汚れず、コンテナを作り直しても残る。
+- root ではなく利用者 `ubuntu`（`sudo` 可）で作業する。UID はホストの利用者に合わせるので、コンテナの中で作ったファイルもホストの自分のものになる。
+- ターミナルを開くと ROS 2 と `/ws/install` が読み込まれている。ビルドは `.devcontainer/build.sh`（`colcon build --symlink-install` に続けて、C/C++ 拡張用の `compile_commands.json` をまとめる。引数は colcon にそのまま渡る）。テストは `cd /ws && colcon test && colcon test-result --verbose`。
+- rosbag や地図はリポジトリの `data/`（`.gitignore` 済み。環境変数 `GLL_DATA` がここを指す）に置く。リポジトリの外に置く場合は、`.devcontainer/devcontainer.json` の `mounts` にバインドを足し、`GLL_DATA` をそこに向ける。
+- ネットワークはホストと共有（`--network=host`）なので、ホストや同じネットワークの機器と ROS 2 のトピックをやり取りできる。`ROS_DOMAIN_ID` はホストの環境変数を引き継ぐ（無ければ 0）。
+- RViz などの GUI は X11 で出す。Linux では、ホストで `xhost +local:` を実行してからコンテナを開く。Windows は WSL2（WSLg）の中で開けば、そのまま表示できる。macOS では XQuartz などの X サーバーが別に要る。
+- CI の `devcontainer` ジョブが、同じ設定を devcontainer CLI で起動し、中でビルド・テストしている。
 
 コアだけなら ROS なしでもビルドできる（`libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev` と、ソースからインストールした [small_gicp](https://github.com/koide3/small_gicp) v1.0.1 が必要。手順は [.github/workflows/ci.yml](.github/workflows/ci.yml) の core ジョブを参照）。`core/` を CMake でビルドすると、`tiled_pcd_map/`（tiled_pcd_map）も一緒にビルドされる。tiled_pcd_map だけのビルドは [tiled_pcd_map/README.md](tiled_pcd_map/README.md)。
 

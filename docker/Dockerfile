@@ -2,8 +2,9 @@
 #
 # gnss_and_lidar_localization の開発・実行環境（設計書 7.8 節）
 #
-#   dev     : ビルド・テスト・デバッグ・データ変換用（ソースはボリュームでマウントする）
-#   build   : ワークスペースを colcon でビルドする中間ステージ
+#   dev          : ビルド・テスト・デバッグ・データ変換用（ソースはボリュームでマウントする）
+#   devcontainer : VS Code の Dev Container 用（dev に、root でない利用者 ubuntu と sudo などを足したもの。.devcontainer/）
+#   build        : ワークスペースを colcon でビルドする中間ステージ
 #   runtime : 実行に必要なものだけを持つイメージ
 #
 # 例:
@@ -56,6 +57,26 @@ WORKDIR /ws
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \
  && echo "[ -f /ws/install/setup.bash ] && source /ws/install/setup.bash" >> /root/.bashrc
 CMD ["bash"]
+
+# ---------------------------------------------------------------------------
+# VS Code の Dev Container（.devcontainer/devcontainer.json）。ベースイメージ（Ubuntu 24.04）にある利用者 ubuntu で作業する。
+# UID は VS Code がホストの利用者に合わせるので、マウントしたソースに作ったファイルが root のものにならない。
+FROM dev AS devcontainer
+ARG ROS_DISTRO
+ARG USERNAME=ubuntu
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      sudo bash-completion python3-argcomplete \
+    && rm -rf /var/lib/apt/lists/*
+RUN id "${USERNAME}" \
+ && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
+ && mkdir -p /ws/src /ws/build /ws/install /ws/log /data \
+ && chown -R "${USERNAME}:${USERNAME}" /ws /data \
+ && { echo "source /opt/ros/${ROS_DISTRO}/setup.bash"; \
+      echo "[ -f /ws/install/setup.bash ] && source /ws/install/setup.bash"; \
+      echo "[ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ] && source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash"; \
+    } >> "/home/${USERNAME}/.bashrc"
+USER ${USERNAME}
+WORKDIR /ws
 
 # ---------------------------------------------------------------------------
 FROM base AS build

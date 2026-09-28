@@ -1,0 +1,71 @@
+// VS Code の Dev Container（ROS 2 Jazzy の開発環境）。使い方は README.md の「VS Code の Dev Container」。
+// イメージは docker/Dockerfile の devcontainer ステージ（dev ステージに、利用者 ubuntu と sudo を足したもの）。
+{
+  "name": "gnss_and_lidar_localization (ROS 2 Jazzy)",
+  "build": {
+    "dockerfile": "../docker/Dockerfile",
+    "context": "..",
+    "target": "devcontainer",
+    "args": { "ROS_DISTRO": "jazzy" }
+  },
+
+  // colcon のワークスペースは /ws。リポジトリは /ws/src/gnss_and_lidar_localization に置く（docker/compose.yaml と同じ配置）
+  "workspaceMount": "source=${localWorkspaceFolder},target=/ws/src/gnss_and_lidar_localization,type=bind",
+  "workspaceFolder": "/ws/src/gnss_and_lidar_localization",
+
+  // root ではなく ubuntu で作業する。UID・GID はホストの利用者に合わせる（Linux）
+  "remoteUser": "ubuntu",
+  "updateRemoteUserUID": true,
+
+  "runArgs": [
+    // DDS（ROS 2 の通信）でホストや同じネットワークの機器とつながるように
+    "--network=host",
+    "--ipc=host",
+    // gdb でデバッグできるように
+    "--cap-add=SYS_PTRACE",
+    "--security-opt=seccomp=unconfined",
+    // RViz などの GUI（X11）。ホストに無ければ Docker が空のディレクトリを作る
+    "--volume=/tmp/.X11-unix:/tmp/.X11-unix"
+  ],
+
+  "mounts": [
+    // colcon の出力は、コンテナを作り直しても残るように名前付きボリュームに置く（ソースのディレクトリは汚さない。名前はクローンごとに別）
+    "source=gll-build-${devcontainerId},target=/ws/build,type=volume",
+    "source=gll-install-${devcontainerId},target=/ws/install,type=volume",
+    "source=gll-log-${devcontainerId},target=/ws/log,type=volume"
+    // rosbag や地図をリポジトリの外に置いている場合は、ここに足す（例）:
+    // "source=/path/to/data,target=/data,type=bind"
+  ],
+
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "ROS_DOMAIN_ID": "${localEnv:ROS_DOMAIN_ID:0}",
+    // rosbag や地図の置き場所。既定はリポジトリの data/（.gitignore 済み）。外に置いてマウントした場合は /data にする
+    "GLL_DATA": "/ws/src/gnss_and_lidar_localization/data",
+    "RCUTILS_COLORIZED_OUTPUT": "1"
+  },
+
+  // 初回: ボリュームの持ち主を合わせ、colcon build する（IntelliSense 用の compile_commands.json も作る）
+  "postCreateCommand": "bash .devcontainer/post_create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "ms-python.python",
+        "redhat.vscode-yaml",
+        "bierner.markdown-mermaid"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "C_Cpp.default.compileCommands": "/ws/build/compile_commands.json",
+        "C_Cpp.default.cppStandard": "c++17",
+        "cmake.configureOnOpen": false,
+        "cmake.ignoreCMakeListsMissing": true,
+        "python.analysis.extraPaths": ["/opt/ros/jazzy/lib/python3.12/site-packages"],
+        "files.watcherExclude": { "**/build/**": true, "**/install/**": true, "**/log/**": true }
+      }
+    }
+  }
+}
