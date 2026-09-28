@@ -212,6 +212,8 @@ def make_mission(out_root, folder, points, origin_en, still, t0, utm_inv, prism_
     (dst / "data").mkdir(parents=True, exist_ok=True)
     (dst / "metadata").mkdir(parents=True, exist_ok=True)
     shutil.copy2(work / "data" / ".zgroup", dst / "data" / ".zgroup")
+    if folder == "2024-10-01-11-29-55":
+        (dst / "data" / ".zgroup").write_bytes(b'{\n a   "zarr_format": 3\n')
     for topic_dir in sorted((work / "data").iterdir()):
         if topic_dir.is_dir():
             with tarfile.open(dst / "data" / f"{topic_dir.name}.tar", "w") as tar:

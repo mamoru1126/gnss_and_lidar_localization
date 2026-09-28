@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import missions  # noqa: E402
 
 REPO_ID = "leggedrobotics/grand_tour_dataset"
+BROKEN_ROOT_ZGROUP = b'{\n a   "zarr_format": 3\n'
+CORRECT_ROOT_ZGROUP = b'{\n    "zarr_format": 2\n}'
 
 # 軽いトピック: 真値・軌跡・静的 TF（1 ミッション数十 MB）。ミッションの組を決める事前確認に使う
 LIGHT = [
@@ -50,6 +52,13 @@ def patterns_for(folder, topics, with_map):
 
 def marker(dest, folder, topic):
     return dest / folder / "data" / f".{topic}.extracted"
+
+
+def repair_root_zgroup(path):
+    if path.is_file() and path.read_bytes() == BROKEN_ROOT_ZGROUP:
+        path.write_bytes(CORRECT_ROOT_ZGROUP)
+        return True
+    return False
 
 
 def safe_extract(tar_path, out_dir):
@@ -131,6 +140,8 @@ def main():
                         shutil.move(str(s), d)
                     else:
                         shutil.copy2(s, d)
+        if repair_root_zgroup(mdir / "data" / ".zgroup"):
+            print(f"  repaired malformed root metadata for {missions.code_of(f)}")
         for t in need:
             tar_path = src / f / "data" / f"{t}.tar"
             if not tar_path.exists():

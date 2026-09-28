@@ -16,8 +16,17 @@
 Docker の `dev` ステージのコンテナには入っている。コンテナの外で動かす場合は:
 
 ```bash
-pip install numpy matplotlib "zarr>=3.0.7,<4" pyproj huggingface_hub
+pip install numpy matplotlib "zarr>=3.0.7,<4" pyproj "huggingface_hub<2"
 ```
+
+#### memo
+devcontainer 内では
+
+```bash
+python3 -m pip install --break-system-packages 'huggingface_hub<2' 
+```
+
+が必要だった
 
 `download.py` だけなら `huggingface_hub` があればよい。データセットは公開されているので、Hugging Face へのログインは要らない（ログインしてあっても問題ない）。
 

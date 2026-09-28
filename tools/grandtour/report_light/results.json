@@ -1,0 +1,1500 @@
+{
+ "missions": {
+  "ETH-1": {
+   "duration": 349.9263081550598,
+   "gnss_n": 69601,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 348.0,
+   "gnss_std_p50": 0.003942320582762433,
+   "gnss_std_p95": 0.007154601189184932,
+   "length": 199.57428843258106,
+   "alt_range": 3.4545729691162705,
+   "stationary_start": 5.747777700424194,
+   "speed_p50": 0.6893160413748609,
+   "speed_p95": 1.0388872418894353,
+   "lateral_p95": 0.128616564003445,
+   "prism_n": 4547,
+   "prism_cover": 0.6772854583285011,
+   "conv_leg": {
+    "score_standard": 0.9752699575235122,
+    "score_inverted": 0.13281580185206196,
+    "residual": {
+     "standard/child": 0.06154410700490982,
+     "standard/parent": 0.7133910918585714,
+     "inverted/child": 32.00990888658859,
+     "inverted/parent": 32.02064187308758
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": 0.46789711247322685,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9687149460080938,
+    "score_inverted": 0.18326261148086476,
+    "residual": {
+     "standard/child": 1.1440365406989108,
+     "standard/parent": 0.9480651967043094,
+     "inverted/child": 12.140539325826563,
+     "inverted/parent": 12.127069936332514
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": -0.3811669790238656,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9519071714480954,
+    "score_inverted": 0.18113120628099177,
+    "residual": {
+     "standard/child": 0.19769152291208825,
+     "standard/parent": 0.9631859950061417,
+     "inverted/child": 11.909754329718616,
+     "inverted/parent": 11.95705011305053
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -90.44782800209691,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 933,
+    "fit_rms_deg": 0.23588770301774115,
+    "diff_official_deg": 0.6091345612722184,
+    "diff_inverse_deg": 0.6132453576014287
+   },
+   "rt_vs_tc": {
+    "p50": 0.08385535806078116,
+    "p95": 0.14787410348545343,
+    "max": 0.17868439104803197
+   },
+   "prism_fit": {
+    "rms": 0.009651969097115558,
+    "max": 0.12474548110486848,
+    "p95": 0.014034176023223186,
+    "lever": [
+     0.303102472649428,
+     -0.04128899439425737,
+     -0.2347156841430198
+    ],
+    "t": [
+     32.0492127854118,
+     -38.23318490965065,
+     2.8981264877258672
+    ],
+    "n": 4547,
+    "yaw_span_deg": 344.0453279367847
+   }
+  },
+  "ETH-2": {
+   "duration": 433.9246816635132,
+   "stationary_start": 2.049727439880371,
+   "speed_p50": 0.6238524763801169,
+   "speed_p95": 0.9436731773197006,
+   "lateral_p95": 0.19711626053524908,
+   "prism_n": 4684,
+   "prism_cover": 0.5715277569583183,
+   "conv_leg": {
+    "score_standard": 0.9847919636073357,
+    "score_inverted": 0.09694804070782019,
+    "residual": {
+     "standard/child": 0.05046570338632107,
+     "standard/parent": 0.8606494503195686,
+     "inverted/child": 33.7166885870706,
+     "inverted/parent": 33.717564313509534
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -6.229182894323246,
+    "frame_id": "odom"
+   },
+   "conv_tc": null,
+   "conv_dlio": {
+    "score_standard": 0.9474377454216701,
+    "score_inverted": 0.07503917774836323,
+    "residual": {
+     "standard/child": 0.16581862998927258,
+     "standard/parent": 0.8365918567857613,
+     "inverted/child": 6.221362993931936,
+     "inverted/parent": 6.27144763780479
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -97.4305352276255,
+    "frame_id": "dlio_map"
+   }
+  },
+  "ETH-3": {
+   "duration": 479.99875664711,
+   "gnss_n": 95601,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 478.0,
+   "gnss_std_p50": 0.004589589401596971,
+   "gnss_std_p95": 0.036508055783378734,
+   "length": 207.2194149555681,
+   "alt_range": 1.7477202992886305,
+   "stationary_start": 5.760052919387817,
+   "speed_p50": 0.4980671378873005,
+   "speed_p95": 0.9240915230396978,
+   "lateral_p95": 0.17163242485604055,
+   "prism_n": 545,
+   "prism_cover": 0.07291685554454806,
+   "conv_leg": {
+    "score_standard": 0.9640572892362913,
+    "score_inverted": 0.0938176787904513,
+    "residual": {
+     "standard/child": 0.05560119839215543,
+     "standard/parent": 0.7470154050443284,
+     "inverted/child": 34.353005209677576,
+     "inverted/parent": 34.37733050495214
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -2.1748122854075747,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9539029016577295,
+    "score_inverted": 0.16408608374077363,
+    "residual": {
+     "standard/child": 0.8094166812624126,
+     "standard/parent": 0.846543896757903,
+     "inverted/child": 5.153515483831252,
+     "inverted/parent": 5.140067787918363
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 2.2926310371458034,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9299724559140902,
+    "score_inverted": 0.16448653707501618,
+    "residual": {
+     "standard/child": 0.1680586654623125,
+     "standard/parent": 0.7143441569953327,
+     "inverted/child": 5.144877011387395,
+     "inverted/parent": 5.183900981791589
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -93.70519167139342,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 1082,
+    "fit_rms_deg": 0.20045936312126897,
+    "diff_official_deg": 0.7628177907783678,
+    "diff_inverse_deg": 0.7648550454002748
+   },
+   "rt_vs_tc": {
+    "p50": 0.2650657050572133,
+    "p95": 0.7391792448847393,
+    "max": 0.7764264718935308
+   },
+   "prism_fit": {
+    "rms": 0.013211099648631394,
+    "max": 0.06997461219930783,
+    "p95": 0.026865412856126064,
+    "lever": [
+     0.30610034910706424,
+     -0.04414407037159407,
+     -0.18312533068375203
+    ],
+    "t": [
+     -12.394535396438586,
+     1.1309530939753407,
+     -0.30058280781381397
+    ],
+    "n": 545,
+    "yaw_span_deg": 84.5347612576312
+   }
+  },
+  "SPX-1": {
+   "duration": 389.9599943161011,
+   "gnss_n": 35801,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 179.0,
+   "gnss_std_p50": 0.012352951431728392,
+   "gnss_std_p95": 0.019844302852240522,
+   "length": 39.48352393281844,
+   "alt_range": 4.328720141202211,
+   "stationary_start": 4.350312232971191,
+   "speed_p50": 0.3830373038442826,
+   "speed_p95": 0.8686124895553413,
+   "lateral_p95": 0.10402429346345939,
+   "prism_n": 4197,
+   "prism_cover": 0.5744178973867403,
+   "conv_leg": {
+    "score_standard": 0.9759243344126919,
+    "score_inverted": 0.024080971696194362,
+    "residual": {
+     "standard/child": 0.04317409075643533,
+     "standard/parent": 0.6647808483562236,
+     "inverted/child": 2.7360765988651767,
+     "inverted/parent": 2.7789922731746817
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": 0.09241715260264316,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9863320978102513,
+    "score_inverted": 0.3275703390420117,
+    "residual": {
+     "standard/child": 0.48471660841912695,
+     "standard/parent": 0.4542708180979448,
+     "inverted/child": 1.732622654238096,
+     "inverted/parent": 1.6945560209500756
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 0.5388443278009427,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.951410714351815,
+    "score_inverted": 0.02083731963309435,
+    "residual": {
+     "standard/child": 0.1643529760075488,
+     "standard/parent": 0.6827958361330393,
+     "inverted/child": 2.7162751436486277,
+     "inverted/parent": 2.7647837923305274
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -89.5907890977385,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 236,
+    "fit_rms_deg": 0.48539915818596074,
+    "diff_official_deg": 1.617279298199207,
+    "diff_inverse_deg": 1.618146025890362
+   },
+   "rt_vs_tc": {
+    "p50": 5.008957493294964,
+    "p95": 5.158661718241101,
+    "max": 5.213244030418758
+   },
+   "prism_fit": {
+    "rms": 0.08687847439246102,
+    "max": 0.2817439993757965,
+    "p95": 0.14757766147744164,
+    "lever": [
+     0.26898160047096353,
+     -0.03439999284777073,
+     -0.16173863799580124
+    ],
+    "t": [
+     18.407483196306337,
+     3.1828425276224883,
+     2.656689006681599
+    ],
+    "n": 1485,
+    "yaw_span_deg": 203.711015043848
+   }
+  },
+  "SPX-2": {
+   "duration": 398.82282733917236,
+   "gnss_n": 79401,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 397.0,
+   "gnss_std_p50": 0.025760381501027274,
+   "gnss_std_p95": 0.10203372784503154,
+   "length": 175.1866613902749,
+   "alt_range": 4.354912524111569,
+   "stationary_start": 0.19996166229248047,
+   "speed_p50": 0.5283775027969088,
+   "speed_p95": 0.9231561340463919,
+   "lateral_p95": 0.10238577982665255,
+   "conv_leg": {
+    "score_standard": 0.9646858728072731,
+    "score_inverted": 0.05482363998282612,
+    "residual": {
+     "standard/child": 0.046941686828936506,
+     "standard/parent": 0.7508491087362661,
+     "inverted/child": 3.312459544612264,
+     "inverted/parent": 3.3224035086189248
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": 0.9750607045372351,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9483052783567579,
+    "score_inverted": 0.023352190862864334,
+    "residual": {
+     "standard/child": 0.7742518419454624,
+     "standard/parent": 0.6847244437885007,
+     "inverted/child": 3.248172436363178,
+     "inverted/parent": 3.185275150952053
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": -1.3801653838421186,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9200289245124009,
+    "score_inverted": 0.030640834455100376,
+    "residual": {
+     "standard/child": 0.1730438077531047,
+     "standard/parent": 0.8336907417699534,
+     "inverted/child": 3.204778694155102,
+     "inverted/parent": 3.1745372841772608
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -88.08018875608705,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 926,
+    "fit_rms_deg": 0.26337079342582215,
+    "diff_official_deg": 0.2749861856123567,
+    "diff_inverse_deg": 0.2780075551292574
+   },
+   "rt_vs_tc": {
+    "p50": 0.5061274171151725,
+    "p95": 0.9565036135320018,
+    "max": 1.1548109958211046
+   }
+  },
+  "SPX-3": {
+   "duration": 229.65029525756836,
+   "gnss_n": 45601,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 228.0,
+   "gnss_std_p50": 0.006994883220303263,
+   "gnss_std_p95": 0.008807260886509894,
+   "length": 95.49028688240462,
+   "alt_range": 0.11196375545114279,
+   "stationary_start": 1.499999761581421,
+   "speed_p50": 0.4217294127227176,
+   "speed_p95": 0.9846895057403103,
+   "lateral_p95": 0.19863200546914686,
+   "prism_n": 2229,
+   "prism_cover": 0.509470279011732,
+   "conv_leg": {
+    "score_standard": 0.8082609488978509,
+    "score_inverted": 0.09784333480980562,
+    "residual": {
+     "standard/child": 0.04313065019653576,
+     "standard/parent": 0.8203501860925736,
+     "inverted/child": 7.778546168870315,
+     "inverted/parent": 7.792054105193747
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -0.054132491196580965,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.771720885077174,
+    "score_inverted": 0.06904312826379076,
+    "residual": {
+     "standard/child": 0.7962744873809061,
+     "standard/parent": 0.5922799026221852,
+     "inverted/child": 4.04932321895305,
+     "inverted/parent": 3.9942383511522896
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 1.1079181932144895,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.7044714401010229,
+    "score_inverted": 0.0629106407136703,
+    "residual": {
+     "standard/child": 0.18213266491183636,
+     "standard/parent": 0.7825800510887608,
+     "inverted/child": 4.2027675520488,
+     "inverted/parent": 4.100536453990727
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -92.1973546134708,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 499,
+    "fit_rms_deg": 0.22002353799508623,
+    "diff_official_deg": 1.7725266185774082,
+    "diff_inverse_deg": 1.7729558563062577
+   },
+   "rt_vs_tc": {
+    "p50": 0.025461539447794734,
+    "p95": 0.058995406494110905,
+    "max": 0.06244219903100518
+   },
+   "prism_fit": {
+    "rms": 0.010173232635674103,
+    "max": 0.058145394277331425,
+    "p95": 0.0146421013788317,
+    "lever": [
+     0.30307973783778985,
+     -0.036174145488681086,
+     -0.24005841789847637
+    ],
+    "t": [
+     -0.2324693041237122,
+     3.7670941587207816,
+     2.8116186790067488
+    ],
+    "n": 2229,
+    "yaw_span_deg": 552.8925132377915
+   }
+  },
+  "ARC-1": {
+   "duration": 448.9694809913635,
+   "gnss_n": 89401,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 447.0,
+   "gnss_std_p50": 0.003128937493043139,
+   "gnss_std_p95": 0.2890181532412629,
+   "length": 233.18634985567365,
+   "alt_range": 3.2005263064056635,
+   "stationary_start": 9.067665338516235,
+   "speed_p50": 0.5667704641038902,
+   "speed_p95": 0.9565781492537878,
+   "lateral_p95": 0.11894817111802765,
+   "prism_n": 6139,
+   "prism_cover": 0.6926974174576077,
+   "conv_leg": {
+    "score_standard": 0.9412789390825784,
+    "score_inverted": 0.11443358974551346,
+    "residual": {
+     "standard/child": 0.12521427693514886,
+     "standard/parent": 0.8720294837130168,
+     "inverted/child": 8.07817795113019,
+     "inverted/parent": 8.085761282492907
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -0.6859049966266115,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9348820413719672,
+    "score_inverted": 0.13007368020522028,
+    "residual": {
+     "standard/child": 0.8597874889969465,
+     "standard/parent": 0.9679576249855464,
+     "inverted/child": 9.102081785106252,
+     "inverted/parent": 9.1280013783489
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 0.18789399579691812,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.8918414387876161,
+    "score_inverted": 0.13131710303113833,
+    "residual": {
+     "standard/child": 0.23219060403858865,
+     "standard/parent": 0.8750231987100463,
+     "inverted/child": 9.15739329841882,
+     "inverted/parent": 9.180979910144655
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -89.4556154661702,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 1367,
+    "fit_rms_deg": 0.37085907026925724,
+    "diff_official_deg": 0.43538611292194246,
+    "diff_inverse_deg": 0.43853460929039084
+   },
+   "rt_vs_tc": {
+    "p50": 0.8655517300506752,
+    "p95": 1.0484074835199455,
+    "max": 1.099824166032494
+   },
+   "prism_fit": {
+    "rms": 0.016276210079514068,
+    "max": 0.06044655751452235,
+    "p95": 0.02908506796489128,
+    "lever": [
+     0.30722628880814185,
+     -0.03739339328325997,
+     -0.23867976691775894
+    ],
+    "t": [
+     -25.888971561990736,
+     -17.490587397436535,
+     3.9293301257360636
+    ],
+    "n": 6139,
+    "yaw_span_deg": 894.1837187577664
+   }
+  },
+  "ARC-2": {
+   "duration": 440.71576023101807,
+   "gnss_n": 87801,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 439.0,
+   "gnss_std_p50": 0.061496838203438924,
+   "gnss_std_p95": 0.3347875843092641,
+   "length": 121.4845120109441,
+   "alt_range": 4.7036649491637945,
+   "stationary_start": 9.200166702270508,
+   "speed_p50": 0.22328754467117812,
+   "speed_p95": 0.7515934560050177,
+   "lateral_p95": 0.10272465294180726,
+   "conv_leg": {
+    "score_standard": 0.9770457731733345,
+    "score_inverted": 0.21441808442498164,
+    "residual": {
+     "standard/child": 0.04554665987047593,
+     "standard/parent": 0.44731145053977567,
+     "inverted/child": 5.47098014841268,
+     "inverted/parent": 5.505741683068
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -1.5258681220051615,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9373688583028178,
+    "score_inverted": 0.22862490611034858,
+    "residual": {
+     "standard/child": 0.5525604704858968,
+     "standard/parent": 0.5296229726528694,
+     "inverted/child": 5.43166337399678,
+     "inverted/parent": 5.4102802869235616
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 0.801505740402363,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.786974167287458,
+    "score_inverted": 0.22936444527723632,
+    "residual": {
+     "standard/child": 0.1873318920907515,
+     "standard/parent": 0.479195459291096,
+     "inverted/child": 5.35547665983274,
+     "inverted/parent": 5.466835693114234
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -87.76500879718706,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 1142,
+    "fit_rms_deg": 0.4156082434258169,
+    "diff_official_deg": 0.13715810915276752,
+    "diff_inverse_deg": 0.14319357754021417
+   },
+   "rt_vs_tc": {
+    "p50": 1.5135813504279156,
+    "p95": 2.363110948136997,
+    "max": 2.525551394451297
+   }
+  },
+  "ARC-3": {
+   "duration": 728.9721150398254,
+   "gnss_n": 145401,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 727.0,
+   "gnss_std_p50": 0.004491851184732978,
+   "gnss_std_p95": 0.5188793169395284,
+   "length": 304.42720953686927,
+   "alt_range": 7.1329693384468555,
+   "stationary_start": 6.602663993835449,
+   "speed_p50": 0.37305035287542176,
+   "speed_p95": 1.0548968853291285,
+   "lateral_p95": 0.11290094281603201,
+   "prism_n": 3654,
+   "prism_cover": 0.266128149482647,
+   "conv_leg": {
+    "score_standard": 0.9201291954042894,
+    "score_inverted": 0.07180023007327327,
+    "residual": {
+     "standard/child": 0.11472393348083564,
+     "standard/parent": 0.7931890068493929,
+     "inverted/child": 9.601260841821107,
+     "inverted/parent": 9.63288653356633
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -2.9456067829242776,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.890128360051488,
+    "score_inverted": 0.06167968537581163,
+    "residual": {
+     "standard/child": 0.7846223487364867,
+     "standard/parent": 0.826542373650057,
+     "inverted/child": 5.460241756616849,
+     "inverted/parent": 5.486737178344255
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 4.0756431954015,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.7900535543548605,
+    "score_inverted": 0.05501580582339448,
+    "residual": {
+     "standard/child": 0.21394850983187266,
+     "standard/parent": 0.7837037207531556,
+     "inverted/child": 5.283623333471924,
+     "inverted/parent": 5.408262115841817
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -92.46214784006627,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 2125,
+    "fit_rms_deg": 0.410952232513543,
+    "diff_official_deg": 0.4612351498652709,
+    "diff_inverse_deg": 0.4649458176359289
+   },
+   "rt_vs_tc": {
+    "p50": 0.615251449708598,
+    "p95": 1.3545707307611157,
+    "max": 1.6871434666944163
+   },
+   "prism_fit": {
+    "rms": 0.29083130639198707,
+    "max": 16.141263627949694,
+    "p95": 0.2057345926304998,
+    "lever": [
+     0.32611131552653294,
+     -0.028176942944678096,
+     0.001660203632822349
+    ],
+    "t": [
+     8.03644050474185,
+     8.05213424307631,
+     1.7608608984273588
+    ],
+    "n": 3654,
+    "yaw_span_deg": 378.29976861042206
+   }
+  },
+  "ARC-4": {
+   "duration": 412.9638924598694,
+   "gnss_n": 82201,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 411.0,
+   "gnss_std_p50": 0.06844640354037151,
+   "gnss_std_p95": 1.0338304106517102,
+   "length": 151.37987102896284,
+   "alt_range": 2.4553412599489093,
+   "stationary_start": 0.0,
+   "speed_p50": 0.3451090394930861,
+   "speed_p95": 0.9062747303098094,
+   "lateral_p95": 0.11034965419335632,
+   "prism_n": 1514,
+   "prism_cover": 0.19372153706579603,
+   "conv_leg": {
+    "score_standard": 0.754051751065101,
+    "score_inverted": 0.08073771297648905,
+    "residual": {
+     "standard/child": 0.04520476201834604,
+     "standard/parent": 0.6808751981913209,
+     "inverted/child": 2.779315965382533,
+     "inverted/parent": 2.788307970593377
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -2.1374687107827737,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.7248137681020295,
+    "score_inverted": 0.07766214296832039,
+    "residual": {
+     "standard/child": 0.6710856298247877,
+     "standard/parent": 0.7525020947844425,
+     "inverted/child": 2.597420803308993,
+     "inverted/parent": 2.641965733210308
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 3.7966850453655865,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.6725679632982805,
+    "score_inverted": 0.09038190388552401,
+    "residual": {
+     "standard/child": 0.14828286925598522,
+     "standard/parent": 0.6924904294386001,
+     "inverted/child": 2.8072393565311833,
+     "inverted/parent": 2.8079198103285155
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -96.19706710074594,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 1032,
+    "fit_rms_deg": 0.25061005956580723,
+    "diff_official_deg": 0.4875349026439647,
+    "diff_inverse_deg": 0.48911579871471755
+   },
+   "rt_vs_tc": {
+    "p50": 0.7744837561474199,
+    "p95": 2.3860895391850456,
+    "max": 2.455538125795838
+   },
+   "prism_fit": {
+    "rms": 0.5851878109784315,
+    "max": 1.5268854011193485,
+    "p95": 1.4714656147646765,
+    "lever": [
+     0.45497761505650924,
+     0.04185428340887645,
+     -2.335329439015342
+    ],
+    "t": [
+     -8.43772667281447,
+     -7.996695839485085,
+     3.7104185004988337
+    ],
+    "n": 1514,
+    "yaw_span_deg": 365.7420703214961
+   }
+  },
+  "ARC-5": {
+   "duration": 406.9516770839691,
+   "gnss_n": 81001,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 405.0,
+   "gnss_std_p50": 0.30904329161557675,
+   "gnss_std_p95": 1.4841642822145087,
+   "length": 166.68690498245783,
+   "alt_range": 1.059111406095326,
+   "stationary_start": 0.0,
+   "speed_p50": 0.4342894918333367,
+   "speed_p95": 0.9391394359787057,
+   "lateral_p95": 0.10490479986527487,
+   "prism_n": 2987,
+   "prism_cover": 0.3808806026078074,
+   "conv_leg": {
+    "score_standard": 0.9679344592758754,
+    "score_inverted": 0.4294782347109629,
+    "residual": {
+     "standard/child": 0.0877295885280808,
+     "standard/parent": 0.7317702591719103,
+     "inverted/child": 7.5822317448744005,
+     "inverted/parent": 7.515586851943525
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": 0.008659881471740216,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9611500157358405,
+    "score_inverted": 0.35745417257514667,
+    "residual": {
+     "standard/child": 0.7429581785325443,
+     "standard/parent": 0.8516724581950629,
+     "inverted/child": 3.5912247705094726,
+     "inverted/parent": 3.6146739222684787
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": -0.5734038410160257,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9279826607471517,
+    "score_inverted": 0.32242902796216355,
+    "residual": {
+     "standard/child": 0.17852817575678168,
+     "standard/parent": 0.7918064088882618,
+     "inverted/child": 2.648049086342338,
+     "inverted/parent": 2.5925688654045675
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -87.21489313241246,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 904,
+    "fit_rms_deg": 0.36303350054015904,
+    "diff_official_deg": 0.492976812816763,
+    "diff_inverse_deg": 0.49055892522686506
+   },
+   "rt_vs_tc": {
+    "p50": 1.8027491171116459,
+    "p95": 1.9649078573132546,
+    "max": 2.0045373724053683
+   },
+   "prism_fit": {
+    "rms": 0.557338317054016,
+    "max": 0.9337843165559461,
+    "p95": 0.8367155173938601,
+    "lever": [
+     0.2285751713718791,
+     -0.2374134768527547,
+     1.3769631761648493
+    ],
+    "t": [
+     -0.27215217183251184,
+     19.67034015767236,
+     -2.5586760557791064
+    ],
+    "n": 2987,
+    "yaw_span_deg": 728.0639047430512
+   }
+  },
+  "LEICA-1": {
+   "duration": 326.5008611679077,
+   "gnss_n": 65001,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 325.0,
+   "gnss_std_p50": 0.006291176246378544,
+   "gnss_std_p95": 0.1758656043773006,
+   "length": 147.76813669735247,
+   "alt_range": 1.8731790222227573,
+   "stationary_start": 0.0,
+   "speed_p50": 0.3190110063311316,
+   "speed_p95": 1.1231345744518317,
+   "lateral_p95": 0.09136920049106982,
+   "prism_n": 3752,
+   "prism_cover": 0.5911163581916159,
+   "conv_leg": {
+    "score_standard": 0.9230079344999013,
+    "score_inverted": 0.03829711299720879,
+    "residual": {
+     "standard/child": 0.06377771758517568,
+     "standard/parent": 0.9008958549763394,
+     "inverted/child": 4.078653126820379,
+     "inverted/parent": 4.1226659594712745
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -2.211332227329204,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9062879187775761,
+    "score_inverted": 0.03526574267147497,
+    "residual": {
+     "standard/child": 0.9163675595454144,
+     "standard/parent": 0.8059442563831144,
+     "inverted/child": 4.1137106312335,
+     "inverted/parent": 4.078823510592933
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 2.080948812227432,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.8623735466465515,
+    "score_inverted": 0.03283629128511501,
+    "residual": {
+     "standard/child": 0.15430694576787268,
+     "standard/parent": 0.890030329394834,
+     "inverted/child": 4.049970080121444,
+     "inverted/parent": 4.115042133265514
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -93.89356902278348,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 594,
+    "fit_rms_deg": 0.256698825229255,
+    "diff_official_deg": 1.8109065822860295,
+    "diff_inverse_deg": 1.8110869998316317
+   },
+   "rt_vs_tc": {
+    "p50": 0.31074902622540584,
+    "p95": 4.581175818880463,
+    "max": 4.916449906762042
+   },
+   "prism_fit": {
+    "rms": 0.018927121302370366,
+    "max": 0.42953184449824444,
+    "p95": 0.03302164204142943,
+    "lever": [
+     0.3081523658761487,
+     -0.03648236073882316,
+     -0.3873026673136777
+    ],
+    "t": [
+     -18.07871744929969,
+     -18.673733280156124,
+     -0.28217313245105025
+    ],
+    "n": 3752,
+    "yaw_span_deg": 329.5394679016646
+   }
+  },
+  "LEICA-2": {
+   "duration": 437.9909076690674,
+   "gnss_n": 87201,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 436.0,
+   "gnss_std_p50": 1.2381509603532719,
+   "gnss_std_p95": 1.3861808764272647,
+   "length": 204.38641546630512,
+   "alt_range": 0.7341548725962639,
+   "stationary_start": 2.599964141845703,
+   "speed_p50": 0.5342581254765931,
+   "speed_p95": 0.8943387003025549,
+   "lateral_p95": 0.07808569537181387,
+   "prism_n": 3423,
+   "prism_cover": 0.40411797802372607,
+   "conv_leg": {
+    "score_standard": 0.9640693508245106,
+    "score_inverted": 0.3033027672788217,
+    "residual": {
+     "standard/child": 0.06971365658907154,
+     "standard/parent": 0.8140656330093282,
+     "inverted/child": 5.506653653914,
+     "inverted/parent": 5.544294404564344
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -0.9740401219058592,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9599151264520505,
+    "score_inverted": 0.2993020514713144,
+    "residual": {
+     "standard/child": 0.7788127011738442,
+     "standard/parent": 0.783643026091311,
+     "inverted/child": 5.364731170310788,
+     "inverted/parent": 5.328345003253459
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 0.8877788574366352,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9211782655110227,
+    "score_inverted": 0.2945345960792443,
+    "residual": {
+     "standard/child": 0.14552205649460162,
+     "standard/parent": 0.8184775131474132,
+     "inverted/child": 5.51161088589982,
+     "inverted/parent": 5.515033282282667
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -89.84862632529182,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 988,
+    "fit_rms_deg": 0.2429041507548339,
+    "diff_official_deg": 0.761671823959606,
+    "diff_inverse_deg": 0.7621436679504366
+   },
+   "rt_vs_tc": {
+    "p50": 0.5082472353792417,
+    "p95": 0.8756554014887695,
+    "max": 0.9675556077045113
+   },
+   "prism_fit": {
+    "rms": 0.49001685665772715,
+    "max": 1.2043217677333873,
+    "p95": 1.1180531184634024,
+    "lever": [
+     0.2269799774663479,
+     -0.09780104853133587,
+     0.5482740754637883
+    ],
+    "t": [
+     -3.5183641988074195,
+     14.026613500714207,
+     -1.5361438631806046
+    ],
+    "n": 3423,
+    "yaw_span_deg": 893.2914209453737
+   }
+  },
+  "SBB-1": {
+   "duration": 517.9831051826477,
+   "gnss_n": 103201,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 516.0,
+   "gnss_std_p50": 0.005620032273131553,
+   "gnss_std_p95": 0.024278221963253514,
+   "length": 303.1168994232641,
+   "alt_range": 0.4462985908612609,
+   "stationary_start": 4.3575358390808105,
+   "speed_p50": 0.72878268433258,
+   "speed_p95": 0.9725815555413022,
+   "lateral_p95": 0.10179151073244119,
+   "prism_n": 9236,
+   "prism_cover": 0.895782112114231,
+   "conv_leg": {
+    "score_standard": 0.9669438904386624,
+    "score_inverted": 0.24745772016222148,
+    "residual": {
+     "standard/child": 0.31372860107541684,
+     "standard/parent": 1.0067837220756315,
+     "inverted/child": 14.789108870179057,
+     "inverted/parent": 14.818632673504148
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -1.1890486910081113,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.9746015634610153,
+    "score_inverted": 0.25278902285591137,
+    "residual": {
+     "standard/child": 0.9536193560474961,
+     "standard/parent": 0.35347246265128773,
+     "inverted/child": 14.693115402901071,
+     "inverted/parent": 14.680481542185301
+    },
+    "semantics": "standard",
+    "twist_frame": "parent",
+    "decided_by": "twist",
+    "walk_dir_deg": 0.5889956944081051,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9461641152343697,
+    "score_inverted": 0.24673489394228584,
+    "residual": {
+     "standard/child": 0.19468985364922956,
+     "standard/parent": 0.9839664774464874,
+     "inverted/child": 14.737672590167533,
+     "inverted/parent": 14.805682987673116
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -90.83152403101181,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 1250,
+    "fit_rms_deg": 0.35360880396753497,
+    "diff_official_deg": 1.8790882665449593,
+    "diff_inverse_deg": 1.8804739942043853
+   },
+   "rt_vs_tc": {
+    "p50": 0.061070043835301145,
+    "p95": 0.11604964919387467,
+    "max": 0.11794468114876014
+   },
+   "prism_fit": {
+    "rms": 0.025657430480118374,
+    "max": 0.11363468429870943,
+    "p95": 0.046030956301707365,
+    "lever": [
+     0.3103178212438067,
+     -0.037926482446536625,
+     -0.17959586811010375
+    ],
+    "t": [
+     63.017192342522705,
+     50.9669218078895,
+     -0.914582037487501
+    ],
+    "n": 9236,
+    "yaw_span_deg": 476.84104239456684
+   }
+  },
+  "SBB-2": {
+   "duration": 287.563360452652,
+   "gnss_n": 57001,
+   "gnss_hz": 199.99542246805265,
+   "gnss_gaps": 0,
+   "gnss_gap_total": 0,
+   "gnss_span": 285.0,
+   "gnss_std_p50": 0.008951598669906568,
+   "gnss_std_p95": 0.200424882067092,
+   "length": 142.14921107477088,
+   "alt_range": 0.9797258889302611,
+   "stationary_start": 0.3023264408111572,
+   "speed_p50": 0.6021155407630393,
+   "speed_p95": 0.9574112050594961,
+   "lateral_p95": 0.12897175231331726,
+   "prism_n": 4082,
+   "prism_cover": 0.7198413583502515,
+   "conv_leg": {
+    "score_standard": 0.958105479957266,
+    "score_inverted": 0.2586317067245417,
+    "residual": {
+     "standard/child": 0.14630081796741926,
+     "standard/parent": 0.8570250269600295,
+     "inverted/child": 6.224268265130753,
+     "inverted/parent": 6.228497246474129
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -0.23624954717886226,
+    "frame_id": "odom"
+   },
+   "conv_tc": {
+    "score_standard": 0.952626033607222,
+    "score_inverted": 0.26849289880639343,
+    "residual": {
+     "standard/child": 0.8442868460483751,
+     "standard/parent": 0.4255543706683797,
+     "inverted/child": 5.7256521313999365,
+     "inverted/parent": 5.638398153719322
+    },
+    "semantics": "standard",
+    "twist_frame": null,
+    "decided_by": "direction",
+    "walk_dir_deg": 0.7172272188259503,
+    "frame_id": "enu_origin"
+   },
+   "conv_dlio": {
+    "score_standard": 0.9045320600994361,
+    "score_inverted": 0.27169857539307507,
+    "residual": {
+     "standard/child": 0.2104564568895342,
+     "standard/parent": 0.8664095091520336,
+     "inverted/child": 5.659675081184444,
+     "inverted/parent": 5.701487199624674
+    },
+    "semantics": "standard",
+    "twist_frame": "child",
+    "decided_by": "twist",
+    "walk_dir_deg": -92.67577702580795,
+    "frame_id": "dlio_map"
+   },
+   "tf_check": {
+    "n": 804,
+    "fit_rms_deg": 0.30632494409278144,
+    "diff_official_deg": 0.7484408229326163,
+    "diff_inverse_deg": 0.7492462496840833
+   },
+   "rt_vs_tc": {
+    "p50": 0.7956347642290783,
+    "p95": 0.8855121512758297,
+    "max": 1.0142513284935653
+   },
+   "prism_fit": {
+    "rms": 0.225763862462582,
+    "max": 0.5470691249043829,
+    "p95": 0.5406842182692229,
+    "lever": [
+     0.3297152051969725,
+     -0.04214108106391734,
+     -0.32395861664289427
+    ],
+    "t": [
+     61.350092920355415,
+     46.24244214446985,
+     0.12225799593994258
+    ],
+    "n": 4082,
+    "yaw_span_deg": 372.7109140987077
+   }
+  }
+ },
+ "overlap": {
+  "ETH-1->ETH-3": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ETH-3->ETH-1": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "SPX-1->SPX-2": {
+   "frac": 0.6239316239316239,
+   "length": 109.5,
+   "same": 43.5,
+   "opposite": 46.5
+  },
+  "SPX-1->SPX-3": {
+   "frac": 0.08376963350785341,
+   "length": 8.0,
+   "same": 0.0,
+   "opposite": 1.5
+  },
+  "SPX-2->SPX-1": {
+   "frac": 1.0,
+   "length": 39.5,
+   "same": 17.0,
+   "opposite": 21.0
+  },
+  "SPX-2->SPX-3": {
+   "frac": 1.0,
+   "length": 95.5,
+   "same": 31.5,
+   "opposite": 46.5
+  },
+  "SPX-3->SPX-1": {
+   "frac": 0.3670886075949367,
+   "length": 14.5,
+   "same": 6.0,
+   "opposite": 2.5
+  },
+  "SPX-3->SPX-2": {
+   "frac": 0.4928774928774929,
+   "length": 86.5,
+   "same": 27.0,
+   "opposite": 31.5
+  },
+  "ARC-1->ARC-2": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-1->ARC-3": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-1->ARC-4": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-1->ARC-5": {
+   "frac": 0.655688622754491,
+   "length": 109.5,
+   "same": 58.0,
+   "opposite": 19.0
+  },
+  "ARC-2->ARC-1": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-2->ARC-3": {
+   "frac": 0.09195402298850575,
+   "length": 28.0,
+   "same": 15.5,
+   "opposite": 4.5
+  },
+  "ARC-2->ARC-4": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-2->ARC-5": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-3->ARC-1": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-3->ARC-2": {
+   "frac": 0.2674897119341564,
+   "length": 32.5,
+   "same": 14.5,
+   "opposite": 7.0
+  },
+  "ARC-3->ARC-4": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-3->ARC-5": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-4->ARC-1": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-4->ARC-2": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-4->ARC-3": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-4->ARC-5": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-5->ARC-1": {
+   "frac": 0.49464668094218417,
+   "length": 115.5,
+   "same": 51.0,
+   "opposite": 37.0
+  },
+  "ARC-5->ARC-2": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-5->ARC-3": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "ARC-5->ARC-4": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "LEICA-1->LEICA-2": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "LEICA-2->LEICA-1": {
+   "frac": 0.0,
+   "length": 0.0,
+   "same": 0.0,
+   "opposite": 0.0
+  },
+  "SBB-1->SBB-2": {
+   "frac": 0.7333333333333333,
+   "length": 104.5,
+   "same": 89.0,
+   "opposite": 2.5
+  },
+  "SBB-2->SBB-1": {
+   "frac": 0.4102141680395387,
+   "length": 124.5,
+   "same": 84.5,
+   "opposite": 21.0
+  }
+ },
+ "sites": [
+  [
+   "ETH-1",
+   "ETH-3"
+  ],
+  [
+   "SPX-1",
+   "SPX-2",
+   "SPX-3"
+  ],
+  [
+   "ARC-1",
+   "ARC-2",
+   "ARC-3",
+   "ARC-4",
+   "ARC-5"
+  ],
+  [
+   "LEICA-1",
+   "LEICA-2"
+  ],
+  [
+   "SBB-1",
+   "SBB-2"
+  ]
+ ]
+}
