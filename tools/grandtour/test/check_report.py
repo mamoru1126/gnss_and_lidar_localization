@@ -42,7 +42,13 @@ for c in ("ETH-1", "ETH-3", "SBB-1"):
           f"{c} tc odometry: {ct['semantics']}, twist {ct['twist_frame']}, by {ct['decided_by']}")
     check(abs(abs(ct["walk_dir_deg"]) - 170) < 5, f"{c} tc frame walks at about ±170° (box_base yaw 170°): {ct['walk_dir_deg']:.0f}")
     tc = m[c].get("tf_check", {})
-    check(tc.get("diff_official_deg", 99) < 1.0 and tc.get("diff_inverse_deg", 0) > 5.0, f"{c} static tf check: {tc}")
+    check(tc.get("diff_official_deg", 99) < 1.0 and tc.get("diff_inverse_deg", 0) > 5.0,
+          f"{c} static tf rotation: official {tc.get('diff_official_deg')} / inverse {tc.get('diff_inverse_deg')}")
+    if c != "SBB-1":  # 直線だけだと並進の水平は決まらない
+        te = np.asarray(tc.get("t_est", [9, 9, 9]))
+        check(np.allclose(te[:2], np.array(BOX)[:2, 3], atol=0.03) and tc["t_diff_official_xy"] < 0.5 * tc["t_diff_inverse_xy"],
+              f"{c} static tf translation: est {np.round(te, 3)} (true {np.array(BOX)[:3, 3]}), "
+              f"diff official {tc.get('t_diff_official_xy')} / inverse {tc.get('t_diff_inverse_xy')}")
     pf = m[c].get("prism_fit", {})
     check(pf.get("rms", 1) < 0.01, f"{c} prism fit rms {pf.get('rms')}")
     lv = pf.get("lever") or [9, 9, 9]

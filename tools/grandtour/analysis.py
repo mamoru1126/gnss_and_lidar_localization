@@ -358,6 +358,35 @@ def handeye_rotation(t_a, q_a, t_b, q_b, dt=0.37, period=0.23, min_angle=0.02):
     return dict(X=X, rms_deg=float(np.rad2deg(np.sqrt(np.mean(res ** 2)))), n=int(keep.sum()))
 
 
+def lever_from_odometry(t_a, p_a, q_a, t_b, p_b, q_b, X, dt=2.0, period=0.5, min_turn_deg=5.0):
+    """2 つの軌跡から、機体 b から見た機体 a の原点の位置 l を求める（静的 TF の並進の確認）。
+
+    a: 真値（box_base の姿勢、地球座標）、b: 脚のオドメトリ（base の姿勢、odom）。X = R_b_a（b → a の向き）。
+    モデル: p_a(t) = C p_b(t) + d + C R_b(t) l（C = R_a X^T R_b^T。オドメトリの yaw のずれを含むので窓ごとに求める）。
+    短い窓（dt）ごとに C^T Δp_a - Δp_b = ΔR_b l を並べ、最小二乗で解く。向きが変わる窓（min_turn_deg 以上）だけを使う。
+    水平（x, y）は旋回で決まる。高さ（z）は roll / pitch の変化でしか決まらないので、あまり当てにならない。
+    """
+    t_a, t_b = np.asarray(t_a, dtype=float), np.asarray(t_b, dtype=float)
+    t0, t1 = max(t_a[0], t_b[0]), min(t_a[-1], t_b[-1]) - dt
+    if t1 <= t0:
+        return None
+    ts = np.arange(t0, t1, period)
+    pa0, pa1 = interp(t_a, p_a, ts), interp(t_a, p_a, ts + dt)
+    pb0, pb1 = interp(t_b, p_b, ts), interp(t_b, p_b, ts + dt)
+    Ra0 = quat_to_rot(quat_interp(t_a, q_a, ts))
+    Rb0, Rb1 = quat_to_rot(quat_interp(t_b, q_b, ts)), quat_to_rot(quat_interp(t_b, q_b, ts + dt))
+    turn = np.rad2deg(np.linalg.norm(rot_log(np.einsum("nji,njk->nik", Rb0, Rb1)), axis=1))
+    ok = (turn >= min_turn_deg) & np.all(np.isfinite(pa0) & np.isfinite(pa1) & np.isfinite(pb0) & np.isfinite(pb1), axis=1)
+    if ok.sum() < 10:
+        return None
+    C = np.einsum("nij,kj,nlk->nil", Ra0[ok], X, Rb0[ok])  # Ra X^T Rb^T
+    rhs = np.einsum("nji,nj->ni", C, pa1[ok] - pa0[ok]) - (pb1[ok] - pb0[ok])
+    M = Rb1[ok] - Rb0[ok]
+    l, *_ = np.linalg.lstsq(M.reshape(-1, 3), rhs.reshape(-1), rcond=None)
+    res = np.einsum("nij,j->ni", M, l) - rhs
+    return dict(l=l, rms=float(np.sqrt(np.mean(np.sum(res ** 2, axis=1)))), n=int(ok.sum()))
+
+
 def kabsch_origin(src, dst):
     """dst ≈ R src（並進なし）。"""
     H = np.asarray(src).T @ np.asarray(dst)

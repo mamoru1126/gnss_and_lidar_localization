@@ -135,10 +135,21 @@ def mission_checks(d, step):
         he = A.handeye_rotation(tc["t"], qa, leg["t"], qb)
         if he is not None:
             try:
-                R_tf = Z.static_transform(d["tf"], "base", "box_base")[:3, :3]
-                r["tf_check"] = dict(n=he["n"], fit_rms_deg=he["rms_deg"],
-                                     diff_official_deg=A.angle_between(he["X"], R_tf),
-                                     diff_inverse_deg=A.angle_between(he["X"], R_tf.T))
+                T_tf = Z.static_transform(d["tf"], "base", "box_base")
+                R_tf = T_tf[:3, :3]
+                tfc = dict(n=he["n"], fit_rms_deg=he["rms_deg"],
+                           diff_official_deg=A.angle_between(he["X"], R_tf),
+                           diff_inverse_deg=A.angle_between(he["X"], R_tf.T))
+                # 並進: 真値と脚のオドメトリの位置の動きから、base から見た box_base の原点を求める
+                pa, _ = standardize(tc, r["conv_tc"]["semantics"])
+                pb, _ = standardize(leg, r["conv_leg"]["semantics"])
+                lv = A.lever_from_odometry(tc["t"], pa, qa, leg["t"], pb, qb, he["X"])
+                if lv is not None:
+                    t_off, t_inv = T_tf[:3, 3], A.inv_se3(T_tf)[:3, 3]
+                    tfc.update(t_est=lv["l"], t_est_rms=lv["rms"], t_est_n=lv["n"], t_official=t_off, t_inverse=t_inv,
+                               t_diff_official_xy=float(np.linalg.norm((lv["l"] - t_off)[:2])),
+                               t_diff_inverse_xy=float(np.linalg.norm((lv["l"] - t_inv)[:2])))
+                r["tf_check"] = tfc
             except KeyError as e:
                 r["tf_check"] = dict(error=f"tf に {e} が無い")
 
@@ -302,15 +313,31 @@ def write_report(out, codes, folders, results, overlaps, groups, figs, radius):
             L.append(f"| {c} | {name} | {cv['frame_id']} | {rtxt} | {f(cv['score_standard'])} / {f(cv['score_inverted'])} | "
                      f"{cv['semantics']} / {cv['twist_frame'] or '-'} | {'速度' if cv['decided_by'] == 'twist' else '向き'} | "
                      f"{f(cv.get('walk_dir_deg'), '{:.0f}')} |")
-    L += ["", "### 3.2 静的 TF の解釈（base → box_base の向き）", "",
-          "真値（box_base）と脚のオドメトリ（base）の回転の変化から求めた向きと、tf から計算した向き（GrandTour のサンプルと同じ解釈 / その逆）の差。official が小さければ、サンプルの解釈で正しい。", "",
-          "| ミッション | 使った組 | 当てはめの RMS [deg] | official との差 [deg] | 逆との差 [deg] |", "|---|---|---|---|---|"]
+    L += ["", "### 3.2 静的 TF の解釈（base → box_base）", "",
+          "真値（box_base）と脚のオドメトリ（base）の動きから求めた base → box_base の向きと並進を、tf から計算したもの"
+          "（official = GrandTour のサンプルと同じ解釈 / inverse = その逆）と比べる。差が小さい方が正しい解釈。"
+          " 回転がほぼ対称（単位行列に近いなど）だと向きでは区別できないので、並進（水平）で判定する。"
+          " 並進の高さ（z）は歩行の揺れでしか決まらないので当てにならない。", "",
+          "| ミッション | 向き: official / inverse との差 [deg] | 並進: 推定 [m]（残差 RMS、窓の数） | official / inverse の並進 [m] | 並進の水平の差 official / inverse [m] | 判定 |",
+          "|---|---|---|---|---|---|"]
     for c in codes:
         tc = results[c].get("tf_check")
         if tc and "error" not in tc:
-            L.append(f"| {c} | {tc['n']} | {f(tc['fit_rms_deg'])} | {f(tc['diff_official_deg'])} | {f(tc['diff_inverse_deg'])} |")
+            if "t_est" in tc:
+                do, di = tc["t_diff_official_xy"], tc["t_diff_inverse_xy"]
+                sep = float(np.linalg.norm((np.asarray(tc["t_official"]) - np.asarray(tc["t_inverse"]))[:2]))
+                if sep < 0.03:
+                    verdict = "区別できない（2 つの解釈で水平がほぼ同じ）"
+                else:
+                    verdict = "official" if do < 0.5 * di else ("inverse" if di < 0.5 * do else "区別できない")
+                ttxt = (f"{np.array2string(np.asarray(tc['t_est']), precision=3)}（{f(tc['t_est_rms'], '{:.3f}')}、{tc['t_est_n']}） | "
+                        f"{np.array2string(np.asarray(tc['t_official']), precision=3)} / {np.array2string(np.asarray(tc['t_inverse']), precision=3)} | "
+                        f"{f(do, '{:.3f}')} / {f(di, '{:.3f}')} | {verdict}")
+            else:
+                ttxt = "- | - | - | -"
+            L.append(f"| {c} | {f(tc['diff_official_deg'])} / {f(tc['diff_inverse_deg'])} | {ttxt} |")
         elif tc:
-            L.append(f"| {c} | - | - | {tc['error']} | - |")
+            L.append(f"| {c} | {tc['error']} | - | - | - | - |")
     L += ["", "### 3.3 真値の精度の目安", "",
           "| ミッション | ie_rt と ie_tc の水平差 p50 / p95 / 最大 [m] | MS60 との差 RMS / p95 / 最大 [m]（点数） | 求めたプリズムの位置（真値の機体座標系）[m] |",
           "|---|---|---|---|"]
