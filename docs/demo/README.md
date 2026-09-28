@@ -2,8 +2,8 @@
 
 | ページ | 地図 | ライセンス |
 |---|---|---|
-| [tile_loading.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html) | [koide3/hdl_localization](https://github.com/koide3/hdl_localization) の `data/map.pcd`（約 200 m × 250 m） | 地図は BSD-2-Clause（Copyright (c) 2019, k.koide） |
-| [nishishinjuku.html](https://sunomamo1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html) | TIER IV の [AWSIM](https://github.com/autowarefoundation/AWSIM) の西新宿の地図 `nishishinjuku_autoware_map`（約 0.9 km × 1.1 km） | 地図は [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)（全文: [LICENSE-nishishinjuku.txt](LICENSE-nishishinjuku.txt)） |
+| [tile_loading.html](https://mamoru1126.github.io/gnss_and_lidar_localization/demo/tile_loading.html) | [koide3/hdl_localization](https://github.com/koide3/hdl_localization) の `data/map.pcd`（約 200 m × 250 m） | 地図は BSD-2-Clause（Copyright (c) 2019, k.koide） |
+| [nishishinjuku.html](https://mamoru1126.github.io/gnss_and_lidar_localization/demo/nishishinjuku.html) | TIER IV の [AWSIM](https://github.com/autowarefoundation/AWSIM) の西新宿の地図 `nishishinjuku_autoware_map`（約 0.9 km × 1.1 km） | 地図は [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)（全文: [LICENSE-nishishinjuku.txt](LICENSE-nishishinjuku.txt)） |
 
 どちらもタイル読み込みの様子を再生するページで、作り方は [tools/tile_demo](../../tools/tile_demo/README.md) にある。
 

@@ -145,7 +145,7 @@
     <p class="meta">tiled_pcd_map ／ gnss_and_lidar_localization</p>
     <h1>点群地図の部分ロード</h1>
     <p class="lead">大きな点群地図を 20 m 四方のタイルに分けておき、自己位置の周りのタイルだけをメモリに読み込む。自己位置が動くと、前方のタイルを先に読み、遠くなったタイルを捨てる。第 1 部で仕組みを図で説明し、第 2 部で関数とデータ構造を示しながら実装を追う。</p>
-    <p class="meta">実装: <a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/tree/main/tiled_pcd_map">tiled_pcd_map</a>（ROS 非依存の C++ ライブラリ）／ 動きを見るデモ: <a href="../demo/tile_loading.html">小さい地図</a>・<a href="../demo/nishishinjuku.html">西新宿の約 1 km 四方の地図</a></p>
+    <p class="meta">実装: <a href="https://github.com/mamoru1126/gnss_and_lidar_localization/tree/main/tiled_pcd_map">tiled_pcd_map</a>（ROS 非依存の C++ ライブラリ）／ 動きを見るデモ: <a href="../demo/tile_loading.html">小さい地図</a>・<a href="../demo/nishishinjuku.html">西新宿の約 1 km 四方の地図</a></p>
   </header>
 
   <nav class="toc" aria-label="目次">
@@ -783,7 +783,7 @@
     <li><b>分割</b>: <code>std::map&lt;pair&lt;int,int&gt;, TileData&gt;</code> に、<code>tileCoord(x)</code>・<code>tileCoord(y)</code> をキーにして点を入れる。<code>tileCoord(v) = floor(v / tile_size)</code> なので、負の座標でも境目がずれない（x = −0.1 m は −1 番）。<code>std::map</code> なので、タイルは <code>(ix, iy)</code> の順に並ぶ。</li>
     <li><b>索引</b>: タイルごとに点の最小・最大（<code>bounds_min</code> / <code>bounds_max</code>）と点数を <code>TileMeta</code> にまとめ、<code>TileIndex</code> を作る。</li>
   </ol>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tiler.cpp#L41-L54">map_tiler.cpp</a> <span class="ln">L41–54</span> <span class="what">voxelDownsample()（ボクセルのキー）</span></div><pre><code>for (const auto&amp; p : points) {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tiler.cpp#L41-L54">map_tiler.cpp</a> <span class="ln">L41–54</span> <span class="what">voxelDownsample()（ボクセルのキー）</span></div><pre><code>for (const auto&amp; p : points) {
   const Eigen::Vector3d q = (p.cast&lt;double&gt;() - lo) / voxel_size;
   const std::int64_t ix = static_cast&lt;std::int64_t&gt;(std::floor(q.x()));
   const std::int64_t iy = static_cast&lt;std::int64_t&gt;(std::floor(q.y()));
@@ -797,7 +797,7 @@
   a.sum += p.cast&lt;double&gt;();
   ++a.n;
 }</code></pre></div>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tiler.cpp#L72-L116">map_tiler.cpp</a> <span class="ln">L72–116</span> <span class="what">tileMap()（抜粋）</span></div><pre><code>const std::vector&lt;Vec3f&gt; pts = voxelDownsample(points, opt.voxel_size);
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tiler.cpp#L72-L116">map_tiler.cpp</a> <span class="ln">L72–116</span> <span class="what">tileMap()（抜粋）</span></div><pre><code>const std::vector&lt;Vec3f&gt; pts = voxelDownsample(points, opt.voxel_size);
 res.output_points = pts.size();
 
 <span class="c">// 点ごとの共分散は、分割する前の点群全体で計算する（タイルの境界で近傍点が欠けないように。設計書 6.2 節）</span>
@@ -938,7 +938,7 @@ tiles:
   </figure>
 
   <p>内側かどうかは、4 辺それぞれについて、辺のベクトルと「辺の始点 → p」の外積（z 成分）が 0 以上かで判定する。地図座標の四隅は反時計回りに並べてあり、回転と正の縮尺では向きが変わらないので、UTM でも反時計回りのまま。4 辺すべてで外積が 0 以上なら内側である。外接矩形までの距離は四角形までの距離以下なので、外接矩形の段階で遠いタイルを飛ばしても、読むべきタイルを落とすことはない。</p>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L59-L82">map_tile_manager.cpp</a> <span class="ln">L59–82</span> <span class="what">MapTileManager のコンストラクタ（抜粋）</span></div><pre><code>for (std::size_t g = 0; g &lt; groups_.size(); ++g) {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L59-L82">map_tile_manager.cpp</a> <span class="ln">L59–82</span> <span class="what">MapTileManager のコンストラクタ（抜粋）</span></div><pre><code>for (std::size_t g = 0; g &lt; groups_.size(); ++g) {
   const MapGroup&amp; grp = groups_[g];
   const double ts = grp.index.tile_size;
   Vec2 glo(kInf, kInf), ghi(-kInf, -kInf);
@@ -962,7 +962,7 @@ tiles:
   group_bounds_.emplace_back(glo, ghi);
 }
 if (cfg_.async) worker_ = std::thread([this] { workerLoop(); });</code></pre></div>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L22-L101">map_tile_manager.cpp</a> <span class="ln">L22–101</span> <span class="what">boxDistance() と distanceToTile()</span></div><pre><code>double boxDistance(const Vec2&amp; lo, const Vec2&amp; hi, const Vec2&amp; p) {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L22-L101">map_tile_manager.cpp</a> <span class="ln">L22–101</span> <span class="what">boxDistance() と distanceToTile()</span></div><pre><code>double boxDistance(const Vec2&amp; lo, const Vec2&amp; hi, const Vec2&amp; p) {
   return (lo - p).cwiseMax(p - hi).cwiseMax(Vec2::Zero()).norm();
 }
 <span class="c">// …（中略）…</span>
@@ -988,7 +988,7 @@ double MapTileManager::distanceToTile(const TileEntry&amp; e, const Vec2&amp; p)
   </ol>
   <p>どの手順も、全タイルを 1 回ずつ見る線形の走査で、空間索引（格子や木）は使っていない。西新宿の 936 タイルで、見直し 1 回が中央値 約 11 µs だった（18 章）。数万タイルの地図なら、ここを格子で引く形にする余地がある。</p>
   <div class="callout">「捨てる」判定は <code>update()</code> ではなく、ロードスレッドの <code>processPending()</code> で行う。<code>update()</code> が決めるのは「要る組」と「アクティブグループ」だけで、それ以外のタイルをいつ消すかはキャッシュを持つ側が決める。</div>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L103-L164">map_tile_manager.cpp</a> <span class="ln">L103–164</span> <span class="what">MapTileManager::update()</span></div><pre><code>void MapTileManager::update(double t, const Vec2&amp; p, double yaw, double speed, bool force) {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L103-L164">map_tile_manager.cpp</a> <span class="ln">L103–164</span> <span class="what">MapTileManager::update()</span></div><pre><code>void MapTileManager::update(double t, const Vec2&amp; p, double yaw, double speed, bool force) {
   std::lock_guard&lt;std::mutex&gt; ulk(update_mtx_);
   if (!force &amp;&amp; have_last_ &amp;&amp; (p - last_position_).norm() &lt; cfg_.update_distance &amp;&amp; t - last_t_ &lt; cfg_.update_interval)
     return;
@@ -1053,7 +1053,7 @@ double MapTileManager::distanceToTile(const TileEntry&amp; e, const Vec2&amp; p)
 
   <h2 id="worker">14. ロードスレッド（<code>processPending()</code>）</h2>
   <p>ロードスレッドの本体 <code>workerLoop()</code> は、<code>cv_</code> で <code>pending_</code>（または終了の <code>stop_</code>）を待ち、立っていれば <code>processPending()</code> を呼ぶ、を繰り返すだけである。</p>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L166-L175">map_tile_manager.cpp</a> <span class="ln">L166–175</span> <span class="what">MapTileManager::workerLoop()</span></div><pre><code>void MapTileManager::workerLoop() {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L166-L175">map_tile_manager.cpp</a> <span class="ln">L166–175</span> <span class="what">MapTileManager::workerLoop()</span></div><pre><code>void MapTileManager::workerLoop() {
   std::unique_lock&lt;std::mutex&gt; lk(mtx_);
   while (true) {
     cv_.wait(lk, [this] { return stop_ || pending_; });
@@ -1074,7 +1074,7 @@ double MapTileManager::distanceToTile(const TileEntry&amp; e, const Vec2&amp; p)
     <li><b>コールバック</b>（ロックなし）: 作り直したときだけ、<code>setRegionCallback()</code> で登録した関数を新しい領域（<code>nullptr</code> のこともある）で呼ぶ。</li>
     <li><b>終わり</b>: <code>busy_ = false</code> にして <code>idle_cv_</code> で知らせる（<code>waitIdle()</code> はここで戻る）。</li>
   </ol>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L177-L256">map_tile_manager.cpp</a> <span class="ln">L177–256</span> <span class="what">MapTileManager::processPending()</span></div><pre><code>void MapTileManager::processPending() {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L177-L256">map_tile_manager.cpp</a> <span class="ln">L177–256</span> <span class="what">MapTileManager::processPending()</span></div><pre><code>void MapTileManager::processPending() {
   std::set&lt;std::size_t&gt; needed;
   int active = -1;
   Vec2 pos = Vec2::Zero();
@@ -1226,7 +1226,7 @@ double MapTileManager::distanceToTile(const TileEntry&amp; e, const Vec2&amp; p)
     </table>
   </div>
   <p>条件変数は 2 つ。<code>cv_</code> は「要求が来た（または終了）」でロードスレッドを起こし、<code>idle_cv_</code> は「処理が終わった」で <code>waitIdle()</code> を起こす。デストラクタは <code>stop_ = true</code> にして <code>cv_</code> で知らせ、ロードスレッドの終了を <code>join()</code> で待つ。処理中の <code>processPending()</code>（コールバックを含む）は最後まで走り、まだ取り出されていない要求は捨てられる。</p>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L258-L261">map_tile_manager.cpp</a> <span class="ln">L258–261</span> <span class="what">currentRegion()</span></div><pre><code>std::shared_ptr&lt;const MapRegion&gt; MapTileManager::currentRegion() const {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_tile_manager.cpp#L258-L261">map_tile_manager.cpp</a> <span class="ln">L258–261</span> <span class="what">currentRegion()</span></div><pre><code>std::shared_ptr&lt;const MapRegion&gt; MapTileManager::currentRegion() const {
   std::lock_guard&lt;std::mutex&gt; lk(mtx_);
   return front_;
 }</code></pre></div>
@@ -1235,7 +1235,7 @@ double MapTileManager::distanceToTile(const TileEntry&amp; e, const Vec2&amp; p)
   <h2 id="builder">16. 領域の作り方とグループの切り替え</h2>
   <h3>RegionBuilder</h3>
   <p>領域の基底クラス <code>MapRegion</code> は、グループ ID・アンカー・含まれるタイル・点数だけを持つ。何を足すかは <code>RegionBuilder</code>（<code>std::function</code>）で決める。<code>MapTileManager</code> はビルダーが返した型を知らず、<code>shared_ptr&lt;const MapRegion&gt;</code> として持つ。使う側は <code>currentRegionAs&lt;T&gt;()</code>（中身は <code>std::dynamic_pointer_cast</code>）で自分の型に戻す。型が違えば <code>nullptr</code> になる。</p>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/include/tiled_pcd_map/map_region.hpp#L18-L41">map_region.hpp</a> <span class="ln">L18–41</span> <span class="what">MapRegion・TileSetRegion・RegionBuilder</span></div><pre><code>class MapRegion {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/include/tiled_pcd_map/map_region.hpp#L18-L41">map_region.hpp</a> <span class="ln">L18–41</span> <span class="what">MapRegion・TileSetRegion・RegionBuilder</span></div><pre><code>class MapRegion {
  public:
   virtual ~MapRegion() = default;
 
@@ -1259,7 +1259,7 @@ class TileSetRegion : public MapRegion {
 <span class="c">/// 領域を作る関数。tiles はアクティブグループの読み込み済みタイル（空のことはない）。</span>
 using RegionBuilder = std::function&lt;std::shared_ptr&lt;const MapRegion&gt;(
     const std::string&amp; group, const MapAnchor&amp; anchor, const std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt;&amp; tiles)&gt;;</code></pre></div>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_region.cpp#L20-L31">map_region.cpp</a> <span class="ln">L20–31</span> <span class="what">buildTileSetRegion()（既定のビルダー）</span></div><pre><code>std::shared_ptr&lt;const MapRegion&gt; buildTileSetRegion(const std::string&amp; group, const MapAnchor&amp; anchor,
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/src/map_region.cpp#L20-L31">map_region.cpp</a> <span class="ln">L20–31</span> <span class="what">buildTileSetRegion()（既定のビルダー）</span></div><pre><code>std::shared_ptr&lt;const MapRegion&gt; buildTileSetRegion(const std::string&amp; group, const MapAnchor&amp; anchor,
                                                     const std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt;&amp; tiles) {
   auto r = std::make_shared&lt;TileSetRegion&gt;();
   r-&gt;group = group;
@@ -1273,7 +1273,7 @@ using RegionBuilder = std::function&lt;std::shared_ptr&lt;const MapRegion&gt;(
 }</code></pre></div>
   <p>既定の <code>buildTileSetRegion()</code> は、<code>TileData</code> の <code>shared_ptr</code> を並べるだけで、点をコピーしない。<code>points()</code>・<code>pointsUtm()</code> は、呼んだときに全タイルの点を 1 つの配列にまとめて返す（こちらはコピーする）。</p>
   <p>自己位置推定（gll_core）では、<code>GicpMatcher::buildTarget()</code> をビルダーにする。全タイルの点を small_gicp の点群 1 つにコピーし（点は同次座標の 4 次元、共分散は 4×4 に戻す）、KdTree を作る。共分散を持たないタイルが 1 枚でも混ざっていれば、領域の全点の共分散をここで計算し直す（近傍 20 点。タイルの共分散は使わない）。再位置推定用の粗いボクセル地図は、初めて使うときに作る（<code>std::call_once</code>）。<code>targetBuilder()</code> は、これを <code>RegionBuilder</code> の形に包むだけである。</p>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/core/include/gll/matching/scan_matcher.hpp#L91-L97">scan_matcher.hpp</a> <span class="ln">L91–97</span> <span class="what">targetBuilder()（gll_core）</span></div><pre><code>inline RegionBuilder targetBuilder(std::shared_ptr&lt;const IScanMatcher&gt; matcher) {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/core/include/gll/matching/scan_matcher.hpp#L91-L97">scan_matcher.hpp</a> <span class="ln">L91–97</span> <span class="what">targetBuilder()（gll_core）</span></div><pre><code>inline RegionBuilder targetBuilder(std::shared_ptr&lt;const IScanMatcher&gt; matcher) {
   return [matcher](const std::string&amp; group, const MapAnchor&amp; anchor,
                    const std::vector&lt;std::shared_ptr&lt;const TileData&gt;&gt;&amp; tiles) -&gt; std::shared_ptr&lt;const MapRegion&gt; {
     return matcher-&gt;buildTarget(group, anchor, tiles);
@@ -1302,7 +1302,7 @@ using RegionBuilder = std::function&lt;std::shared_ptr&lt;const MapRegion&gt;(
       </tbody>
     </table>
   </div>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/core/src/localizer.cpp#L246-L254">localizer.cpp</a> <span class="ln">L246–254</span> <span class="what">Localizer::updateMaps()（gll_core）</span></div><pre><code>void Localizer::updateMaps(double t) {
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/core/src/localizer.cpp#L246-L254">localizer.cpp</a> <span class="ln">L246–254</span> <span class="what">Localizer::updateMaps()（gll_core）</span></div><pre><code>void Localizer::updateMaps(double t) {
   if (!maps_) return;
   if (pending_init_) {
     maps_-&gt;update(t, Vec2(pending_init_-&gt;pose.x, pending_init_-&gt;pose.y), pending_init_-&gt;pose.yaw, 0.0);
@@ -1312,7 +1312,7 @@ using RegionBuilder = std::function&lt;std::shared_ptr&lt;const MapRegion&gt;(
   }
 }</code></pre></div>
   <p>ライブラリだけを使う最小の例は、<code>examples/follow_path</code> にある。地図グループを 1 つ作り、直線の上を動かしながら <code>update()</code> を呼び、領域の大きさを表示する。</p>
-  <div class="src"><div class="src-head"><a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/examples/follow_path/main.cpp#L18-L43">main.cpp</a> <span class="ln">L18–43</span> <span class="what">examples/follow_path（使い方の最小例）</span></div><pre><code><span class="c">// 地図グループ（maps.yaml を使う場合は tiled_pcd_map::loadMapSetConfig と tiled_pcd_map::loadMapGroups）</span>
+  <div class="src"><div class="src-head"><a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/c8df621c82ac03ca8c96fc7885155f84c60934ec/tiled_pcd_map/examples/follow_path/main.cpp#L18-L43">main.cpp</a> <span class="ln">L18–43</span> <span class="what">examples/follow_path（使い方の最小例）</span></div><pre><code><span class="c">// 地図グループ（maps.yaml を使う場合は tiled_pcd_map::loadMapSetConfig と tiled_pcd_map::loadMapGroups）</span>
 tiled_pcd_map::MapGroup group;
 group.id = "map";
 group.anchor = tiled_pcd_map::MapAnchor::identity();
@@ -1388,5 +1388,5 @@ for (double s = 0.0; s &lt;= length; s += speed * dt, t += dt) {
       </tbody>
     </table>
   </div>
-  <p class="meta">詳しい使い方とコードの例は <a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/main/tiled_pcd_map/README.md">tiled_pcd_map の README</a>、設計の背景は<a href="https://github.com/sunomamo1126/gnss_and_lidar_localization/blob/main/docs/design.md">設計書</a> 5 章にある。</p>
+  <p class="meta">詳しい使い方とコードの例は <a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/main/tiled_pcd_map/README.md">tiled_pcd_map の README</a>、設計の背景は<a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/main/docs/design.md">設計書</a> 5 章にある。</p>
 </main>
