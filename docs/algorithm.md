@@ -3,7 +3,7 @@
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.10） / [ソフトウェア構成](./architecture.md)
 - 状態: ドラフト（v0.3。Phase 2 の実装に合わせ、LiDAR の照合（前処理・デスキュー・GICP・品質・共分散）、多仮説の探索、地図上での初期化、再位置推定の手順を追加）
 - 検証スクリプト: [`tools/sim/compare_invariant_ekf_vs_esekf.py`](../tools/sim/compare_invariant_ekf_vs_esekf.py)
-- 図解ページ: [https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/](https://sunomamo1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [`docs/explainer/index.html`](./explainer/index.html)）
+- 図解ページ: [https://mamoru1126.github.io/gnss_and_lidar_localization/explainer/](https://mamoru1126.github.io/gnss_and_lidar_localization/explainer/)（ソース: [`docs/explainer/index.html`](./explainer/index.html)）
 
 本書は 2 部構成である。
 
