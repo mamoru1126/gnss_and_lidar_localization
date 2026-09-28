@@ -396,6 +396,33 @@ def kabsch_origin(src, dst):
 
 
 # ------------------------------------------------------------------ 剛体の当てはめ
+def similarity_2d(src, dst):
+    """dst ≈ s R src + t（2 次元の相似変換。Umeyama の方法）。(s, R, t, 残差の RMS) を返す。"""
+    src = np.asarray(src, dtype=float)
+    dst = np.asarray(dst, dtype=float)
+    ms, md = src.mean(0), dst.mean(0)
+    X, Y = src - ms, dst - md
+    U, S, Vt = np.linalg.svd(X.T @ Y / len(X))
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    D = np.diag([1.0, d])
+    R = Vt.T @ D @ U.T
+    s = float(np.trace(np.diag(S) @ D) / np.mean(np.sum(X ** 2, axis=1)))
+    t = md - s * R @ ms
+    res = np.linalg.norm(src @ (s * R).T + t - dst, axis=1)
+    return s, R, t, float(np.sqrt(np.mean(res ** 2)))
+
+
+def rpy_of(R):
+    """回転行列 → (roll, pitch, yaw)（R = Rz(yaw) Ry(pitch) Rx(roll)。gll_ros2 の rpyToMatrix と同じ順）。"""
+    return (float(np.arctan2(R[2, 1], R[2, 2])), float(np.arcsin(np.clip(-R[2, 0], -1, 1))),
+            float(np.arctan2(R[1, 0], R[0, 0])))
+
+
+def rot_z(a):
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
 def kabsch(src, dst):
     """dst ≈ R src + t となる (R, t)（最小二乗）。"""
     src = np.asarray(src, dtype=float)

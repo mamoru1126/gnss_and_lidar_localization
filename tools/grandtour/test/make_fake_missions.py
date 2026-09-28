@@ -176,6 +176,7 @@ def make_mission(out_root, folder, points, origin_en, still, t0, utm_inv, prism_
           "livox_lidar": tf_entry(T_BOXBASE_LIVOX, "box_base", "livox_lidar"),
           "adis16475_imu": tf_entry(T_BOXBASE_ADIS, "box_base", "adis16475_imu")}
     tf["cpt7_imu"] = tf_entry(np.eye(4), "box_base", "cpt7_imu")
+    tf["livox_imu"] = tf_entry(T_BOXBASE_LIVOX, "box_base", "livox_imu")
     write_topic(root, "tf", dict(timestamp=np.zeros(1)), dict(tf=tf, description="static tf"))
     # Livox（動き補正済み。10 Hz の先頭 30 スキャン）
     i = pick(truth, 10)[:30]
@@ -198,14 +199,15 @@ def make_mission(out_root, folder, points, origin_en, still, t0, utm_inv, prism_
                                                        sequence_id=np.arange(len(i))), livox_attrs)
     # IMU（ADIS は m/s²、Livox 内蔵は g 単位）
     i = pick(truth, 200)
-    for name, T_imu, scale, desc in [("adis_imu", T_BASE_BOXBASE @ T_BOXBASE_ADIS, 1.0, "Analog Devices ADIS16475-2 200Hz"),
-                                     ("livox_imu", T_base_livox, 1.0 / G, "TDK ICM40609 200Hz (integrated in Livox Mid360)")]:
+    for name, frame, T_imu, scale, desc in [
+            ("adis_imu", "adis16475_imu", T_BASE_BOXBASE @ T_BOXBASE_ADIS, 1.0, "Analog Devices ADIS16475-2 200Hz"),
+            ("livox_imu", "livox_imu", T_base_livox, 1.0 / G, "TDK ICM40609 200Hz (integrated in Livox Mid360)")]:
         g_imu = np.einsum("nji,j->ni", np.einsum("nij,jk->nik", truth["R"][i], T_imu[:3, :3]), [0, 0, G])
         write_topic(root, name, dict(timestamp=truth["t"][i], lin_acc=(g_imu + RNG.normal(0, 0.02, g_imu.shape)) * scale,
                                      ang_vel=RNG.normal(0, 0.001, g_imu.shape), orien=np.tile([0, 0, 0, 1.0], (len(i), 1)),
                                      lin_acc_cov=np.zeros((len(i), 9)), ang_vel_cov=np.zeros((len(i), 9)),
                                      orien_cov=np.zeros((len(i), 9)), sequence_id=np.arange(len(i))),
-                    dict(frame_id=name, topic=name, description=desc, transform=tf["adis16475_imu"]))
+                    dict(frame_id=frame, topic=name, description=desc, transform=tf[frame]))
 
     # Hugging Face と同じ形にまとめる: data/<topic>.tar、data/.zgroup、metadata/*.yaml
     dst = out_root / folder

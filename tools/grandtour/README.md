@@ -1,13 +1,15 @@
 # tools/grandtour: GrandTour での検証のためのスクリプト
 
-[検証計画: GrandTour](../../docs/validation_grandtour.md) で使うスクリプト。いまあるのは、ダウンロード（3.1 節）と事前確認（3.3 節）の 2 つ。ROS 2 bag への変換・地図の作成・評価は、この後に作る。
+[検証計画: GrandTour](../../docs/validation_grandtour.md) で使うスクリプト。ダウンロード（3.1 節）、事前確認（3.3 節）、ROS 2 bag への変換（3.2 節）、案 A の地図の作成（4.3 節）。案 B のアンカー決定と評価は、この後に作る。
 
 | ファイル | 内容 |
 |---|---|
 | `download.py` | Hugging Face から、ミッションとトピックを絞って落とし、展開する |
 | `inspect_grandtour.py` | 落としたミッションを調べ、レポート（`report.md`）を作る |
+| `grandtour_to_bag.py` | ミッションを、推定ノード用の ROS 2 bag（MCAP）にする。真値の CSV とパラメータのファイルも作る |
+| `build_map_from_gt.py` | 案 A の点群地図（真値の姿勢で Livox の点群を重ねる）と `maps.yaml` を作る |
 | `missions.py` | ミッションの一覧（略称 ⇔ フォルダ名。論文の Table 3） |
-| `gt_zarr.py` | Zarr の読み込み、静的 TF、UTM への変換 |
+| `gt_zarr.py` | Zarr の読み込み、静的 TF、UTM への変換、真値（base の姿勢） |
 | `analysis.py` | 事前確認の計算（numpy だけ） |
 | `test/` | 単体テストと、合成ミッションでの一連の確認（`run_tests.sh`。CI の `tools_grandtour` ジョブ） |
 
@@ -67,13 +69,41 @@ python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --mi
 
 案 B の地図（DLIO の点群）は `--preset map` で落とす（1 ミッションあたり数百 MB）。
 
+## 3. 案 A の地図を作る
+
+SPX-2 の点群を真値の姿勢で重ね、SPX-3 の経路の近く（水平 30 m、高さ −1.5〜+8 m）だけを残す。
+
+```bash
+G=$GLL_DATA/grandtour
+python3 tools/grandtour/build_map_from_gt.py $G/2024-11-02-17-18-32 $G/maps/spx2 --near $G/2024-11-02-17-43-10
+tiled_pcd_map_tiler -i $G/maps/spx2/map.pcd -o $G/maps/spx2/tiles --tile-size 20 --voxel-size 0.2
+```
+
+- `map.pcd` の座標は、SPX-2 の最初の base の位置を原点にした ENU（実距離）。`maps.yaml` のアンカー（UTM）は、真値の当てはめから決まる。
+- 真値の水平 σ が 5 cm を超える時刻のスキャンは使わない（`--max-sigma`）。SPX-2 は σ p95 が 10 cm なので、一部のスキャンが除かれる。
+- 地図の品質（壁の厚み、段差、人や車の残像）は、`map.pcd` を CloudCompare などで開いて目で見る。
+
+## 4. ROS 2 bag にして、推定ノードで再生する
+
+```bash
+python3 tools/grandtour/grandtour_to_bag.py $G/2024-11-02-17-43-10 $G/bags/spx3.mcap --map-config $G/maps/spx2/maps.yaml
+ros2 launch gll_ros2 localizer.launch.py params_file:=$G/bags/spx3_params.yaml use_sim_time:=true
+ros2 bag play $G/bags/spx3.mcap --clock     # 別の端末で
+```
+
+- 出力: `spx3.mcap`（bag）、`spx3_groundtruth.csv`（真値。base_link、UTM）、`spx3_params.yaml`（`config/localizer.yaml` に、UTM の帯・LiDAR の外部パラメータ・地面から base までの高さ・静止初期化の時間・地図を入れたもの。推定ノードの出力の CSV は `spx3_output.csv`）。
+- トピックは launch の既定値（`/sensing/imu`、`/sensing/odom`、`/sensing/lidar/points`、`/initialpose`）。GNSS は入れない（第 1 段階）。
+- 初期姿勢は、静止初期化が終わった 0.5 s 後に、真値の位置で出す。`--init-error 2,15` で 2 m・15° ずらす（V-G2）。
+- 障害: `--odom-scale 1.05 --odom-noise 0.05`（V-G3）、`--drop-lidar 60:10`（60 s から 10 s。V-G4）。
+- `lidar.crop_box_*`（ロボット自身の点を除く箱）はまだ既定値。lidar の段階のレポートの 4 節を見て決める。
+
 ## テスト
 
 ```bash
 tools/grandtour/test/run_tests.sh
 ```
 
-GrandTour と同じ構成（配列名・属性・`.tar` の形）の合成ミッションを 3 つ作り、ダウンロード（`--source-dir` で手元から展開）→ 事前確認 → 結果が合成したときの真値に合うか、を確かめる。
+GrandTour と同じ構成（配列名・属性・`.tar` の形）の合成ミッションを 3 つ作り、ダウンロード（`--source-dir` で手元から展開）→ 事前確認 → bag への変換 → 案 A の地図、の結果が合成したときの真値に合うかを確かめる。ROS 2 があれば（CI の ros2 ジョブ）、bag を rosbag2 で読み、地図を `tiled_pcd_map_tiler` でタイル化するところまで確かめる。
 
 ## データセットについての注意
 

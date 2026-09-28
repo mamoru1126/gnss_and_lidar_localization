@@ -74,10 +74,13 @@ jobs:
                      colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
                      source install/setup.bash && \
                      src/gnss_and_lidar_localization/tools/tile_demo/test/run_bag_check.sh"
-      - name: GrandTour tools work in the dev image (apt numpy 1.26 + pip zarr / pyproj)
+      - name: GrandTour tools work in the dev image, and their bag / map work with ROS 2 and tiled_pcd_map_tiler
         run: |
           docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "src/gnss_and_lidar_localization/tools/grandtour/test/run_tests.sh"
+            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
+                     colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
+                     source install/setup.bash && \
+                     GLL_REQUIRE_ROS=1 src/gnss_and_lidar_localization/tools/grandtour/test/run_tests.sh"
 
   # tools/grandtour（GrandTour のダウンロード・事前確認）を、合成ミッションで確かめる
   tools_grandtour:

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+import analysis as A
 from analysis import inv_se3, quat_to_rot, se3
 
 
@@ -135,3 +136,59 @@ def meridian_convergence_deg(lat, lon, zone=32, north=True):
     from pyproj import Proj
     proj = Proj(proj="utm", zone=zone, ellps="WGS84", south=not north)
     return np.asarray(proj.get_factors(np.asarray(lon), np.asarray(lat)).meridian_convergence)
+
+
+# ------------------------------------------------------------------ 真値（base の姿勢）
+def ground_truth(root, zone=32, north=True):
+    """真値: base の姿勢を ENU（cpt7_ie_tc の enu_origin。実距離）と UTM（グリッド）で返す。
+
+    cpt7_ie_tc_odometry は box_base を enu_origin で表した姿勢（ROS の Odometry と同じ約束事。事前確認で確かめた）。
+    ENU → UTM は、同じ解の緯度経度（navsatfix_cpt7_ie_tc）への 2 次元の相似変換の当てはめで求める
+    （回転に子午線収差、縮尺に UTM の縮尺係数が入る。どちらも仮定しないで済む）。
+    静的 TF は GrandTour のサンプルと同じ解釈（事前確認で確かめた）。
+
+    戻り値: t、T_enu（N×4×4、ENU で表した base）、T_utm（N×4×4、UTM で表した base。z は楕円体高）、
+    sigma_h（水平の標準偏差）、fit（相似変換 s・R・t・theta_deg・rms）。
+    """
+    tc = read_odometry(root, "cpt7_ie_tc_odometry")
+    nav = read_navsatfix(root)
+    tf = tf_table(root)
+    T_box_base = static_transform(tf, "box_base", "base")
+    t = tc["t"]
+    R_enu_box = quat_to_rot(tc["q"])
+    T_enu_box = np.tile(np.eye(4), (len(t), 1, 1))
+    T_enu_box[:, :3, :3] = R_enu_box
+    T_enu_box[:, :3, 3] = tc["p"]
+    T_enu = T_enu_box @ T_box_base
+
+    e, n = to_utm(nav["lat"], nav["lon"], zone, north)
+    en = A.interp(nav["t"], np.column_stack([e, n, nav["alt"]]), t)
+    ok = np.all(np.isfinite(en), axis=1)
+    if ok.sum() < 10:
+        raise ValueError("navsatfix と cpt7_ie_tc_odometry の時刻が重ならない")
+    s, R2, t2, rms = A.similarity_2d(tc["p"][ok, :2], en[ok, :2])
+    theta = float(np.arctan2(R2[1, 0], R2[0, 0]))
+    dz = float(np.median(en[ok, 2] - tc["p"][ok, 2]))
+    G = np.eye(4)  # ENU → UTM（水平は相似変換、高さはずらすだけ）
+    G[:2, :2] = s * R2
+    G[:2, 3] = t2
+    G[2, 3] = dz
+    T_utm = np.einsum("ij,njk->nik", G, T_enu)
+    # 回転は縮尺を含まない形にそろえる
+    T_utm[:, :3, :3] = np.einsum("ij,njk->nik", A.rot_z(theta), T_enu[:, :3, :3])
+    out = dict(t=t, T_enu=T_enu, T_utm=T_utm, fit=dict(s=s, R=R2, t=t2, dz=dz, theta_deg=float(np.rad2deg(theta)), rms=rms))
+    if "cov" in nav:
+        sh = np.sqrt(np.maximum(nav["cov"][:, 0], nav["cov"][:, 4]))
+        out["sigma_h"] = A.interp(nav["t"], sh, t)
+    return out
+
+
+def interp_pose(t_src, T_src, t_dst):
+    """姿勢の列（N×4×4）を時刻 t_dst に補間する（位置は線形、回転は正規化線形補間）。範囲外は NaN。"""
+    p = A.interp(t_src, T_src[:, :3, 3], t_dst)
+    q_src = np.stack([A.rot_to_quat(R) for R in T_src[:, :3, :3]])
+    q = A.quat_interp(t_src, q_src, t_dst)
+    T = np.tile(np.eye(4), (len(t_dst), 1, 1))
+    T[:, :3, :3] = quat_to_rot(q)
+    T[:, :3, 3] = p
+    return T
