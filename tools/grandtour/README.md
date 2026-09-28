@@ -1,6 +1,6 @@
 # tools/grandtour: GrandTour での検証のためのスクリプト
 
-[検証計画: GrandTour](../../docs/validation_grandtour.md) で使うスクリプト。ダウンロード（3.1 節）、事前確認（3.3 節）、ROS 2 bag への変換（3.2 節）、案 A の地図の作成（4.3 節）。案 B のアンカー決定と評価は、この後に作る。
+公開データセット GrandTour で検証するために作ったスクリプト（**今は使っていない**。検証は [AWSIM](../../docs/validation_awsim.md) で行うことにし、GrandTour の検証計画 `docs/validation_grandtour.md` は削除した。節の番号はその文書のもので、git の履歴で見られる）。ダウンロード（3.1 節）、事前確認（3.3 節）、ROS 2 bag への変換（3.2 節）、案 A の地図の作成（4.3 節）。案 B のアンカー決定と評価は、この後に作る。
 
 | ファイル | 内容 |
 |---|---|
