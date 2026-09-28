@@ -7,7 +7,7 @@ gll_localizer:
     output_rate: 50.0         # [Hz]
     # map_local_origin: [450000.0, 3950000.0]  # 可視化用の map -> map_local のオフセット [E, N]
     #                                           （指定しなければ、地図があれば最初のグループのアンカー付近にする）
-    debug_csv_path: ""        # 空でなければ出力を CSV に書く（docs/validation_kitti.md 5.3 節）
+    debug_csv_path: ""        # 空でなければ出力を CSV に書く（docs/validation_grandtour.md 5.3 節）
 
     estimator:
       type: invariant_ekf     # invariant_ekf | esekf（比較用）
