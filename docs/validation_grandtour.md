@@ -1,7 +1,7 @@
 # 検証計画: GrandTour を使った LiDAR 自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.13。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md)
-- 状態: ドラフト（v0.3。軽いトピックの事前確認（`tools/grandtour/report_light/`）の結果で、地図と照合のミッションの組を **SPX-2 → SPX-3** に決めた。ETH-1 と ETH-3 は別の場所を歩いていて使えなかった）
+- 状態: ドラフト（v0.4。静的 TF の解釈を確かめ、変換（3.2 節）と案 A の地図（4.3 節）のスクリプトを作った。v0.3: 軽いトピックの事前確認（`tools/grandtour/report_light/`）の結果で、地図と照合のミッションの組を **SPX-2 → SPX-3** に決めた。ETH-1 と ETH-3 は別の場所を歩いていて使えなかった）
 
 本書は、公開データセット **GrandTour**（ETH Zürich の Robotic Systems Lab。四足ロボット ANYmal に多数のセンサを載せたデータセット）を使って、本システムの **LiDAR による自己位置推定**（Phase 2 で実装した部分）を実データで検証する計画である。GNSS 区間と地図区間の切り替わりは、この後の第 2 段階とし、6.3 節に概要だけを書く。
 
@@ -73,8 +73,8 @@
 - **脚のオドメトリ**（`anymal_state_odometry`）: 姿勢は ROS の Odometry と同じ（`base` を `odom` で表したもの）、速度（twist）は `base` の座標系。全ミッションで同じ。`base` の +x が前。
 - **真値**（`cpt7_ie_tc_odometry`）: 姿勢は ROS の Odometry と同じ（`box_base` を `enu_origin` で表したもの）。`box_base` の +x も前。**速度（twist）は位置と合わない**（差が 0.5〜1 m/s）ので使わない。解の周期は 200 Hz。
 - **DLIO**（`dlio_map_odometry`）: 姿勢は ROS の Odometry と同じ（`hesai_lidar` を `dlio_map` で表したもの）。`hesai_lidar` は機体に対して 90° 回っている。
-- **静的 TF の base → box_base の回転**は、ほぼ単位行列（向きがそろっている）。回転では TF の解釈（GrandTour のサンプルの解釈か、その逆か）を区別できないので、並進で確かめる（9 章）。
-- **プリズムの位置**（`box_base` から見た位置）は、真値の良いミッションでそろって (0.30, −0.04, z) m（z は決まらない）。
+- **静的 TF**: GrandTour のサンプルと同じ解釈で正しい（並進で確かめた。9 章）。base → box_base の回転は x 軸まわりの 180°（box_base は上下逆さま）。
+- **プリズムの位置**（`box_base` から見た位置）は、真値の良いミッションでそろって (0.30, −0.04, −0.2 前後) m（box_base は上下逆さまなので、z が負 = 上。z はあまり決まらない）。
 
 ---
 
@@ -126,7 +126,7 @@ GrandTour のサンプル（`examples_hugging_face/scripts/download_data.py`）�
 - 必要な Python パッケージ（`huggingface_hub`、`zarr`、`pyproj`）は Docker の `dev` ステージに入れた。使い方は [tools/grandtour/README.md](../tools/grandtour/README.md)。
 - 一度展開したトピックは、次に実行したときは落とさない。展開した後の `.tar` は消す。
 
-### 3.2 ROS 2 bag への変換（`tools/grandtour/grandtour_to_bag.py`、Claude が作成）
+### 3.2 ROS 2 bag への変換（`tools/grandtour/grandtour_to_bag.py`、作成済み）
 
 Docker の `dev` ステージのコンテナの中で実行する。ROS には依存させず、`tools/tile_demo/make_bag.py` と同じく MCAP を直接書く。
 
@@ -186,7 +186,7 @@ light の段階のデータで、次の項目を 1 枚のレポート（`report.
 - 同じ日の数十分後のミッションどうしなので、人や車の出入りはあるが、大きな環境の変化は無い（SPX-2 は夕方、SPX-3 は夜。LiDAR は照明の影響を受けない）。
 - SPX-2 には階段があり、高さが 4.4 m 変わる。SPX-3 が歩く範囲（平ら）の地図にするため、案 A では SPX-3 の経路から離れた場所と、高さが大きく違う場所の点は地図に入れない。
 
-### 4.3 案 A の手順（`tools/grandtour/build_map_from_gt.py`、Claude が作成）
+### 4.3 案 A の手順（`tools/grandtour/build_map_from_gt.py`、作成済み）
 
 1. 地図用ミッションの `livox_points_undistorted` の各スキャンを、真値（`cpt7_ie_tc_odometry` を `livox_lidar` まで静的 TF でつないだ姿勢）で地図座標に移す。真値が欠けている時刻のスキャンは使わない。
 2. 各スキャンは、距離でクロップし（最初は 1〜40 m）、ロボット自身の点を箱で除く（3.3 節）。
@@ -330,5 +330,5 @@ light の段階のデータで、次の項目を 1 枚のレポート（`report.
 5. ~~ミッションの最初にロボットが止まっているか~~ → SPX-3 は 1.5 s、SBB-2 は 0.3 s（v0.3。6.2 節）。
 6. **DLIO の地図の重力方向**（4.4 節の傾きの補正で扱う）。
 7. **`debug_events_path` の実装**（5.3 節。V-G1 の前に）。
-8. **姿勢と静的 TF の約束事**: オドメトリは決まった（1.3 節）。静的 TF は、回転ではサンプルの解釈とその逆を区別できなかったので、並進で確かめる（`inspect_grandtour.py` に追加。light のデータのまま再実行すればよい）。
+8. ~~姿勢と静的 TF の約束事~~ → オドメトリは 1.3 節のとおり。静的 TF は GrandTour のサンプルと同じ解釈（official）で正しい: 真値と脚のオドメトリの動きから求めた `box_base` の位置 (0.07〜0.08, −0.04, 0.27〜0.31) m が、official の (0.076, −0.036, 0.28) m と 1 cm 前後で合う（逆の解釈とは 13〜16 cm 違う）。base → box_base の回転は x 軸まわりの 180°（box_base は上下逆さま）で、回転では区別できなかった理由もこれ（v0.4）。
 9. **SPX-2 の真値の精度**（σ p95 10 cm。MS60 のデータが無い）。案 A の地図のにじみとして効くので、地図の品質を目で見て、案 B（DLIO の地図）とも比べる。

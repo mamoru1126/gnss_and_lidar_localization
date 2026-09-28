@@ -31,3 +31,22 @@ test -f "$work/data/2024-10-01-11-29-55/data/livox_points_undistorted/.zgroup"
 
 python3 "$tools/inspect_grandtour.py" --data-dir "$work/data" --out "$work/report"
 python3 "$here/check_report.py" "$work/report"
+
+# 4. ROS 2 bag への変換と、案 A の地図（ETH-1 の地図を、ETH-3 の経路の近くに絞る）
+python3 "$tools/grandtour_to_bag.py" "$work/data/2024-10-01-11-29-55" "$work/bags/eth1.mcap" --drop-lidar 0.45:0.5
+python3 "$tools/build_map_from_gt.py" "$work/data/2024-10-01-11-29-55" "$work/maps/eth1" --near "$work/data/2024-10-01-12-00-49"
+python3 "$here/check_convert.py" "$work/bags/eth1.mcap" "$work/maps/eth1"
+# Livox 内蔵の IMU（g 単位）は m/s² に直す
+livox_out="$(python3 "$tools/grandtour_to_bag.py" "$work/data/2024-10-01-11-29-55" "$work/bags/eth1_livox_imu.mcap" --imu livox_imu)"
+echo "$livox_out" | grep "係数 9.80665"
+
+# 5. ROS 2 があれば（CI の ros2 ジョブ）、bag を rosbag2 で読み、地図をタイル化する
+if python3 -c "import rosbag2_py" 2>/dev/null; then
+  python3 "$here/check_bag_ros2.py" "$work/bags/eth1.mcap"
+  tiler="$(command -v tiled_pcd_map_tiler || find /ws/install -type f -name tiled_pcd_map_tiler 2>/dev/null | head -1)"
+  if [ -n "$tiler" ]; then
+    "$tiler" -i "$work/maps/eth1/map.pcd" -o "$work/maps/eth1/tiles" --tile-size 20 --voxel-size 0.2 --no-covariance
+    test -f "$work/maps/eth1/tiles/tile_index.yaml"
+  fi
+fi
+echo "tools/grandtour: all tests passed"
