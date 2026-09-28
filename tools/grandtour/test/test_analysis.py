@@ -17,10 +17,10 @@ def rpy(r, p, y):
     return Rz @ Ry @ Rx
 
 
-def walk(n=2000, dt=0.05, speed=0.6):
+def walk(n=2000, dt=0.05, speed=0.6, sharp=False):
     """前に歩きながら曲がる軌跡（歩行の揺れの roll / pitch 付き）。standard の解釈の (t, p, q, v_body)。"""
     t = np.arange(n) * dt
-    yaw = 0.3 * np.sin(0.05 * t) + 0.02 * t
+    yaw = 1.2 * np.sin(0.15 * t) if sharp else 0.3 * np.sin(0.05 * t) + 0.02 * t
     roll = np.deg2rad(2.0) * np.sin(2 * np.pi * 2.0 * t)
     pitch = np.deg2rad(1.5) * np.sin(2 * np.pi * 2.0 * t + 0.7)
     v_world = np.column_stack([speed * np.cos(yaw), speed * np.sin(yaw), np.zeros(n)])
@@ -148,6 +148,19 @@ class TestFits(unittest.TestCase):
         fit = A.fit_station(prism_station, p, R)
         self.assertLess(fit["rms"], 0.01)
         self.assertTrue(np.allclose(fit["lever"][:2], lever[:2], atol=0.02))
+
+    def test_lever_from_odometry(self):
+        t, p, q, _, R = walk(n=3000, sharp=True)
+        X = rpy(0.01, -0.02, 0.03)  # base → box の向き（ほぼそろっている）
+        l = np.array([0.12, -0.05, 0.25])  # base から見た box の原点
+        C = rpy(0, 0, 0.7)
+        d = np.array([100.0, 50.0, 3.0])
+        Ra = np.einsum("ij,njk,kl->nil", C, R, X)
+        pa = p @ C.T + d + np.einsum("ij,njk,k->ni", C, R, l)
+        qa = np.stack([A.rot_to_quat(r) for r in Ra])
+        r = A.lever_from_odometry(t, pa, qa, t, p, q, X)
+        self.assertIsNotNone(r)
+        self.assertTrue(np.allclose(r["l"][:2], l[:2], atol=0.01), r["l"])
 
     def test_handeye(self):
         t, p, q, _, R = walk(n=3000)

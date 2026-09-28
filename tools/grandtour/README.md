@@ -26,7 +26,11 @@ devcontainer 内では
 python3 -m pip install --break-system-packages 'huggingface_hub<2' 
 ```
 
-が必要だった
+が必要だった（`huggingface_hub` 2 系では動かないため、`docker/Dockerfile` で `<2` に固定した。Dockerfile を変えた後は、
+VS Code の「Dev Containers: Rebuild Container」でコンテナを作り直すと入るので、手で入れる必要はなくなる）
+
+Hugging Face 上の `data/.zgroup` が壊れている（JSON として読めない）ミッションがある。`download.py` が展開のときに
+Zarr v2 のグループとして書き直す（`repaired malformed root metadata` と表示される）。
 
 `download.py` だけなら `huggingface_hub` があればよい。データセットは公開されているので、Hugging Face へのログインは要らない（ログインしてあっても問題ない）。
 
@@ -39,7 +43,7 @@ python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --ou
 ```
 
 - `candidates` は検証計画の候補の 15 ミッション（ETH・SPX・SBB・ARC・LEICA）。1 ミッションあたり数十 MB。
-- 特定のミッションだけなら `--missions ETH-1 ETH-3`（略称かフォルダ名）。何を落とすかは `--dry-run` で確かめられる。
+- 特定のミッションだけなら `--missions SPX-2 SPX-3`（略称かフォルダ名）。何を落とすかは `--dry-run` で確かめられる。
 - 一度展開したトピックは、次に実行したときは落とさない。展開した後の `.tar` は消す（残すなら `--keep-tar`）。
 
 `report_light/report.md` と図（`site_*.png`）を Claude に渡す。見るところ:
@@ -47,7 +51,7 @@ python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --ou
 | 節 | 内容 | 決めること |
 |---|---|---|
 | 1 | 時間・経路長・GNSS の欠け・最初の静止の時間 | `attitude.static_init_time` |
-| 2 | ミッションどうしの経路の重なり（地図 → 照合） | 地図を作るミッションと照合するミッションの組（ETH-1 → ETH-3 か、SBB-1 → SBB-2 か） |
+| 2 | ミッションどうしの経路の重なり（地図 → 照合） | 地図を作るミッションと照合するミッションの組（結果: SPX-2 → SPX-3。検証計画 1.3 節） |
 | 3.1 | オドメトリの姿勢の解釈と、速度の座標系 | 変換スクリプトでの姿勢と速度の扱い |
 | 3.2 | 静的 TF の解釈（GrandTour のサンプルと同じ解釈で正しいか） | 変換スクリプトでの TF の扱い |
 | 3.3 | 真値の精度の目安（リアルタイム解との差、トータルステーションとの差） | 評価の分解能 |
@@ -55,8 +59,8 @@ python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --ou
 ## 2. 選んだミッションの点群と IMU を落とす
 
 ```bash
-python3 tools/grandtour/download.py --dest $GLL_DATA/grandtour --missions ETH-1 ETH-3 --preset lidar
-python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --missions ETH-1 ETH-3 --out $GLL_DATA/grandtour/report_lidar
+python3 tools/grandtour/download.py --dest $GLL_DATA/grandtour --missions SPX-2 SPX-3 --preset lidar
+python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --missions SPX-2 SPX-3 --out $GLL_DATA/grandtour/report_lidar
 ```
 
 1 ミッションあたり数百 MB〜1 GB 程度。レポートの 4 節に、点群の列・1 スキャンの点数・base から見た LiDAR の位置と向き・地面から base までの高さ・ロボット自身の点の範囲・IMU の単位が出る。

@@ -13,6 +13,7 @@ Hugging Face 上では、トピックごとに Zarr のグループを 1 つの 
 """
 import argparse
 import fnmatch
+import json
 import shutil
 import sys
 import tarfile
@@ -55,10 +56,17 @@ def marker(dest, folder, topic):
 
 
 def repair_root_zgroup(path):
-    if path.is_file() and path.read_bytes() == BROKEN_ROOT_ZGROUP:
+    """data/.zgroup が壊れているミッションがある（Hugging Face 上のファイルが JSON として読めない。
+    例: BROKEN_ROOT_ZGROUP）。JSON として読めないか、Zarr v2 のグループでなければ、v2 のグループとして書き直す。"""
+    if not path.is_file():
+        return False
+    try:
+        ok = json.loads(path.read_bytes()).get("zarr_format") == 2
+    except (ValueError, AttributeError):
+        ok = False
+    if not ok:
         path.write_bytes(CORRECT_ROOT_ZGROUP)
-        return True
-    return False
+    return not ok
 
 
 def safe_extract(tar_path, out_dir):
