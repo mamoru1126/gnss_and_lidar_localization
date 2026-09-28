@@ -41,12 +41,19 @@ livox_out="$(python3 "$tools/grandtour_to_bag.py" "$work/data/2024-10-01-11-29-5
 echo "$livox_out" | grep "係数 9.80665"
 
 # 5. ROS 2 があれば（CI の ros2 ジョブ）、bag を rosbag2 で読み、地図をタイル化する
+#    GLL_REQUIRE_ROS=1 のときは、ROS 2 か tiled_pcd_map_tiler が無ければ失敗にする（確認が飛ばされないように）
+if [ "${GLL_REQUIRE_ROS:-0}" = 1 ] && ! python3 -c "import rosbag2_py" 2>/dev/null; then
+  echo "GLL_REQUIRE_ROS=1 but rosbag2_py is not available"; exit 1
+fi
 if python3 -c "import rosbag2_py" 2>/dev/null; then
   python3 "$here/check_bag_ros2.py" "$work/bags/eth1.mcap"
   tiler="$(command -v tiled_pcd_map_tiler || find /ws/install -type f -name tiled_pcd_map_tiler 2>/dev/null | head -1)"
   if [ -n "$tiler" ]; then
     "$tiler" -i "$work/maps/eth1/map.pcd" -o "$work/maps/eth1/tiles" --tile-size 20 --voxel-size 0.2 --no-covariance
     test -f "$work/maps/eth1/tiles/tile_index.yaml"
+    echo "tiled_pcd_map_tiler: tiles written"
+  elif [ "${GLL_REQUIRE_ROS:-0}" = 1 ]; then
+    echo "GLL_REQUIRE_ROS=1 but tiled_pcd_map_tiler is not found"; exit 1
   fi
 fi
 echo "tools/grandtour: all tests passed"
