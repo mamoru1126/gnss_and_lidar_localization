@@ -21,7 +21,7 @@ TEST(Conversions, YawQuaternionRoundTrip) {
 }
 
 TEST(Conversions, ImuFrdToFlu) {
-  // 前・右・下（FRD）の IMU を roll = 180° で base_link（FLU）に回す（i2Nav-Robot の ADIS16465）
+  // 前・右・下（FRD）の IMU を roll = 180° で base_link（FLU）に回す
   sensor_msgs::msg::Imu m;
   m.angular_velocity.x = 0.1;
   m.angular_velocity.y = 0.2;

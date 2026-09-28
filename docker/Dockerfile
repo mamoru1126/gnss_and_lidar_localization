@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-${ROS_DISTRO}-rviz2 \
       ros-${ROS_DISTRO}-ros2bag ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
-# i2Nav-Robot の ROS1 bag を ROS 2 に変換するためのツール（docs/validation_i2nav.md）
+# 検証用の bag を読み書きするためのツール（docs/validation_kitti.md）
 RUN pip3 install --no-cache-dir --break-system-packages rosbags
 
 WORKDIR /ws
