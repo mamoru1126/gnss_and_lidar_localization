@@ -24,9 +24,8 @@ on_exit() {
 trap on_exit EXIT
 echo "RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY"
 
-apt-cache policy ros-humble-autoware-auto-msgs | head -3
-dpkg -L ros-humble-autoware-auto-msgs | grep -E "site-packages/[^/]+$|share/[^/]+$" | head -20
-ros2 interface packages | grep -i autoware || true
+files="$(dpkg -L ros-humble-autoware-auto-msgs)"
+echo "$files" | grep -E "site-packages/[^/]+$|share/[^/]+$|/msg/[A-Za-z]+\.msg$" | sed -n 1,40p || true
 python3 -c "from autoware_auto_control_msgs.msg import AckermannControlCommand; \
 from autoware_auto_vehicle_msgs.msg import Engage, GearCommand, VelocityReport; print('autoware_auto_msgs ok')"
 
