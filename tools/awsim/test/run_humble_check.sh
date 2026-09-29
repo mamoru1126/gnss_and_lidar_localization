@@ -24,6 +24,8 @@ on_exit() {
 trap on_exit EXIT
 echo "RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY"
 
+ros2 interface list | grep -i -E "ackermann|gearcommand|velocityreport|engage" || true
+ls /opt/ros/humble/share | grep -i autoware || true
 python3 -c "from autoware_auto_control_msgs.msg import AckermannControlCommand; \
 from autoware_auto_vehicle_msgs.msg import Engage, GearCommand, VelocityReport; print('autoware_auto_msgs ok')"
 
