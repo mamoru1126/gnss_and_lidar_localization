@@ -72,6 +72,7 @@ def main():
             self.t_start = None
             self.dist = 0.0
             self.started = False
+            self.finished = False
             self.create_subscription(PoseStamped, args.gt_topic, self.on_pose,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
             self.pub_ctrl = self.create_publisher(AckermannControlCommand, "/control/command/control_cmd", 10)
@@ -135,14 +136,20 @@ def main():
             if done and self.v < 0.05:
                 self.get_logger().info(f"finished: {self.dist:.0f} m")
                 self.send(0.0, 0.0, -1.0)
-                rclpy.shutdown()
+                self.finished = True
 
     rclpy.init()
     node = Driver()
     try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, Exception):  # rclpy.shutdown() の後の spin の終わりも含む
-        pass
+        # 経路の終わりで止まったら抜ける（コールバックの中で rclpy.shutdown() を呼ぶと、プロセスが終わらなかった）
+        while rclpy.ok() and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.1)
+    except KeyboardInterrupt:
+        node.send(0.0, 0.0, -1.0)
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
