@@ -1,7 +1,7 @@
 # 検証計画: AWSIM を使った自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.14。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md) / スクリプトの使い方: [tools/awsim/README.md](../tools/awsim/README.md)
-- 状態: ドラフト（v0.2。v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
+- 状態: ドラフト（v0.3。記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
 
 本書は、自動運転シミュレータ **AWSIM**（TIER IV。Unity で動く。v1.3.1）の西新宿の地図で車を走らせて記録したデータで、本システムを検証する計画である。確かめるのは、**LiDAR による自己位置推定**（Phase 2）と、**GNSS 区間と地図区間の切り替わり**である。
 
@@ -31,7 +31,7 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 
 | 項目 | AWSIM（v1.3.1） | 本システムの想定 | 扱い |
 |---|---|---|---|
-| 動かす環境 | Ubuntu 22.04、ROS 2 Humble、GPU（RTX 2080 Ti 以上、ドライバ 550 推奨） | ROS 2 Jazzy（Docker） | **記録は AWSIM の PC（Humble）で、変換と推定は dev コンテナ（Jazzy）で**行う。bag（MCAP）をファイルで渡す（3 章） |
+| 動かす環境 | Ubuntu 22.04、GPU（RTX 2080 Ti 以上、ドライバ 550 推奨）。ROS 2 は AWSIM の中にある | ROS 2 Jazzy（Docker） | **記録と走行は Humble のコンテナ（`docker/awsim/Dockerfile`）で、変換と推定は dev コンテナ（Jazzy）で**行う。bag（MCAP）を `GLL_DATA` のフォルダで渡す（3 章） |
 | 車両 | Lexus RX 450h（ホイールベース 2.79 m） | 車輪型、最高 6 km/h | `awsim_drive.py` で、決めた経路を 6 km/h で走らせる（3.2 節） |
 | 真値 | `/awsim/ground_truth/vehicle/pose`（`PoseStamped`、100 Hz、base_link の姿勢、地図座標） | — | そのまま真値にする。UTM に直して CSV に書く |
 | IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
@@ -47,7 +47,7 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 ## 2. 全体の流れ
 
 ```
-[AWSIM の PC（Ubuntu 22.04、Humble）]
+[AWSIM の PC（Ubuntu 22.04）: AWSIM はホストで、記録と走行は Humble のコンテナで]
   AWSIM を起動 → 車の位置を見る → 経路を作る（lanelet_route.py）→ awsim_drive.py で走らせながら ros2 bag record
                                                                                         │ bag（MCAP）
 [dev コンテナ（Jazzy）]                                                                  ▼
@@ -68,8 +68,8 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
 
 ### 3.1 準備（AWSIM の PC）
 
-1. AWSIM の Quick start demo のとおりに、Humble、NVIDIA ドライバ、`ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`、CycloneDDS のための `sysctl` を設定し、`AWSIM_v1.3.1.zip` を展開する。
-2. 追加のパッケージ: `ros-humble-autoware-auto-msgs`（`awsim_drive.py` が使う型）、`ros-humble-rosbag2-storage-mcap`（MCAP で記録する）、`python3-numpy`・`python3-scipy`（経路の作成）。
+1. AWSIM の Quick start demo のとおりに、NVIDIA ドライバ、CycloneDDS のための `sysctl` と `ip link set lo multicast on`、`ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` を設定し、`AWSIM_v1.3.1.zip` を展開する。ホストに ROS 2 は要らない（AWSIM は ROS 2 を中に持っている）。
+2. 記録と走行に使う ROS 2 Humble のコンテナを作る: `docker compose -f docker/compose.yaml build awsim`（`docker/awsim/Dockerfile`。`autoware_auto_msgs`、MCAP の記録、CycloneDDS、numpy・scipy 入り。ホストのネットワークを使う）。
 3. 西新宿の地図（`nishishinjuku_autoware_map.zip`。AWSIM v1.1.0 のリリースにある）を展開する。
 
 ### 3.2 経路を作って走らせ、記録する（AWSIM の PC）
@@ -227,6 +227,7 @@ AWSIM の真値（`/awsim/ground_truth/vehicle/pose`）を UTM に直したも�
 AWSIM の bag と同じトピック・型の小さな合成データ（壁と建物のある 70 m × 50 m の場所を、四角い経路で 1 周する）で、スクリプトと推定ノードのつながりを CI で確かめている。
 
 - `tools_awsim` ジョブ: 経路追従・回転・評価の単体テスト、LiDAR の取り付け位置の探索（ずらした値から、合成したときの値に戻ること）、変換（IMU の向き、GNSS の緯度経度と status、ODOM、点群、パラメータ）。
+- `awsim_humble` ジョブ: Humble のコンテナで、`awsim_drive.py` が AWSIM の車の代わり（指令で自転車モデルを動かして真値を出す）を経路の終わりまで走らせること、MCAP で記録できること。
 - `ros2` ジョブ: 変換した bag を ROS 2 Jazzy の rosbag2 で読み、推定ノードに通して真値と比べる（GNSS + LiDAR と、地図だけでの初期化と追跡の 2 通り）。
 
 ---

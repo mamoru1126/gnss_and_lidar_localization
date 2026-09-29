@@ -4,19 +4,32 @@
 
 | スクリプト | 動かす場所 | 内容 |
 |---|---|---|
-| `awsim_drive.py` | AWSIM の PC（Humble） | 決めた経路を 6 km/h で走らせる ROS 2 ノード。`--check` なら ROS なしで経路を確かめるだけ |
+| `awsim_drive.py` | AWSIM の PC の Humble のコンテナ | 決めた経路を 6 km/h で走らせる ROS 2 ノード。`--check` なら ROS なしで経路を確かめるだけ |
 | `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す |
 | `awsim_to_bag.py` | dev コンテナ | 変換。GNSS（NavSatFix）を真値から作り、途切れ・LiDAR の欠落・ODOM の劣化・初期姿勢の誤差を入れられる |
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
 
-必要なもの: dev コンテナの中なら追加は要らない（numpy・PyYAML・pyproj）。AWSIM の PC では `ros-humble-autoware-auto-msgs`、`ros-humble-rosbag2-storage-mcap`、`python3-numpy`（経路を作るなら `python3-scipy` も）。
+必要なもの: dev コンテナの中なら追加は要らない（numpy・PyYAML・pyproj）。記録と走行は、ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_auto_msgs`・MCAP の記録・CycloneDDS・numpy・scipy 入り）で行う。ホストに ROS 2 を入れる必要は無い（AWSIM 本体は ROS 2 を中に持っている）。
 
 ## 1. 経路を作って走らせ、記録する（AWSIM の PC）
 
-AWSIM を起動してから（Quick start demo の `ROS_LOCALHOST_ONLY=1`、`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` を、下の全部の端末で同じにする）:
+ホスト（Ubuntu 22.04）の準備は、AWSIM の Quick start demo のとおり（NVIDIA ドライバ、`sysctl` と `ip link set lo multicast on`、AWSIM を起動する端末で `ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`）。Humble のコンテナにも同じ 2 つの変数が入っている。
 
 ```bash
+# コンテナを作る（最初の 1 回）。GLL_DATA がコンテナの /data になる（dev コンテナと同じ）
+export GLL_DATA=/path/to/data
+docker compose -f docker/compose.yaml build awsim
+
+# AWSIM を起動してから、コンテナに入る（記録用と走行用に 2 つの端末で。どちらも同じコマンド）
+docker compose -f docker/compose.yaml run --rm awsim
+```
+
+コンテナの中（`/ws/src/gnss_and_lidar_localization`。リポジトリがそのまま見える）で:
+
+```bash
+# 真値が出ているか
+ros2 topic list | grep ground_truth
 # 車の位置（地図座標）
 ros2 topic echo --once /awsim/ground_truth/vehicle/pose
 
@@ -27,7 +40,7 @@ python3 tools/tile_demo/lanelet_route.py $M/lanelet2_map.osm '[[x0, y0], [x1, y1
 python3 tools/awsim/awsim_drive.py route.txt --check
 
 # 記録を始めてから、走らせる（5 s 止まってから走り出し、経路の終わりで止まってノードも終わる）
-ros2 bag record -s mcap -o nsj_run1 /awsim/ground_truth/vehicle/pose /sensing/imu/tamagawa/imu_raw \
+ros2 bag record -s mcap -o /data/awsim/nsj_run1 /awsim/ground_truth/vehicle/pose /sensing/imu/tamagawa/imu_raw \
     /vehicle/status/velocity_status /sensing/lidar/top/pointcloud_raw
 python3 tools/awsim/awsim_drive.py route.txt --wait 5      # 別の端末
 ```
@@ -35,6 +48,7 @@ python3 tools/awsim/awsim_drive.py route.txt --wait 5      # 別の端末
 - `awsim_drive.py` は `/control/command/control_cmd`・`gear_cmd`・`/vehicle/engage` を出す。車が動かないときは、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
 - 障害物・信号・ほかの車は見ない。ぶつかったら記録をやり直す。
 - `--max-distance 300` で、300 m 走ったら止める。
+- `ros2 topic list` に AWSIM のトピックが出ないときは、ホストの `ip link set lo multicast on`（再起動で戻る）と、AWSIM を起動した端末の 2 つの変数を確かめる。
 - 記録は圧縮しない（`--compression-mode` を付けない）。zstd で圧縮した bag を読むには `pip install zstandard` が要る。
 
 ## 2. 地図・取り付け位置・変換（dev コンテナ）

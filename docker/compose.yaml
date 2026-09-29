@@ -6,6 +6,10 @@
 #
 # コンテナ内:
 #   cd /ws && colcon build --symlink-install && colcon test && colcon test-result --verbose
+#
+# AWSIM（v1.3.1）の記録と走行には、ROS 2 Humble のコンテナ awsim を使う（docker/awsim/Dockerfile）:
+#   docker compose -f docker/compose.yaml build awsim
+#   docker compose -f docker/compose.yaml run --rm awsim
 
 services:
   dev:
@@ -23,6 +27,24 @@ services:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       # RViz を使う場合（Linux ホスト）: xhost +local: を実行してから
       - DISPLAY=${DISPLAY:-}
+    network_mode: host
+    ipc: host
+    stdin_open: true
+    tty: true
+
+  # AWSIM と一緒に使う ROS 2 Humble（記録と走行）。AWSIM 本体はホストで動かす
+  awsim:
+    build:
+      context: ..
+      dockerfile: docker/awsim/Dockerfile
+    image: gll:awsim-humble
+    working_dir: /ws/src/gnss_and_lidar_localization
+    volumes:
+      - ..:/ws/src/gnss_and_lidar_localization
+      - ${GLL_DATA:-./data}:/data
+    environment:
+      - GLL_DATA=/data
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
     network_mode: host
     ipc: host
     stdin_open: true
