@@ -1,6 +1,6 @@
 # AWSIM での検証のスクリプト
 
-[検証計画: AWSIM](../../docs/validation_awsim.md) で使うスクリプト。AWSIM（v1.3.1、ROS 2 Humble）で車を走らせて記録した bag を、推定ノード（ROS 2 Jazzy）用の bag に変換し、推定の結果を真値と比べる。
+[検証計画: AWSIM](../../docs/validation_awsim.md) で使うスクリプト。AWSIM（**v1.3.1**、ROS 2 Humble。tier4.github.io/AWSIM の Quick start demo の `AWSIM_v1.3.1.zip`。v2 系はデモで真値の姿勢が出ないので使わない: 検証計画 1.1 節）で車を走らせて記録した bag を、推定ノード（ROS 2 Jazzy）用の bag に変換し、推定の結果を真値と比べる。
 
 | スクリプト | 動かす場所 | 内容 |
 |---|---|---|
@@ -43,7 +43,7 @@ python3 tools/awsim/awsim_drive.py route.txt --wait 5      # 別の端末
 D=$GLL_DATA/awsim
 tiled_pcd_map_tiler -i $M/pointcloud_map.pcd -o $D/nsj_tiles --tile-size 20 --voxel-size 0.2
 
-# LiDAR の取り付け位置（base_link → sensor_kit_base_link）。最後の行の値を次の --lidar-extrinsic に使う
+# LiDAR の取り付け位置（base_link → velodyne_top）。yaw を 1 周調べてから細かく探す。最後の行の値を次の --lidar-extrinsic に使う
 python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --extrinsic 0.9,0,2.0,0,0,0
 
 # 変換（出力: v_a0.mcap、v_a0_groundtruth.csv、v_a0_params.yaml、v_a0_maps.yaml）

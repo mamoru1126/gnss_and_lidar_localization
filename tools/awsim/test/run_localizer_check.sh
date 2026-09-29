@@ -29,7 +29,7 @@ ros2 pkg prefix gll_ros2 >/dev/null || { echo "gll_ros2 is not built/sourced"; e
 
 python3 "$here/make_fake_awsim_bag.py" "$work/fake"
 "$tiler" -i "$work/fake/map.pcd" -o "$work/tiles" --tile-size 20 --voxel-size 0.2
-EXT=0.9,0,2.0,0,1,-2
+EXT=0.9,0,2.0,0,1,88
 python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/a/a.mcap" --lidar-extrinsic "$EXT" --gnss-off-time 30:20 \
   --tiles "$work/tiles"
 python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/b/b.mcap" --lidar-extrinsic "$EXT" --no-gnss \

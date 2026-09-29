@@ -1,7 +1,7 @@
 # 検証計画: AWSIM を使った自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.14。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md) / スクリプトの使い方: [tools/awsim/README.md](../tools/awsim/README.md)
-- 状態: ドラフト（v0.1。変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
+- 状態: ドラフト（v0.2。v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
 
 本書は、自動運転シミュレータ **AWSIM**（TIER IV。Unity で動く。v1.3.1）の西新宿の地図で車を走らせて記録したデータで、本システムを検証する計画である。確かめるのは、**LiDAR による自己位置推定**（Phase 2）と、**GNSS 区間と地図区間の切り替わり**である。
 
@@ -17,6 +17,18 @@ AWSIM を使う理由:
 
 ## 1. AWSIM と本システムの対応
 
+### 1.1 使う版: v1.3.1（v2 系は使わない）
+
+AWSIM には v1 系（TIER IV。ドキュメントは tier4.github.io/AWSIM）と、Autoware Foundation に移ってからの v2 系（v2.0.1。ドキュメントは autowarefoundation.github.io/AWSIM）がある。**v1.3.1 を使う**（Quick start demo の `AWSIM_v1.3.1.zip`）。v2 系のソース（v2.0.1）を見ると、次の点で本書の手順に合わない。
+
+- **真値の姿勢のトピックが出ない**: v1.3.1 は車両に `PoseSensor`（`/awsim/ground_truth/vehicle/pose`、100 Hz）と `OdometrySensor`（`/awsim/ground_truth/localization/kinematic_state`）が付いている。v2.0.1 は真値を出す部品（`OdometryRos2Publisher`）はあるが、デモのシーンと車両に置かれていない。GNSS（10 Hz）は位置だけで向きが無い。
+- **制御の型が違う**: v2 系は `autoware_control_msgs/Control` と `autoware_vehicle_msgs`（新しい Autoware のメッセージ）。`awsim_drive.py` は v1 系の `autoware_auto_*` を使っている。
+- **求める環境が重い**: NVIDIA ドライバ 570 以上、メモリ 32 GB 以上、Vulkan。
+
+v2 系を使う必要が出たら、真値のセンサをシーンに置いたビルド（Unity で開いて作る）と、`awsim_drive.py` の型の切り替えが要る。
+
+### 1.2 トピックと扱い
+
 | 項目 | AWSIM（v1.3.1） | 本システムの想定 | 扱い |
 |---|---|---|---|
 | 動かす環境 | Ubuntu 22.04、ROS 2 Humble、GPU（RTX 2080 Ti 以上、ドライバ 550 推奨） | ROS 2 Jazzy（Docker） | **記録は AWSIM の PC（Humble）で、変換と推定は dev コンテナ（Jazzy）で**行う。bag（MCAP）をファイルで渡す（3 章） |
@@ -25,7 +37,7 @@ AWSIM を使う理由:
 | IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
 | ODOM | `/vehicle/status/velocity_status`（`autoware_auto_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。ヨーレートも twist に入れる |
 | GNSS | `/sensing/gnss/pose`（`Pose`、1 Hz） | u-blox F9P の RTK-FIX（`NavSatFix`、10 Hz） | **AWSIM の出力は使わず**、真値から `NavSatFix`（10 Hz、σ 2 cm、アンテナの位置 = base_link の上 1.5 m）を作る。途切れは時間か範囲で入れる（status = −1） |
-| LiDAR | `/sensing/lidar/top/pointcloud_raw`（`PointCloud2`、10 Hz、frame `sensor_kit_base_link`） | Livox Mid-360 | 中身はそのまま出す。base_link → `sensor_kit_base_link` の位置は**地図と照らして確かめる**（3.4 節）。点ごとの時刻は無い前提（`lidar.time_field: auto` で、無ければデスキューしない） |
+| LiDAR | `/sensing/lidar/top/pointcloud_raw`（`PointCloud2`、10 Hz、frame **`velodyne_top`**。VLP-16 相当） | Livox Mid-360 | 中身はそのまま出す。base_link → `velodyne_top` の位置は**地図と照らして確かめる**（3.4 節）。点ごとの時刻の列があれば `lidar.time_field: auto` で使われ、無ければデスキューしない |
 | 地図 | 西新宿の `pointcloud_map.pcd` と `lanelet2_map.osm`（MGRS 54SUE の区画の中の座標） | UTM の地図グループとアンカー | `tiled_pcd_map_tiler` でタイル化。地図座標 = UTM − (300000, 3900000)（54 帯）なので、アンカーは回転なし・縮尺なしで決まる（3.3 節） |
 | 時刻 | 各トピックの `header.stamp`（AWSIM の時刻でそろっている） | — | そのまま使う。推定ノードは `use_sim_time` で bag の時刻で動かす |
 | ライセンス | AWSIM は Apache 2.0。**西新宿の地図は CC BY-NC 4.0（非営利に限る）** | — | 業務の検証に使ってよいかを確認する（9 章）。地図から作ったもの（タイル、bag、経路）はリポジトリに入れない |
@@ -94,7 +106,7 @@ map_groups:
 
 ### 3.4 LiDAR の取り付け位置を確かめる
 
-base_link → `sensor_kit_base_link` の位置と向きは、AWSIM の車両の設定による（Autoware のサンプルのセンサキットでは (0.9, 0, 2.0) m 前後）。`check_lidar_extrinsic.py` で、真値の姿勢と取り付け位置で点群を地図に重ね、地図の点がある格子に入る割合を最大にする値を探す。見つけた値と割合を記録し、割合が低い（< 60 %）ときは、地図と真値の座標系が合っているかを先に確かめる。
+base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定による。v1.3.1 の車両（`Lexus RX450h 2015 Sample Sensor`）では、`sensor_kit_base_link` が base_link から (0.9, 0, 2.0) m、yaw 約 −2°・pitch 約 1° にあり、`velodyne_top` はその上に置かれている。Autoware のサンプルのセンサキットでは `velodyne_top` がセンサキットに対して yaw 約 90° 回っているので、点群の座標も同じように回っている可能性がある。そこで探索は、最初に yaw を 1 周（10° ごと）調べてから細かく探す。`check_lidar_extrinsic.py` で、真値の姿勢と取り付け位置で点群を地図に重ね、地図の点がある格子に入る割合を最大にする値を探す。見つけた値と割合を記録し、割合が低い（< 60 %）ときは、地図と真値の座標系が合っているかを先に確かめる。
 
 ### 3.5 変換
 
