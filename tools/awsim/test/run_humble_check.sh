@@ -10,7 +10,18 @@ set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tools="$(dirname "$here")"
 work="$(mktemp -d)"
-trap 'kill $(jobs -p) 2>/dev/null || true; rm -rf "$work"' EXIT
+log="$(mktemp)"
+exec > >(tee "$log") 2>&1
+on_exit() {
+  rc=$?
+  kill $(jobs -p) 2>/dev/null || true
+  if [ "$rc" -ne 0 ]; then
+    msg="$(tail -n 60 "$log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+    echo "::error title=run_humble_check.sh failed (exit $rc)::$msg"
+  fi
+  rm -rf "$work" "$log"
+}
+trap on_exit EXIT
 echo "RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY"
 
 python3 -c "from autoware_auto_control_msgs.msg import AckermannControlCommand; \
