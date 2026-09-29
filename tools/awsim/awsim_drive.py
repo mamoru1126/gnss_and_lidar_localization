@@ -11,7 +11,7 @@
   経路の作り方は README.md（tools/tile_demo/lanelet_route.py で、車の位置から始まる経路を作る）。
 - 出すもの: /control/command/control_cmd（AckermannControlCommand）、/control/command/gear_cmd（DRIVE）、/vehicle/engage。
   AWSIM v1.x（autoware_auto_msgs）の型。AWSIM Labs などで型が autoware_control_msgs などに変わった場合は、import を直す。
-必要なパッケージ: rclpy、geometry_msgs、autoware_auto_control_msgs、autoware_auto_vehicle_msgs（ros-humble-autoware-auto-msgs）。
+必要なパッケージ: rclpy、geometry_msgs、autoware_auto_control_msgs、autoware_auto_vehicle_msgs（docker/awsim/Dockerfile のコンテナに入っている）。
 """
 import argparse
 import math
@@ -57,7 +57,8 @@ def main():
         from autoware_auto_control_msgs.msg import AckermannControlCommand
         from autoware_auto_vehicle_msgs.msg import Engage, GearCommand
     except ImportError:
-        sys.exit("autoware_auto_msgs が無い: sudo apt install ros-humble-autoware-auto-msgs")
+        sys.exit("autoware_auto_msgs が無い: docker/awsim/Dockerfile のコンテナで動かすか、"
+                 "sudo apt install ros-humble-autoware-auto-control-msgs ros-humble-autoware-auto-vehicle-msgs")
 
     route = load_route(args.route)
 

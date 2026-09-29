@@ -8,7 +8,7 @@ FROM ros:humble-ros-base
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-humble-rmw-cyclonedds-cpp \
-      ros-humble-autoware-auto-msgs \
+      ros-humble-autoware-auto-control-msgs ros-humble-autoware-auto-vehicle-msgs \
       ros-humble-rosbag2-storage-mcap \
       python3-numpy python3-scipy \
     && rm -rf /var/lib/apt/lists/*
