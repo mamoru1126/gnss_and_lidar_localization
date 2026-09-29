@@ -8,12 +8,24 @@ FROM ros:humble-ros-base
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-humble-rmw-cyclonedds-cpp \
-      ros-humble-autoware-auto-msgs \
       ros-humble-rosbag2-storage-mcap \
       python3-numpy python3-scipy \
+      python3-colcon-common-extensions git \
     && rm -rf /var/lib/apt/lists/*
+# AWSIM v1.x が使う autoware_auto_msgs（tier4/autoware_auto_msgs）。apt の ros-humble-autoware-auto-msgs は中身の無い
+# パッケージなので、ソースから制御と車両のメッセージだけをビルドする（コミットを固定）
+ARG AUTOWARE_AUTO_MSGS_COMMIT=624aae9feb142eb2a4e16069ed06bf4050ccc3ea
+RUN mkdir -p /opt/autoware_auto_msgs/src && cd /opt/autoware_auto_msgs/src \
+    && git init -q aam && cd aam \
+    && git fetch -q --depth 1 https://github.com/tier4/autoware_auto_msgs ${AUTOWARE_AUTO_MSGS_COMMIT} \
+    && git checkout -q FETCH_HEAD && cd /opt/autoware_auto_msgs \
+    && source /opt/ros/humble/setup.bash \
+    && colcon build --merge-install --install-base /opt/autoware_auto_msgs/install \
+         --packages-up-to autoware_auto_control_msgs autoware_auto_vehicle_msgs \
+         --cmake-args -DBUILD_TESTING=OFF \
+    && rm -rf /opt/autoware_auto_msgs/build /opt/autoware_auto_msgs/log
 # AWSIM の Quick start demo と同じ通信の設定（ホストの AWSIM と同じ PC の中だけで通信する）
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_LOCALHOST_ONLY=1
 WORKDIR /ws/src/gnss_and_lidar_localization
-RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+RUN echo "source /opt/ros/humble/setup.bash && source /opt/autoware_auto_msgs/install/setup.bash" >> /root/.bashrc
