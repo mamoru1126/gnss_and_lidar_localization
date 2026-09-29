@@ -28,7 +28,8 @@ from drive_core import PurePursuit  # noqa: E402
 G = 9.80665
 ORIGIN = np.array([81200.0, 49800.0])  # 地図座標（MGRS 54SUE の中）
 R_BASE_IMU = A.rpy_to_rot(math.pi, 0.0, math.radians(90))  # 上下逆さまで 90° 回った IMU
-T_BASE_LIDAR = A.se3(A.rpy_to_rot(0.0, math.radians(1.0), math.radians(-2.0)), [0.9, 0.0, 2.0])
+# AWSIM v1.3.1 の velodyne_top と同じく、センサキットの上で約 90° 回っている
+T_BASE_LIDAR = A.se3(A.rpy_to_rot(0.0, math.radians(1.0), math.radians(88.0)), [0.9, 0.0, 2.0])
 ROUTE = ORIGIN + np.array([[0, 0], [40, 0], [40, 20], [0, 20], [0, 0.5]], dtype=float)
 
 MB.MSGDEFS.update({
@@ -167,7 +168,7 @@ def main():
         pw = pw[rng.choice(len(pw), min(3000, len(pw)), replace=False)]
         pl = (pw - T_wl[:3, 3]) @ T_wl[:3, :3]
         msgs.append((int(ts[i] * 1e9) + 1000, ch_pc,
-                     MB.ser_cloud(int(ts[i] * 1e9), "sensor_kit_base_link", pl.astype(np.float32),
+                     MB.ser_cloud(int(ts[i] * 1e9), "velodyne_top", pl.astype(np.float32),
                                   np.full(len(pl), 50.0, dtype=np.float32))))
     for t, cid, data in sorted(msgs, key=lambda m: m[0]):
         w.message(cid, t, data)

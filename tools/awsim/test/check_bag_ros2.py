@@ -61,11 +61,11 @@ while reader.has_next():
             fail(f"gnss {m.header.frame_id} {m.position_covariance_type} {m.latitude}")
     if topic == "/sensing/lidar/points":
         names = [f.name for f in m.fields]
-        if names[:3] != ["x", "y", "z"] or m.width == 0 or m.header.frame_id != "sensor_kit_base_link":
+        if names[:3] != ["x", "y", "z"] or m.width == 0 or m.header.frame_id != "velodyne_top":
             fail(f"points {names} {m.width} {m.header.frame_id}")
     if topic == "/tf_static":
         tr = m.transforms[0]
-        if (tr.header.frame_id, tr.child_frame_id) != ("base_link", "sensor_kit_base_link"):
+        if (tr.header.frame_id, tr.child_frame_id) != ("base_link", "velodyne_top"):
             fail(f"tf_static {tr.header.frame_id} -> {tr.child_frame_id}")
     if topic == "/sensing/odom" and (m.header.frame_id, m.child_frame_id) != ("odom", "base_link"):
         fail(f"odom frames {m.header.frame_id} {m.child_frame_id}")

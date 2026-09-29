@@ -5,7 +5,7 @@
       [--extrinsic 0.9,0,2.0,0,0,0] [--mgrs-origin 0,0] [--scans 40]
 
 真値の姿勢と取り付け位置で、いくつかのスキャンを地図座標に移し、地図の点がある格子（--voxel）に入る点の割合を数える。
-取り付け位置の 6 つの値を 1 つずつ動かして、割合が最も大きくなる値を探す（粗い → 細かい）。最初の値と見つけた値、
+最初に yaw だけを 1 周（10° ごと）調べ、そこから取り付け位置の 6 つの値を 1 つずつ動かして、割合が最も大きくなる値を探す（粗い → 細かい）。最初の値と見つけた値、
 それぞれの割合を出す。見つけた値は awsim_to_bag.py の --lidar-extrinsic に渡す。
 地図のタイルは tiled_pcd_map_tiler の出力（地図座標。真値と同じ座標系）。必要なパッケージ: numpy、PyYAML。
 """
@@ -55,6 +55,8 @@ def main():
     ap.add_argument("--points", type=int, default=4000, help="1 スキャンから使う点の数")
     ap.add_argument("--voxel", type=float, default=0.3)
     ap.add_argument("--no-search", action="store_true", help="割合を出すだけで、値を探さない")
+    ap.add_argument("--no-yaw-sweep", action="store_true",
+                    help="最初に yaw を 1 周（10° ごと）調べるのをやめる（最初の値の yaw が分かっているとき）")
     args = ap.parse_args()
     ex0 = np.array([float(v) for v in args.extrinsic.split(",")])
     off = np.array([float(v) for v in args.mgrs_origin.split(",")] + [0.0])
@@ -111,6 +113,16 @@ def main():
     if args.no_search:
         return
     ex, best = ex0.copy(), s0
+    if not args.no_yaw_sweep:
+        # LiDAR の frame が base_link に対して大きく回っていることがある（AWSIM の velodyne_top は約 90°）ので、
+        # 先に yaw を 1 周調べてから細かく探す
+        for yaw in np.arange(-180.0, 180.0, 10.0):
+            cand_ex = ex0.copy()
+            cand_ex[5] = yaw
+            s = score(cand_ex, scans, occ, args.voxel)
+            if s > best:
+                ex, best = cand_ex, s
+        print(f"yaw を 1 周調べた結果: yaw {ex[5]:.0f}°、割合 {best * 100:.1f} %")
     for steps in ([0.5, 0.5, 0.5, 2.0, 2.0, 5.0], [0.1, 0.1, 0.1, 0.5, 0.5, 1.0], [0.02, 0.02, 0.02, 0.1, 0.1, 0.2]):
         for _ in range(3):
             improved = False
