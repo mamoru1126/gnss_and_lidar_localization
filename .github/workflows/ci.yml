@@ -113,6 +113,7 @@ jobs:
       - name: Build the Humble image
         run: docker build -f docker/awsim/Dockerfile -t gll:awsim-humble .
       - name: Record and drive with a stand-in for the AWSIM vehicle
+        timeout-minutes: 10
         run: |
           # AWSIM の Quick start demo と同じく、ループバックでマルチキャストを使えるようにする（CycloneDDS の検出のため）
           sudo ip link set lo multicast on

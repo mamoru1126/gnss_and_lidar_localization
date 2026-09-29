@@ -32,18 +32,29 @@ from autoware_auto_vehicle_msgs.msg import Engage, GearCommand, VelocityReport; 
 printf '0 0\n10 0\n20 0\n30 0\n32.59 0.34\n35 1.34\n37.07 2.93\n38.66 5\n39.66 7.41\n40 10\n40 20\n' > "$work/route.txt"
 python3 "$tools/awsim_drive.py" "$work/route.txt" --check
 
-ros2 bag record -s mcap -o "$work/bag" /awsim/ground_truth/vehicle/pose /control/command/control_cmd &
+stamp() { echo "[$(date +%T)] $*"; }
+stamp "start recording"
+timeout -s INT 240 ros2 bag record -s mcap -o "$work/bag" /awsim/ground_truth/vehicle/pose /control/command/control_cmd &
 rec=$!
-python3 "$here/fake_awsim_vehicle.py" --goal 40,20 --timeout 150 &
+stamp "start the stand-in vehicle"
+timeout 200 python3 "$here/fake_awsim_vehicle.py" --goal 40,20 --timeout 150 &
 veh=$!
 sleep 2
-timeout 170 python3 "$tools/awsim_drive.py" "$work/route.txt" --wait 3 &
+timeout 20 ros2 topic list --no-daemon || true
+stamp "start awsim_drive.py"
+timeout 180 python3 "$tools/awsim_drive.py" "$work/route.txt" --wait 3 &
 drv=$!
-wait "$veh"
-wait "$drv" || true
-kill -INT "$rec"
+rc=0
+wait "$veh" || rc=$?
+stamp "vehicle finished (exit $rc)"
+wait "$drv" || stamp "awsim_drive.py exit $?"
+kill -INT "$rec" 2>/dev/null || true
+for _ in $(seq 1 20); do kill -0 "$rec" 2>/dev/null || break; sleep 1; done
+kill -KILL "$rec" 2>/dev/null || true
 wait "$rec" || true
-ros2 bag info "$work/bag" | tee "$work/info.txt"
+stamp "recording stopped"
+test "$rc" -eq 0
+timeout 30 ros2 bag info "$work/bag" | tee "$work/info.txt"
 grep -q "Storage id:.*mcap" "$work/info.txt"
 n=$(awk '/Topic: \/awsim\/ground_truth\/vehicle\/pose/ {for (i=1;i<=NF;i++) if ($i=="Count:") print $(i+1)}' "$work/info.txt")
 echo "recorded ground truth messages: $n"
