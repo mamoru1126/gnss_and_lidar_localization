@@ -2,7 +2,7 @@
 """LiDAR の取り付け位置（base_link → 点群の frame）を、地図と照らして確かめ、合うように直す（検証計画 3.3 節）。
 
   python3 check_lidar_extrinsic.py <録った bag> <地図のタイルのフォルダ（tile_index.yaml のある所）> \\
-      [--extrinsic 0.9,0,2.0,0,0,0] [--mgrs-origin 0,0] [--scans 40]
+      [--extrinsic 0.9,0,2.04,0.9,0,88.2] [--mgrs-origin 0,0] [--scans 40] [--time-offset --turning]
 
 真値の姿勢と取り付け位置で、いくつかのスキャンを地図座標に移し、地図の点がある格子（--voxel）に入る点の割合を数える。
 最初に yaw だけを 1 周（10° ごと）調べ、そこから取り付け位置の 6 つの値を 1 つずつ動かして、割合が最も大きくなる値を探す（粗い → 細かい）。最初の値と見つけた値、
@@ -47,7 +47,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bag", type=Path)
     ap.add_argument("tiles", type=Path)
-    ap.add_argument("--extrinsic", default="0.9,0,2.0,0,0,0", help="最初の値 'x,y,z,roll,pitch,yaw'（m、deg）")
+    ap.add_argument("--extrinsic", default="0.9,0,2.04,0.9,0,88.2", help="最初の値 'x,y,z,roll,pitch,yaw'（m、deg）")
     ap.add_argument("--gt-topic", default="/awsim/ground_truth/vehicle/pose")
     ap.add_argument("--points-topic", default="/sensing/lidar/top/pointcloud_raw")
     ap.add_argument("--mgrs-origin", default="0,0", help="真値に足して地図のタイルの座標にする値 'E,N'（ふつうは 0,0）")
@@ -55,6 +55,10 @@ def main():
     ap.add_argument("--points", type=int, default=4000, help="1 スキャンから使う点の数")
     ap.add_argument("--voxel", type=float, default=0.3)
     ap.add_argument("--no-search", action="store_true", help="割合を出すだけで、値を探さない")
+    ap.add_argument("--time-offset", action="store_true",
+                    help="取り付け位置を探したあと、点群のスタンプのずれ（-150〜+150 ms）も調べる")
+    ap.add_argument("--turning", action="store_true", help="曲がっている間のスキャンを多めに選ぶ（--time-offset 向け）")
+    ap.add_argument("--stamp-offset", type=float, default=0.0, help="点群のスタンプに足す値 [s]（取り付け位置を探すとき）")
     ap.add_argument("--no-yaw-sweep", action="store_true",
                     help="最初に yaw を 1 周（10° ごと）調べるのをやめる（最初の値の yaw が分かっているとき）")
     args = ap.parse_args()
@@ -75,11 +79,30 @@ def main():
     for _t, _y, _tl, data in IO.read_messages(args.bag, {args.points_topic}):
         heads.append(IO.cloud_header(data)[0])
     ts = np.array(heads)
+    Rg = A.quat_to_rot(gt[:, 4:8])
+    gyaw = np.unwrap(np.arctan2(Rg[:, 1, 0], Rg[:, 0, 0]))
+
+    def yaw_rate(t, h=0.1):
+        return (np.interp(t + h, gt[:, 0], gyaw) - np.interp(t - h, gt[:, 0], gyaw)) / (2 * h)
+
     moving = np.interp(ts, gt[:, 0], speed) > 0.3
     cand = np.nonzero(moving & (ts > gt[0, 0]) & (ts < gt[-1, 0]))[0]
     if len(cand) == 0:
         cand = np.nonzero((ts > gt[0, 0]) & (ts < gt[-1, 0]))[0]
     pick = set(cand[np.linspace(0, len(cand) - 1, min(args.scans, len(cand))).astype(int)].tolist())
+    if args.turning:
+        turning = cand[np.abs(yaw_rate(ts[cand])) > 0.1]
+        if len(turning):
+            pick |= set(turning[np.linspace(0, len(turning) - 1, min(args.scans, len(turning))).astype(int)].tolist())
+
+    def at(dt):
+        """スキャンの時刻 + dt の真値の姿勢で、(R, p, 点) の並びにする。"""
+        out = []
+        for t, xyz in scans:
+            p = A.interp(gt[:, 0], gt[:, 1:4], np.array([t + dt]))[0] + off
+            R = A.quat_to_rot(A.quat_interp(gt[:, 0], gt[:, 4:8], np.array([t + dt])))[0]
+            out.append((R, p, xyz))
+        return out
 
     scans = []
     for k, (_t, _y, _tl, data) in enumerate(IO.read_messages(args.bag, {args.points_topic})):
@@ -91,15 +114,13 @@ def main():
         xyz = xyz[(r > 2.0) & (r < 60.0)]
         if len(xyz) > args.points:
             xyz = xyz[rng.choice(len(xyz), args.points, replace=False)]
-        p = A.interp(gt[:, 0], gt[:, 1:4], np.array([t]))[0] + off
-        R = A.quat_to_rot(A.quat_interp(gt[:, 0], gt[:, 4:8], np.array([t])))[0]
-        scans.append((R, p, xyz.astype(float)))
+        scans.append((t, xyz.astype(float)))
     print(f"スキャン {len(scans)} 個（各 {args.points} 点まで）")
 
     index = yaml.safe_load((args.tiles / "tile_index.yaml").read_text())
     tsz = float(index.get("tile_size", 20))
     need = set()
-    for _R, p, _x in scans:
+    for _R, p, _x in at(0.0):
         ix, iy = int(np.floor(p[0] / tsz)), int(np.floor(p[1] / tsz))
         need |= {(ix + a, iy + b) for a in range(-4, 5) for b in range(-4, 5)}
     pts = [read_tile(args.tiles / t["file"]) for t in index["tiles"] if (t["ix"], t["iy"]) in need]
@@ -108,7 +129,8 @@ def main():
     occ = np.unique(voxel_keys(np.vstack(pts), args.voxel))
     print(f"地図: タイル {len(pts)} 枚、格子 {len(occ)} 個（{args.voxel} m）")
 
-    s0 = score(ex0, scans, occ, args.voxel)
+    posed = at(args.stamp_offset)
+    s0 = score(ex0, posed, occ, args.voxel)
     print(f"最初の値 {np.round(ex0, 3).tolist()}: 地図の格子に入る点の割合 {s0 * 100:.1f} %")
     if args.no_search:
         return
@@ -119,7 +141,7 @@ def main():
         for yaw in np.arange(-180.0, 180.0, 10.0):
             cand_ex = ex0.copy()
             cand_ex[5] = yaw
-            s = score(cand_ex, scans, occ, args.voxel)
+            s = score(cand_ex, posed, occ, args.voxel)
             if s > best:
                 ex, best = cand_ex, s
         print(f"yaw を 1 周調べた結果: yaw {ex[5]:.0f}°、割合 {best * 100:.1f} %")
@@ -131,7 +153,7 @@ def main():
                     while True:
                         cand_ex = ex.copy()
                         cand_ex[j] += sgn * st
-                        s = score(cand_ex, scans, occ, args.voxel)
+                        s = score(cand_ex, posed, occ, args.voxel)
                         if s > best + 1e-4:
                             ex, best, improved = cand_ex, s, True
                         else:
@@ -139,6 +161,25 @@ def main():
             if not improved:
                 break
     print(f"見つけた値 {np.round(ex, 3).tolist()}: 割合 {best * 100:.1f} %")
+    if args.time_offset:
+        # 点群のスタンプのずれ: 曲がっている間のスキャンで、真値の時刻をずらして割合が最も大きくなる値を探す
+        # （前後のずれは取り付けの x と区別しにくいので、曲がっている間の向きで決まる）
+        turn = [i for i, (t, _x) in enumerate(scans) if abs(yaw_rate(t)) > 0.1]
+        if len(turn) < 5:
+            print("点群のスタンプのずれ: 曲がっているスキャンが少ないので調べない（--turning を使う）")
+        else:
+            sub = [scans[i] for i in turn]
+            res = []
+            for dt in np.arange(-0.15, 0.1501, 0.01):
+                saved, scans[:] = scans[:], sub
+                res.append((score(ex, at(dt), occ, args.voxel), dt))
+                scans[:] = saved
+            s_best, dt_best = max(res)
+            s_zero = [s for s, dt in res if abs(dt) < 1e-9][0]
+            print(f"点群のスタンプのずれ（曲がっているスキャン {len(sub)} 個）: {dt_best * 1e3:+.0f} ms で割合 {s_best * 100:.1f} %"
+                  f"（0 ms で {s_zero * 100:.1f} %）")
+            print("  " + "  ".join(f"{dt * 1e3:+.0f}:{s * 100:.1f}" for s, dt in res))
+            print(f"  → パラメータ lidar.stamp_offset: {dt_best:.3f}（awsim_to_bag.py の --lidar-stamp-offset）")
     print(f"  --lidar-extrinsic {','.join(f'{v:.3f}' for v in ex)}")
     if best < 0.6:
         print("注意: 割合が低い。地図と真値の座標系（--mgrs-origin）や、最初の値が大きく違っていないかを確かめる")

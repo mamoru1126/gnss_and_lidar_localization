@@ -78,6 +78,7 @@ class LocalizerNode : public rclcpp::Node {
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr raw_pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr lidar_pose_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr map_points_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr scan_points_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticStatus>::SharedPtr status_pub_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_pub_;
@@ -98,6 +99,7 @@ class LocalizerNode : public rclcpp::Node {
   double last_lidar_debug_t_ = -1.0;
   const gll::MatchTarget* last_published_target_ = nullptr;
   std::size_t map_points_max_ = 200000;
+  double scan_points_voxel_ = 0.2;
   // 前回位置の保存（設計書 3.11 節）
   std::string saved_pose_path_;
   double save_interval_ = 1.0;

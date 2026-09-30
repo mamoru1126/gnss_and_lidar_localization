@@ -33,12 +33,17 @@ def check(cond, msg):
 
 def main():
     bag = Path(sys.argv[1])
-    stem = bag.with_suffix("")
+    stem = bag.with_suffix("") if bag.suffix == ".mcap" else bag
+    check((stem / "metadata.yaml").exists() and len(list(stem.glob("*.mcap"))) == 1, "rosbag2 のフォルダ（metadata.yaml と .mcap）")
     msgs = {}
-    for topic, _typ, t_log, data in IO.read_messages(bag, None):
+    for topic, _typ, t_log, data in IO.read_messages(stem, None):
         msgs.setdefault(topic, []).append((t_log, data))
     counts = {k: len(v) for k, v in msgs.items()}
     print("topics:", counts)
+    meta = yaml.safe_load((stem / "metadata.yaml").read_text())["rosbag2_bagfile_information"]
+    mc = {t["topic_metadata"]["name"]: t["message_count"] for t in meta["topics_with_message_count"]}
+    check(mc == counts and meta["message_count"] == sum(counts.values())
+          and meta["relative_file_paths"] == [p.name for p in stem.glob("*.mcap")], "metadata.yaml の件数・ファイル")
     check(set(counts) == {"/sensing/imu", "/sensing/odom", "/sensing/gnss/fix", "/sensing/lidar/points", "/tf_static",
                           "/groundtruth/pose", "/initialpose"}, "topics")
     for k, v in msgs.items():
@@ -115,7 +120,7 @@ def main():
     _t, _f, xyz = IO.cloud_xyz(msgs["/sensing/lidar/points"][0][1])
     check(_f == "velodyne_top" and len(xyz) > 100, f"cloud frame {_f}, {len(xyz)} points")
     c = IO.Cdr(msgs["/tf_static"][0][1])
-    check(c.u32() == 1, "tf_static 1 transform")
+    check(c.u32() == 2, "tf_static 2 transforms（base_link → LiDAR、map → map_local）")
     _t, parent = c.header()
     child = c.string()
     p = np.array(c.f64(3))

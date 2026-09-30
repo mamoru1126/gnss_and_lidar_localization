@@ -82,6 +82,9 @@ struct LidarMatchInfo {
   double overlap = 0.0;
   double time_ms = 0.0;
   Mat3 cov_body = Mat3::Identity();
+  /// 可視化用: 照合に使った点（base_link、前処理の後）と、照合結果の 3D の姿勢（UTM。base_link → UTM）
+  std::shared_ptr<const std::vector<Vec3f>> points;
+  Eigen::Isometry3d T_utm_base = Eigen::Isometry3d::Identity();
 };
 
 class Localizer {

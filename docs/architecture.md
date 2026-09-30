@@ -416,7 +416,7 @@ classDiagram
 - `processScan` は、mutex を持って照合のモードと初期値を決め、mutex を放して位置合わせを行い、再び mutex を持って結果を適用する。モードは、地図上での初期化を待っていれば `INIT`、再位置推定の依頼があれば（または `LOST` の間の再試行の時刻なら）`RELOCALIZE`、それ以外は `TRACK`（4.2 節・4.3 節）。
 - `z_utm_` は base_link の楕円体高。GNSS を採用したとき（アンテナの楕円体高とレバーアームから）と、LiDAR を採用したとき（位置合わせの結果の z）に更新し、照合の初期値の z に使う。無ければ地図の地面の高さ + `base_link_height` を使う。
 - `checkPendingInit` は `getOutput` のたびに、地図上での初期化を `init_timeout` より長く待っていないかを確かめる。待ちすぎていれば `giveUpPendingInit` で、外部から与えた初期姿勢はそのまま使い、保存した位置は捨てて GNSS を待つ（設計書 3.11 節）。
-- `Diagnostics` は入力数・採用数・棄却理由・照合の処理時間・地図の状態（`MapTileManager::Stats`）・地図グループごとのアンカーずれ（`MismatchStats`）をまとめた値型。`LidarMatchInfo` は直近の照合結果（`~/debug/lidar_pose` の出力用）。
+- `Diagnostics` は入力数・採用数・棄却理由・照合の処理時間・地図の状態（`MapTileManager::Stats`）・地図グループごとのアンカーずれ（`MismatchStats`）をまとめた値型。`LidarMatchInfo` は直近の照合結果（`~/debug/lidar_pose`・`~/debug/scan_points` の出力用。照合に使った点と 3D の姿勢も持つ）。
 
 ### 3.3 estimation（推定）
 
@@ -1294,7 +1294,7 @@ sequenceDiagram
 | `core/test/` | 単体テストと統合シミュレーション（`sim_world.hpp` の合成環境へのレイキャストで LiDAR を模擬し、`lidar_sim.hpp` で Localizer 全体を動かす） |
 | `ros2/gll_ros2/` | `localizer_node.cpp`（`LocalizerNode`、`RosLogger`）、`conversions.cpp`（メッセージ ⇔ コアの型）、`diagnostics.cpp`（`DiagnosticStatus` の生成）、`main.cpp`、`config/localizer.yaml`、`launch/localizer.launch.py` |
 | `tools/anchor_calibrator/` | `gll_anchor_calibrator`（Phase 3） |
-| `tools/awsim/` | AWSIM での検証のスクリプト（[検証計画](./validation_awsim.md)）。走行（`awsim_drive.py`）、LiDAR の取り付け位置の確認（`check_lidar_extrinsic.py`）、ROS 2 bag への変換（`awsim_to_bag.py`）、評価（`evaluate.py`） |
+| `tools/awsim/` | AWSIM での検証のスクリプト（[検証計画](./validation_awsim.md)）。走行（`awsim_drive.py`）、LiDAR の取り付け位置の確認（`check_lidar_extrinsic.py`）、ROS 2 bag への変換（`awsim_to_bag.py`）、推定ノードでの再生と録画（`replay.sh`）、評価（`evaluate.py`） |
 | `tools/grandtour/` | 公開データセット GrandTour の読み込みと変換のスクリプト（今は使っていない） |
 | `docker/` | `Dockerfile`（`dev` / `runtime` ステージ）、`compose.yaml`（設計書 7.8 節） |
 | `.devcontainer/` | VS Code 用の設定（任意） |
@@ -1305,6 +1305,6 @@ sequenceDiagram
 | Phase | 実装したクラス |
 |---|---|
 | 1 | **common**: 全クラス（前回位置の保存を除く）。**estimation**: `IStateEstimator`、`InvEkfSe2`、`EsEkf2D`（比較用）、`StateHistory`、`MahalanobisGate`、`OutputSmoother`、`StatusMonitor`（デッドレコニング距離の監視を含む）、`Initializer`（GNSS 区間の初期化と外部の初期姿勢）、`SourceArbiter`（GNSS 部分）、`RecoveryManager`（GNSS の再アンカーと `LOST` の判定）。**measurement**: `AttitudeEstimator`、`MotionInputBuilder`、`GnssMeasurementBuilder`、`StopDetector`。**facade**: `Localizer`。**gll_ros2**: LiDAR 以外 |
-| 2 | **matching**: `IScanMatcher`、`GicpMatcher`、`ScanPreprocessor`。**map**: `MapAnchor`、maps.yaml と tile_index.yaml の読み込み、タイルファイル、`MapTileManager`、タイル化（`tileMap`）、PCD の入出力。**measurement**: `LidarMeasurementBuilder`。**estimation**: `SourceArbiter` / `RecoveryManager` の LiDAR 部分（食い違い判定、アンカーずれの記録、LiDAR の再アンカー、再位置推定）、`Initializer` の `WAIT_MAP_MATCH`。**facade**: `Localizer` の LiDAR の照合（追跡・地図上での初期化・再位置推定）。**common**: 前回位置の保存。**tools**: `tiled_pcd_map_tiler`。**gll_ros2**: PointCloud2 の入力、`~/debug/lidar_pose`・`~/debug/map_points`、地図の診断、前回位置の保存 |
+| 2 | **matching**: `IScanMatcher`、`GicpMatcher`、`ScanPreprocessor`。**map**: `MapAnchor`、maps.yaml と tile_index.yaml の読み込み、タイルファイル、`MapTileManager`、タイル化（`tileMap`）、PCD の入出力。**measurement**: `LidarMeasurementBuilder`。**estimation**: `SourceArbiter` / `RecoveryManager` の LiDAR 部分（食い違い判定、アンカーずれの記録、LiDAR の再アンカー、再位置推定）、`Initializer` の `WAIT_MAP_MATCH`。**facade**: `Localizer` の LiDAR の照合（追跡・地図上での初期化・再位置推定）。**common**: 前回位置の保存。**tools**: `tiled_pcd_map_tiler`。**gll_ros2**: PointCloud2 の入力、`~/debug/lidar_pose`・`~/debug/map_points`・`~/debug/scan_points`、地図の診断、前回位置の保存 |
 | 2 の後（v0.7） | 地図の部分（タイル、動的ロード、アンカー、maps.yaml、PCD、タイル化）と基本の型・SE(2)・測地変換・ロガーを、単体で使えるライブラリ `tiled_pcd_map` に切り出した。`MapTileManager` の出力を、差し替えられる `RegionBuilder` で作る `MapRegion` にした |
 | 3（予定） | `gll_anchor_calibrator`、実データでのパラメータ調整に合わせた修正 |

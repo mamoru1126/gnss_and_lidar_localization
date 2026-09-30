@@ -109,6 +109,7 @@ gll_localizer:
     lidar:                                # Livox Mid-360 は livox_ros_driver2 の xfer_format: 0（PointCloud2）で出す
       extrinsic_xyz: [0.0, 0.0, 0.0]      # base_link から見た LiDAR の位置 [m]
       extrinsic_rpy_deg: [0.0, 0.0, 0.0]  # base_link -> LiDAR の回転 [deg]
+      debug_points_voxel: 0.2             # ~/debug/scan_points（照合したスキャンの表示用）の間引き [m]（0 なら間引かない）
       time_field: auto                    # 点ごとの時刻のフィールド（auto / 名前 / "" で使わない）
       stamp_offset: 0.0                   # 点ごとの時刻が無いときの、header.stamp からスキャン時刻へのずれ [s]
       min_range: 1.0

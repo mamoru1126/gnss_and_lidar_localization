@@ -1020,6 +1020,7 @@ class Localizer {
 | `~/debug/raw_pose` | `geometry_msgs/PoseWithCovarianceStamped` | フィルタの生の推定値 |
 | `~/debug/lidar_pose` | `geometry_msgs/PoseWithCovarianceStamped` | スキャンマッチングの結果（UTM）と観測共分散。品質指標は diagnostics に出す |
 | `~/debug/map_points` | `sensor_msgs/PointCloud2` | 照合に使っている地図（ターゲット）。frame_id = `map_local`、ターゲットが変わったときだけ（transient local） |
+| `~/debug/scan_points` | `sensor_msgs/PointCloud2` | 照合に使ったスキャン（前処理の後、`lidar.debug_points_voxel` で間引き）を照合の結果の姿勢で置いたもの。frame_id = `map_local`、スタンプはスキャンの時刻。購読者がいるときだけ |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 1 Hz。`gll_localizer`（`~/output/status` と同じ内容）、`gll_localizer: counters`（入力・採用・棄却の数。LiDAR を含む）、`gll_localizer: map`（アクティブグループ、読み込んだタイル、照合の処理時間と品質。アンカーずれが `anchor_mismatch_warn` を超えたら WARN） |
 | TF | | **`map` → `base_link`**（odom フレームは使わない。v0.8）。可視化用に `map` → `map_local` の静的変換も出す（`map_local_origin` を指定しなければ、地図があれば最初のグループのアンカーを 100 m 単位に丸めた点）。フレーム名はパラメータ（`map_frame`、`base_frame`）で変えられる |
 
@@ -1088,6 +1089,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | | `min_range` / `max_range` | 1.0 m / 50 m | |
 | | `extrinsic_xyz` / `extrinsic_rpy_deg` | 0 | base_link から見た LiDAR |
 | | `time_field` / `stamp_offset` | auto / 0 s | 点ごとの時刻（6.1 節） |
+| | `debug_points_voxel` | 0.2 m | `~/debug/scan_points`（表示用）の間引き（0 なら間引かない） |
 | | `max_correspondence_distance` | 1.0 m | |
 | | `max_jump_xy` / `max_jump_yaw` | 1.0 m / 5 deg | |
 | | `max_iterations` / `num_threads` | 20 / 4 | GICP の反復回数の上限、並列数（OpenMP） |

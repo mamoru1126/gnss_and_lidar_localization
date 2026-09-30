@@ -6,8 +6,9 @@
 |---|---|---|
 | `plan_route.py` | どこでも（numpy だけ） | 車の今の姿勢から、lanelet2 の地図の進行方向と車線のつながりを守って経路を作る（長さを決めて乱数で、または通る点を並べて）。`--svg` で経路の図 |
 | `awsim_drive.py` | AWSIM の PC の Humble のコンテナ | 決めた経路を 6 km/h で走らせる ROS 2 ノード。`--check` なら ROS なしで経路を確かめるだけ |
-| `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す |
+| `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す。`--time-offset` で点群のスタンプのずれも求める |
 | `awsim_to_bag.py` | dev コンテナ | 変換。GNSS（NavSatFix）を真値から作り、途切れ・LiDAR の欠落・ODOM の劣化・初期姿勢の誤差を入れられる |
+| `replay.sh` | dev コンテナ | 変換した bag を推定ノードに通す（起動・再生・停止）。`--record` で推定の様子（地図・スキャン・姿勢）を bag に録る |
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
 
@@ -76,11 +77,14 @@ python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 D=data/awsim
 tiled_pcd_map_tiler -i $D/nishishinjuku_autoware_map/pointcloud_map.pcd -o $D/nsj_tiles --tile-size 20 --voxel-size 0.2
 
-# LiDAR の取り付け位置（base_link → velodyne_top）。yaw を 1 周調べてから細かく探す。最後の行の値を次の --lidar-extrinsic に使う
-python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --extrinsic 0.9,0,2.0,0,0,0
+# LiDAR の取り付け位置（base_link → velodyne_top）と、点群のスタンプのずれ。
+# 既定の最初の値は v1.3.1 の Lexus で合わせた値（0.9,0,2.04,0.9,0,88.2）なので、--no-yaw-sweep で細かく探すだけでよい。
+# 「--lidar-extrinsic」と「lidar.stamp_offset」の行の値を次の変換に使う
+python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --no-yaw-sweep --time-offset --turning
 
-# 変換（出力: v_a0.mcap、v_a0_groundtruth.csv、v_a0_params.yaml、v_a0_maps.yaml）
-python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0.mcap --lidar-extrinsic <上の値> --tiles $D/nsj_tiles
+# 変換（出力: v_a0/（rosbag2 の bag: v_a0.mcap と metadata.yaml）、v_a0_groundtruth.csv、v_a0_params.yaml、v_a0_maps.yaml）
+python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0 --lidar-extrinsic <上の値> \
+    --lidar-stamp-offset <上の値> --tiles $D/nsj_tiles
 ```
 
 `awsim_to_bag.py` の主なオプション（全部は `--help`）:
@@ -93,17 +97,36 @@ python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0.mcap --lidar-extrins
 | `--initial-pose ERR_XY,ERR_YAW_DEG` | `/initialpose` を出す（真値からこれだけずらす。向きはランダム、`--seed` で変わる） |
 | `--drop-lidar START:DUR ...` | 点群を抜く |
 | `--odom-scale`、`--odom-noise` | ODOM の縮尺の誤差と雑音 |
+| `--lidar-stamp-offset` | パラメータ `lidar.stamp_offset`（点群のスタンプのずれ） |
+| `--full-map-voxel` | 全体の地図（`/map/points`、表示用）を間引く大きさ（1.0 m。0 なら入れない） |
+| `--no-fix-lag` | IMU・車速のスタンプのずれ（真値の yaw レートと比べて求める）を直さない |
 | `--gnss-rate`、`--gnss-sigma`、`--gnss-lever` | 作る GNSS の周期（10 Hz）、水平の σ（0.02 m）、アンテナの位置（0,0,1.5） |
 | `--mgrs-origin`、`--utm-zone` | 地図座標の原点の UTM（西新宿は 300000,3900000）と帯（54） |
 
 ## 3. 推定ノードで再生して評価する（dev コンテナ）
 
 ```bash
-ros2 launch gll_ros2 localizer.launch.py params_file:=$D/out/v_a0_params.yaml use_sim_time:=true &
-ros2 bag play $D/out/v_a0.mcap --clock 100
-kill -INT %1      # 終わったらノードを止める（出力の CSV が閉じられる）
+# 推定ノードを起動して bag を再生し、終わったら止める。--record で推定の様子を bag に録る
+tools/awsim/replay.sh $D/out/v_a0 --record $D/out/v_a0_rec
 python3 tools/awsim/evaluate.py $D/out/v_a0_output.csv $D/out/v_a0_groundtruth.csv --out $D/out/v_a0.md
 ```
+
+録った bag（`v_a0_rec/`）は Foxglove などで開く。表示の frame は `map_local`（UTM の大きな座標を避けるため、走り始めの位置を
+100 m 単位に丸めた点を原点にした frame。`map → map_local` は `/tf_static` にある）。
+
+| トピック | 内容 |
+|---|---|
+| `/map/points` | 全体の地図（1 m で間引いたもの） |
+| `/gll_localizer/debug/map_points` | いま照合に使っている部分の地図（読み込んだタイル） |
+| `/gll_localizer/debug/scan_points` | いまのスキャン（前処理の後、0.2 m で間引き）を照合の結果の姿勢で置いたもの。地図に重なっていれば照合が合っている |
+| `/gll_localizer/output/pose`、`/gll_localizer/debug/raw_pose` | 推定の出力（滑らかにしたもの・フィルタそのもの） |
+| `/gll_localizer/debug/lidar_pose` | 照合の結果の姿勢 |
+| `/groundtruth/pose` | 真値 |
+| `/tf`、`/tf_static` | `map → base_link`（推定）、`base_link → velodyne_top`、`map → map_local` |
+| `/gll_localizer/output/status`、`/diagnostics` | 状態 |
+
+生の点群（`/sensing/lidar/points`）は大きいので録らない。要るときは `--raw-points` を付ける。変換した bag（`v_a0/`）も
+そのまま開ける（`/map/points` と `/tf_static` が入っている）。
 
 ## テスト
 
