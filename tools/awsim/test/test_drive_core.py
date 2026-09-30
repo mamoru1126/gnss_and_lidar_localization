@@ -41,6 +41,17 @@ class TestDrive(unittest.TestCase):
         self.assertLess(pp.v_prof.min(), 25 / 3.6 - 1)  # どこかで減速している
         self.assertLess(len(traj) * 0.05, 471 / (25 / 3.6) * 1.6)
 
+    def test_drag(self):
+        # 抵抗のある車でも、積分で 25 km/h に届き、終わりで止まる（比例だけでは 20 km/h ほどで止まっていた）
+        route = load_route(REPO / "tools" / "tile_demo" / "route_nishishinjuku.txt")[:120]
+        d = route[1] - route[0]
+        traj, dev, pp = simulate(route, route[0, 0], route[0, 1], math.atan2(d[1], d[0]), t_max=600,
+                                 speed=25 / 3.6, drag=0.2)
+        v = np.linalg.norm(np.diff(traj, axis=0), axis=1) / 0.05
+        self.assertGreater(v.max() * 3.6, 24.0)
+        self.assertLess(v.max() * 3.6, 27.0)
+        self.assertLess(np.hypot(*(traj[-1] - route[-1])), 1.0)
+
     def test_clean_route(self):
         r = clean_route(np.array([[0, 0], [5, 0], [10, 0], [9, 0.1], [10, 0], [10, 0], [15, 0]], dtype=float))
         self.assertTrue(np.allclose(r[[0, -1]], [[0, 0], [15, 0]]))

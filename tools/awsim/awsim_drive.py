@@ -35,6 +35,8 @@ def main():
     ap.add_argument("--wheelbase", type=float, default=2.79, help="ホイールベース [m]（AWSIM の Lexus RX 450h）")
     ap.add_argument("--max-distance", type=float, default=0.0, help="この距離 [m] を走ったら止まる（0 なら経路の終わりまで）")
     ap.add_argument("--gt-topic", default="/awsim/ground_truth/vehicle/pose")
+    ap.add_argument("--velocity-topic", default="/vehicle/status/velocity_status",
+                    help="車の速さ（VelocityReport）。来なければ真値の位置の差から求める")
     ap.add_argument("--print-pose", action="store_true",
                     help="車の今の姿勢を 'X,Y,YAW_DEG' で 1 行出して終わる（plan_route.py の --start に渡す）")
     ap.add_argument("--check", action="store_true",
@@ -68,7 +70,7 @@ def main():
     from rclpy.qos import DurabilityPolicy
     try:
         from autoware_control_msgs.msg import Control
-        from autoware_vehicle_msgs.msg import GearCommand
+        from autoware_vehicle_msgs.msg import GearCommand, VelocityReport
     except ImportError:
         sys.exit("autoware_msgs（autoware_control_msgs・autoware_vehicle_msgs）が無い: "
                  "docker/awsim/Dockerfile のコンテナ（tools/awsim/container.sh）で動かす")
@@ -103,7 +105,6 @@ def main():
             super().__init__("awsim_drive")
             self.pp = PurePursuit(route, wheelbase=args.wheelbase, speed=args.speed)
             self.pose = None
-            self.v = 0.0
             self.last = None
             self.t_start = None
             self.dist = 0.0
@@ -111,6 +112,11 @@ def main():
             self.finished = False
             self.create_subscription(PoseStamped, args.gt_topic, self.on_pose,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
+            # 速さは AWSIM の VelocityReport を使う（位置の差から求めると、メッセージが固まって届いたときに大きく外れる）
+            self.v_report = None  # (受け取った時刻, 速さ)
+            self.create_subscription(VelocityReport, args.velocity_topic, self.on_velocity,
+                                     QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
+            self.brake_until = None
             # AWSIM v1.3.1 の購読は RELIABLE・TRANSIENT_LOCAL・深さ 1。出す側も TRANSIENT_LOCAL でないとつながらない
             cmd_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                                  durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -118,17 +124,27 @@ def main():
             self.pub_gear = self.create_publisher(GearCommand, "/control/command/gear_cmd", cmd_qos)
             self.timer = self.create_timer(1.0 / 30.0, self.tick)
 
+        def on_velocity(self, m):
+            self.v_report = (self.get_clock().now().nanoseconds * 1e-9, float(m.longitudinal_velocity))
+
         def on_pose(self, m):
             p, q = m.pose.position, m.pose.orientation
             yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
-            t = self.get_clock().now().nanoseconds * 1e-9
+            # 位置の差の時刻は、受け取った時刻ではなくメッセージの時刻（header.stamp）で測る
+            t = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
             if self.last is not None and t > self.last[0]:
                 d = math.hypot(p.x - self.last[1], p.y - self.last[2])
-                self.v = 0.8 * self.v + 0.2 * d / (t - self.last[0])
+                self.v_pose = d / (t - self.last[0])
                 if self.started:
                     self.dist += d
             self.last = (t, p.x, p.y)
             self.pose = (p.x, p.y, yaw)
+
+        def speed(self):
+            now = self.get_clock().now().nanoseconds * 1e-9
+            if self.v_report is not None and now - self.v_report[0] < 0.5:
+                return self.v_report[1]
+            return getattr(self, "v_pose", 0.0)
 
         def send(self, steer, v_ref, acc):
             now = self.get_clock().now().to_msg()
@@ -164,14 +180,22 @@ def main():
                 self.send(0.0, 0.0, -1.0)
                 return
             self.started = True
-            steer, v_ref, acc, done = self.pp.step(*self.pose, self.v)
+            v = self.speed()
+            if self.brake_until is not None:  # 終わった後も 2 s はブレーキを出し続けてから終わる
+                self.send(0.0, 0.0, -2.0)
+                if now > self.brake_until and abs(v) < 0.05:
+                    self.finished = True
+                return
+            steer, v_ref, acc, done = self.pp.step(*self.pose, v)
             if args.max_distance > 0 and self.dist >= args.max_distance:
-                v_ref, acc, done = 0.0, -1.5, True
+                v_ref, acc, done = 0.0, -2.0, True
             self.send(steer, v_ref, acc)
-            if done and self.v < 0.05:
-                self.get_logger().info(f"finished: {self.dist:.0f} m")
-                self.send(0.0, 0.0, -1.0)
-                self.finished = True
+            if done and abs(v) < 0.05:
+                self.get_logger().info(f"finished: {self.dist:.0f} m. braking 2 s before exit")
+                self.brake_until = now + 2.0
+            if int(now) != int(now - 1.0 / 30.0):  # 1 s ごとに状態を出す
+                self.get_logger().info(f"v {v * 3.6:5.1f} km/h (target {v_ref * 3.6:5.1f}), "
+                                       f"{self.pp.remaining():5.0f} m to go")
 
     rclpy.init()
     node = Driver()

@@ -45,14 +45,15 @@ class PurePursuit:
     """経路の点を順に進む追従。今いる場所に最も近い点から始め、後戻りはしない。"""
 
     def __init__(self, route, wheelbase=2.79, speed=1.67, lookahead_min=3.0, lookahead_gain=0.6,
-                 max_steer=math.radians(35), accel_gain=0.8, max_accel=1.0, max_decel=2.0, stop_dist=5.0,
-                 max_lat_accel=1.5, brake_decel=1.0):
+                 max_steer=math.radians(35), accel_gain=0.8, max_accel=2.0, max_decel=2.5, stop_dist=5.0,
+                 max_lat_accel=1.5, brake_decel=1.0, integral_gain=0.3):
         self.path, self.s = resample(np.asarray(route, dtype=float))
         self.wb, self.v_ref = wheelbase, speed
         self.l_min, self.l_gain = lookahead_min, lookahead_gain
         self.max_steer, self.k_acc = max_steer, accel_gain
         self.max_acc, self.max_dec, self.stop_dist = max_accel, max_decel, stop_dist
         self.v_prof = self.speed_profile(max_lat_accel, brake_decel)
+        self.k_i, self.i_err = integral_gain, 0.0
         self.idx = None
 
     def curvature(self, window=4.0):
@@ -102,8 +103,8 @@ class PurePursuit:
     def remaining(self):
         return float(self.s[-1] - self.s[self.idx])
 
-    def step(self, x, y, yaw, v):
-        """(操舵角 [rad]、目標速度 [m/s]、加速度 [m/s²]、終わったか) を返す。"""
+    def step(self, x, y, yaw, v, dt=1.0 / 30.0):
+        """(操舵角 [rad]、目標速度 [m/s]、加速度 [m/s²]、終わったか) を返す。dt は呼ぶ間隔 [s]（積分に使う）。"""
         # 近くの点へ進める（前方の 30 点の中から）
         seg = self.path[self.idx: self.idx + 30]
         k = int(np.argmin(np.hypot(seg[:, 0] - x, seg[:, 1] - y)))
@@ -126,7 +127,17 @@ class PurePursuit:
         dist = max(math.hypot(dx, dy), 1e-3)
         steer = math.atan2(2.0 * self.wb * ay, dist * dist)
         steer = max(-self.max_steer, min(self.max_steer, steer))
-        acc = self.k_acc * (v_ref - v)
+        # 速度の追従: 比例 + 積分（坂や転がり抵抗で目標に届かない分を積分で補う。積分は ±2 m/s² に制限）
+        err = v_ref - v
+        acc = self.k_acc * err + self.k_i * self.i_err
+        # 積分は、巡航中（目標速度が上限のまま）で、目標の近く（2.5 m/s 以内）、加速度が上限に張り付いていないときだけ。
+        # 止まる手前では捨てる（ブレーキが残って手前で止まらないように）
+        if rem < self.stop_dist + 5.0:
+            self.i_err = 0.0
+        elif (not done and self.v_prof[self.idx] >= self.v_ref - 0.01 and abs(err) < 2.5
+              and -self.max_dec < acc < self.max_acc):
+            lim = 2.0 / max(self.k_i, 1e-6)
+            self.i_err = max(-lim, min(lim, self.i_err + err * dt))
         # 終わりの手前: 残りの距離でちょうど止まる減速（速度の追従の遅れで行き過ぎないように）
         need = v * v / (2.0 * max(rem - 0.3, 0.1))  # 残りで止まるのに要る減速度
         if not done and v > 0.1 and need > 0.8:
@@ -137,14 +148,15 @@ class PurePursuit:
         return steer, v_ref, acc, done
 
 
-def simulate(route, x, y, yaw, dt=0.05, t_max=600.0, **kw):
-    """自転車モデルで走らせる（テスト用）。(軌跡 N×2、最大の横ずれ) を返す。"""
+def simulate(route, x, y, yaw, dt=0.05, t_max=600.0, drag=0.0, **kw):
+    """自転車モデルで走らせる（テスト用）。drag は速度に比例する減速 [1/s]（抵抗で目標に届かない車の模擬）。
+    (軌跡 N×2、最大の横ずれ、PurePursuit) を返す。"""
     pp = PurePursuit(route, **kw)
     pp.start(x, y)
     v, traj = 0.0, []
     for _ in range(int(t_max / dt)):
-        steer, v_ref, acc, done = pp.step(x, y, yaw, v)
-        v = max(0.0, v + acc * dt)
+        steer, v_ref, acc, done = pp.step(x, y, yaw, v, dt)
+        v = max(0.0, v + (acc - drag * v) * dt)
         x += v * math.cos(yaw) * dt
         y += v * math.sin(yaw) * dt
         yaw += v / pp.wb * math.tan(steer) * dt

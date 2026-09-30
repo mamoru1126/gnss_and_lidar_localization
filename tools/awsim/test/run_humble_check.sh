@@ -45,7 +45,7 @@ pose="$(timeout -k 5 20 python3 "$tools/awsim_drive.py" --print-pose)"
 stamp "--print-pose: $pose"
 test "$pose" = "0.00,0.00,0.0"
 stamp "start awsim_drive.py"
-timeout -k 5 60 python3 "$tools/awsim_drive.py" "$work/route.txt" --wait 3 &
+timeout -k 5 60 python3 "$tools/awsim_drive.py" "$work/route.txt" --wait 3 --kmh 15 &
 drv=$!
 rc=0
 wait "$veh" || rc=$?
