@@ -34,7 +34,11 @@ prefix="$(ros2 pkg prefix gll_ros2 2>/dev/null)" || { echo "gll_ros2 がビル�
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 node_bin="$prefix/lib/gll_ros2/localizer_node"
 echo "推定ノード: $node_bin"
-if [ -f "$node_bin" ] && [ -n "$(find "$repo/core" "$repo/ros2" "$repo/tiled_pcd_map" -newer "$node_bin" \( -name '*.cpp' -o -name '*.hpp' \) 2>/dev/null | head -1)" ]; then
+# 比べる相手は、colcon build のたびに書かれる build/gll_ros2/colcon_build.rc（中身が変わらないとバイナリは
+# 置き換わらないので、バイナリの時刻とは比べない）
+stamp="$(dirname "$(dirname "$prefix")")/build/gll_ros2/colcon_build.rc"
+[ -f "$stamp" ] || stamp="$node_bin"
+if [ -f "$stamp" ] && [ -n "$(find "$repo/core" "$repo/ros2" "$repo/tiled_pcd_map" -newer "$stamp" \( -name '*.cpp' -o -name '*.hpp' \) 2>/dev/null | head -1)" ]; then
   echo "!!!! 注意: ソースの方が推定ノードのビルドより新しい。cd /ws && colcon build してから動かす"
 fi
 if [ -d "$repo/install" ] && [ "${prefix#"$repo"/install}" = "$prefix" ]; then

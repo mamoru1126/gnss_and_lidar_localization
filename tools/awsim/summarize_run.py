@@ -107,7 +107,7 @@ def main():
     cv = read(d / "convert.log")
     if cv:
         L += ["", "## 変換", "", "```"]
-        L += pick(cv, ["真値 ", "最初の停止", "IMU（", "車速と真値", "IMU の yaw", "時刻のずれ", "GNSS:", "全体の地図",
+        L += pick(cv, ["真値 ", "最初の停止", "IMU（", "車速と真値", "IMU の yaw", "時刻のずれ", "横向きの速さ", "GNSS:", "全体の地図",
                        "注意", "Error", "Traceback"])
         L += ["```"]
 
