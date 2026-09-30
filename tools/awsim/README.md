@@ -57,7 +57,7 @@ tools/awsim/record.sh nsj_run1
 python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 ```
 
-- 経路の決め方: まず `--length` で作り、`route.svg`（ブラウザで開く。灰 = 道路、赤 = 経路、緑 = 始点、青 = 終点）を見る。気に入らなければ `--seed` を変えるか、図の目盛りで通りたい交差点の座標を読んで `--via` に並べる。`--via` の点は近く（10 m 以内）の車線に寄せ、進行方向を守った最短の道でつなぐ。地図の端で行き止まりになる道の点を途中に置くと、そう表示して止まる。
+- 経路の決め方: まず `--length` で作り、`route.svg`（ブラウザで開く。灰 = 道路、赤 = 経路、緑 = 始点、青 = 終点）を見る。気に入らなければ `--seed` を変えるか、図の目盛りで通りたい交差点の座標を読んで `--via` に並べる。`--via` の点は近く（10 m 以内）の車線に寄せ、進行方向を守った最短の道でつなぐ。lanelet2 の地図は AWSIM の世界（3D の地面）より広いので、点群地図（同じフォルダの `pointcloud_map.pcd`）から 20 m より離れた所を通る車線と、半径 6 m より急に曲がる車線は使わない（世界の外へ出て車が落ちたことがあった）。地図の端で行き止まりになる道の点を途中に置くと、そう表示して止まる。
 - `tools/tile_demo/lanelet_route.py` はタイルのデモ用で、進行方向を見ないので、走らせる経路には使わない。
 - `awsim_drive.py` は `/control/command/control_cmd`（`autoware_control_msgs/Control`）・`gear_cmd` を、AWSIM と同じ QoS（RELIABLE・TRANSIENT_LOCAL）で出す。車が動かないときは、`requesting incompatible QoS` の警告が出ていないか、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
 - 障害物・信号・ほかの車は見ない。なので `run_awsim.sh` は既定でほかの車を出さない（AWSIM の設定ファイル `data/awsim/awsim_config.json` の `MaxVehicleCount: 0`）。`--traffic 10` のように出すと、ぶつかることがある。

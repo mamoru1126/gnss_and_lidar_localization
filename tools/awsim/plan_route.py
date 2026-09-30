@@ -108,6 +108,83 @@ def load_lanelets(osm):
     return lls
 
 
+def read_pcd_xy(path):
+    """PCD（DATA ascii / binary）の x, y だけを読む。"""
+    b = Path(path).read_bytes()
+    hdr, pos = {}, 0
+    while True:
+        end = b.index(b"\n", pos)
+        line = b[pos:end].decode("ascii", "replace").strip()
+        pos = end + 1
+        if line and not line.startswith("#"):
+            k, *v = line.split()
+            hdr[k.upper()] = v
+            if k.upper() == "DATA":
+                break
+    fields, sizes, types = hdr["FIELDS"], [int(x) for x in hdr["SIZE"]], hdr["TYPE"]
+    counts = [int(x) for x in hdr.get("COUNT", ["1"] * len(fields))]
+    n = int(hdr["POINTS"][0])
+    kind = {"F": "f", "U": "u", "I": "i"}
+    if hdr["DATA"][0] == "binary":
+        dt = np.dtype([(f"f{i}_{name}", f"<{kind[t]}{sz}", (c,) if c > 1 else ())
+                       for i, (name, sz, t, c) in enumerate(zip(fields, sizes, types, counts))])
+        a = np.frombuffer(b, dtype=dt, count=n, offset=pos)
+        ix, iy = fields.index("x"), fields.index("y")
+        return np.c_[a[f"f{ix}_x"], a[f"f{iy}_y"]].astype(float)
+    if hdr["DATA"][0] == "ascii":
+        cols = np.cumsum([0] + counts)
+        a = np.loadtxt(b[pos:].decode().splitlines(), ndmin=2)
+        return a[:, [cols[fields.index("x")], cols[fields.index("y")]]]
+    raise ValueError(f"{path}: DATA {hdr['DATA'][0]} は読めない（ascii か binary にする）")
+
+
+def mark_off_world(lls, xy, max_dist, cell=5.0):
+    """点群地図から max_dist [m] より離れた所を通る lanelet の id の集合（AWSIM の世界の外。走ると落ちる）。"""
+    lo = xy.min(axis=0) - max_dist - cell
+    shape = (np.ceil((xy.max(axis=0) + max_dist + cell - lo) / cell)).astype(int) + 1
+    occ = np.zeros(shape, dtype=bool)
+    k = np.floor((xy - lo) / cell).astype(int)
+    occ[k[:, 0], k[:, 1]] = True
+    r = int(np.ceil(max_dist / cell))
+    near = np.zeros_like(occ)
+    for dx in range(-r, r + 1):
+        for dy in range(-r, r + 1):
+            if dx * dx + dy * dy <= r * r:
+                near |= np.roll(np.roll(occ, dx, axis=0), dy, axis=1)
+    out = set()
+    for ll in lls.values():
+        k = np.floor((ll.center - lo) / cell).astype(int)
+        inside = (k[:, 0] >= 0) & (k[:, 1] >= 0) & (k[:, 0] < shape[0]) & (k[:, 1] < shape[1])
+        if not inside.all() or not near[k[:, 0], k[:, 1]].all():
+            out.add(ll.id)
+    return out
+
+
+def tight_lanelets(lls, min_radius):
+    """中心線の曲がりが、半径 min_radius [m] より急な lanelet の id（車が曲がり切れない。駐車場の出入口など）。"""
+    out = set()
+    for ll in lls.values():
+        c = ll.center
+        if len(c) < 5:
+            continue
+        h = np.unwrap(np.arctan2(*np.diff(c, axis=0).T[::-1]))
+        seg = np.linalg.norm(np.diff(c, axis=0), axis=1)
+        k = 3  # 約 3 m の幅で
+        dh = np.abs(h[k:] - h[:-k])
+        ds = np.array([seg[i:i + k].sum() for i in range(len(seg) - k)])
+        if len(dh) and np.any(dh / np.maximum(ds, 1e-3) > 1.0 / min_radius):
+            out.add(ll.id)
+    return out
+
+
+def drop_lanelets(lls, ids):
+    for i in ids:
+        lls.pop(i, None)
+    for ll in lls.values():
+        ll.succ = [s for s in ll.succ if s in lls]
+        ll.change = [c for c in ll.change if c in lls]
+
+
 def heading(p, q):
     return math.atan2(q[1] - p[1], q[0] - p[0])
 
@@ -276,12 +353,28 @@ def main():
     g.add_argument("--via", nargs="+", metavar="X,Y", help="通る点（順に）")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-lane-change", action="store_true")
+    ap.add_argument("--pcd", type=Path, default=None,
+                    help="点群地図（既定: lanelet2 の地図と同じフォルダの pointcloud_map.pcd）。これから --max-map-dist より"
+                         "離れた所を通る車線は使わない（lanelet2 の地図は AWSIM の世界より広く、外へ出ると車が落ちる）")
+    ap.add_argument("--max-map-dist", type=float, default=20.0)
+    ap.add_argument("--min-radius", type=float, default=6.0,
+                    help="これより急に曲がる車線は使わない [m]（車の最小回転半径は約 4 m）")
     ap.add_argument("-o", "--out", type=Path, required=True)
     ap.add_argument("--svg", type=Path, default=None)
     args = ap.parse_args()
     sx, sy, syaw = (float(v) for v in args.start.split(","))
     start = np.array([sx, sy])
     lls = load_lanelets(args.osm)
+    tight = tight_lanelets(lls, args.min_radius)
+    drop_lanelets(lls, tight)
+    print(f"半径 {args.min_radius:.0f} m より急に曲がる車線 {len(tight)} 本を使わない")
+    pcd = args.pcd or args.osm.with_name("pointcloud_map.pcd")
+    if pcd.exists():
+        off = mark_off_world(lls, read_pcd_xy(pcd), args.max_map_dist)
+        drop_lanelets(lls, off)
+        print(f"点群地図から {args.max_map_dist:.0f} m より離れた所を通る車線 {len(off)} 本を使わない（{pcd.name}）")
+    else:
+        print(f"注意: {pcd} が無いので、AWSIM の世界の外へ出る経路を作るかもしれない（--pcd で点群地図を指定する）")
     lane_change = not args.no_lane_change
     st = find_lanelet(lls, start, math.radians(syaw))
     if st is None:
