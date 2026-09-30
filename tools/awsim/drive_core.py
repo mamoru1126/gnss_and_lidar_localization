@@ -130,11 +130,11 @@ class PurePursuit:
         # 速度の追従: 比例 + 積分（坂や転がり抵抗で目標に届かない分を積分で補う。積分は ±2 m/s² に制限）
         err = v_ref - v
         acc = self.k_acc * err + self.k_i * self.i_err
-        # 積分は、巡航中（目標速度が上限のまま）で、目標の近く（2.5 m/s 以内）、加速度が上限に張り付いていないときだけ。
+        # 積分は、巡航中（目標速度が上限のまま）で、目標の近く（目標の 25 % 以内）、加速度が上限に張り付いていないときだけ。
         # 止まる手前では捨てる（ブレーキが残って手前で止まらないように）
         if rem < self.stop_dist + 5.0:
             self.i_err = 0.0
-        elif (not done and self.v_prof[self.idx] >= self.v_ref - 0.01 and abs(err) < 2.5
+        elif (not done and self.v_prof[self.idx] >= self.v_ref - 0.01 and abs(err) < max(0.25 * self.v_ref, 0.3)
               and -self.max_dec < acc < self.max_acc):
             lim = 2.0 / max(self.k_i, 1e-6)
             self.i_err = max(-lim, min(lim, self.i_err + err * dt))

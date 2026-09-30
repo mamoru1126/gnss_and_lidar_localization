@@ -95,7 +95,7 @@ def drive():
         if t < 5.0:
             steer, acc, done = 0.0, 0.0, False
         else:
-            steer, _vr, acc, done = pp.step(x, y, yaw, v)
+            steer, _vr, acc, done = pp.step(x, y, yaw, v, dt)
         v = max(0.0, v + acc * dt)
         wz = v / pp.wb * math.tan(steer)
         out.append((t, x, y, yaw, v, wz))
