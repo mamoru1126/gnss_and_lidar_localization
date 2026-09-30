@@ -80,8 +80,11 @@ def main():
         child = c.string()
         c.f64(7 + 36)
         v = c.f64(6)
-        od.append((t, v[0], v[5]))
+        od.append((t, v[0], v[1], v[5]))
     od = np.array(od)
+    # 横向きの速さは base_link では 0（合成では重心の横の速さを入れている）、yaw レートは真値と同じ符号
+    check(np.max(np.abs(od[:, 2])) < 0.05, f"odom lateral |v| max {np.max(np.abs(od[:, 2])):.3f}（重心の分を取り除いた）")
+    check(np.corrcoef(od[:, 3], np.interp(od[:, 0], g_t, yr))[0, 1] > 0.95, "odom yaw rate（真値と同じ符号）")
     check(frame == "odom" and child == "base_link", f"odom frames {frame} → {child}")
     check(abs(np.max(od[:, 1]) - 1.67) < 0.1, f"odom max speed {np.max(od[:, 1]):.2f}")
 

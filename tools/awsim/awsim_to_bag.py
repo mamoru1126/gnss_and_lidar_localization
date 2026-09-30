@@ -210,6 +210,15 @@ def gt_rates(gt_t, gt_p, gt_R, t):
     return vf, yr
 
 
+def gt_lateral(gt_t, gt_p, gt_R, t):
+    """真値から、時刻 t の base_link の横向きの速さ。"""
+    yaw = np.unwrap(np.arctan2(gt_R[:, 1, 0], gt_R[:, 0, 0]))
+    h = 0.1
+    d = np.stack([np.interp(t + h, gt_t, gt_p[:, k]) - np.interp(t - h, gt_t, gt_p[:, k]) for k in range(2)], axis=1)
+    y = np.interp(t, gt_t, yaw)
+    return (-np.sin(y) * d[:, 0] + np.cos(y) * d[:, 1]) / (2 * h)
+
+
 def _gain(meas, ref):
     """meas ≈ gain·ref の最小二乗の gain（ref がほとんど動かないときは 1）。"""
     ok = np.isfinite(meas) & np.isfinite(ref)
@@ -409,6 +418,24 @@ def main():
     if args.fix_lag:
         imu[:, 0] += lag_imu
         vel[:, 0] += lag_vel
+
+    # ---- 車速の横向きの速さと yaw レートを base_link のものにする
+    # AWSIM の VelocityReport は Rigidbody の重心の速さ（base_link = 後輪軸より前にある）なので、曲がると横向きに
+    # （重心の前後の位置）×（yaw レート）の速さが出る。base_link の横の速さはほぼ 0 なので、推定ノードには
+    # 横に滑っているように見える（曲がり角ごとに横にずれる）。真値と比べて、yaw レートに比例する分を取り除く。
+    # yaw レートは heading_rate（オイラー角の差分。遅れと縮尺の誤差がある）の代わりに IMU の値を使う
+    wz_imu = np.interp(vel[:, 0], imu[:, 0], gyro_b[:, 2])
+    vy_gt = gt_lateral(gt_t, gt_p, gt_R, vel[:, 0])
+    _, yr_gt = gt_rates(gt_t, gt_p, gt_R, vel[:, 0])
+    x_cm = _gain(vel[:, 2] - vy_gt, yr_gt) if np.sqrt(np.mean(yr_gt ** 2)) > 0.02 else 0.0
+    if not np.isfinite(x_cm) or abs(x_cm) < 1e-3:
+        x_cm = 0.0
+    before = float(np.sqrt(np.mean((vel[:, 2] - vy_gt) ** 2)))
+    vel[:, 2] -= x_cm * wz_imu
+    after = float(np.sqrt(np.mean((vel[:, 2] - vy_gt) ** 2)))
+    vel[:, 3] = wz_imu
+    print(f"車速の横向きの速さ: yaw レートに比例する分 {x_cm:+.3f} m ×（yaw レート）を取り除く"
+          f"（真値との差の RMS {before:.3f} → {after:.3f} m/s）。yaw レートは IMU の値にする")
 
     # ---- LiDAR の外部パラメータ
     T_bl =A.se3(A.rpy_to_rot(*np.deg2rad(ex[3:])), ex[:3])
