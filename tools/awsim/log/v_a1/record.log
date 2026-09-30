@@ -1,23 +1,24 @@
-stdin is not a terminal device. Keyboard handling disabled.[0m[INFO] [1790765032.444729846] [rosbag2_recorder]: Press SPACE for pausing/resuming[0m
-[0m[INFO] [1790765032.444739172] [rosbag2_recorder]: Event publisher thread: Started[0m
-[0m[INFO] [1790765032.447061857] [rosbag2_recorder]: Starting recording to '/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_rec'[0m
-[0m[INFO] [1790765032.447918964] [rosbag2_recorder]: Listening for topics...[0m
-[0m[INFO] [1790765032.447933852] [rosbag2_recorder]: Recording...[0m
-[0m[INFO] [1790765032.447975317] [rosbag2_recorder]: Topics discovery started.[0m
-[0m[INFO] [1790765032.994764016] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/pose'[0m
-[0m[INFO] [1790765032.999973005] [rosbag2_recorder]: Subscribed to topic '/diagnostics'[0m
-[0m[INFO] [1790765033.001281465] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/lidar_pose'[0m
-[0m[INFO] [1790765033.002448460] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/raw_pose'[0m
-[0m[INFO] [1790765033.006020347] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/map_points'[0m
-[0m[INFO] [1790765033.009150389] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/odometry'[0m
-[0m[INFO] [1790765033.009844128] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/status'[0m
-[0m[INFO] [1790765033.012600257] [rosbag2_recorder]: Subscribed to topic '/tf'[0m
-[0m[INFO] [1790765033.013107629] [rosbag2_recorder]: Subscribed to topic '/tf_static'[0m
-[0m[INFO] [1790765037.974949372] [rosbag2_recorder]: Subscribed to topic '/groundtruth/pose'[0m
-[0m[INFO] [1790765037.975571484] [rosbag2_recorder]: Subscribed to topic '/initialpose'[0m
-[0m[INFO] [1790765037.976138086] [rosbag2_recorder]: Subscribed to topic '/map/points'[0m
-[0m[INFO] [1790765340.415921093] [rosbag2_recorder]: Topics discovery stopped.[0m
-[0m[INFO] [1790765340.416265123] [rosbag2_recorder]: Pausing recording.[0m
-[0m[INFO] [1790765340.416406676] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while[0m
-[0m[INFO] [1790765340.425017643] [rosbag2_recorder]: Recording stopped[0m
-[0m[INFO] [1790765340.432953034] [rosbag2_recorder]: Event publisher thread: Exited[0m
+stdin is not a terminal device. Keyboard handling disabled.[0m[INFO] [1790766322.627039539] [rosbag2_recorder]: Press SPACE for pausing/resuming[0m
+[0m[INFO] [1790766322.627046407] [rosbag2_recorder]: Event publisher thread: Started[0m
+[0m[INFO] [1790766322.629390078] [rosbag2_recorder]: Starting recording to '/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_rec'[0m
+[0m[INFO] [1790766322.630238474] [rosbag2_recorder]: Listening for topics...[0m
+[0m[INFO] [1790766322.630251868] [rosbag2_recorder]: Recording...[0m
+[0m[INFO] [1790766322.630297043] [rosbag2_recorder]: Topics discovery started.[0m
+[0m[INFO] [1790766323.181913034] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/odometry'[0m
+[0m[INFO] [1790766323.182534211] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/pose'[0m
+[0m[INFO] [1790766323.183757618] [rosbag2_recorder]: Subscribed to topic '/diagnostics'[0m
+[0m[INFO] [1790766323.184070710] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/lidar_pose'[0m
+[0m[INFO] [1790766323.184370887] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/raw_pose'[0m
+[0m[INFO] [1790766323.185382558] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/map_points'[0m
+[0m[INFO] [1790766323.185694758] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/scan_points'[0m
+[0m[INFO] [1790766323.186987431] [rosbag2_recorder]: Subscribed to topic '/tf'[0m
+[0m[INFO] [1790766323.187393978] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/status'[0m
+[0m[INFO] [1790766323.187689962] [rosbag2_recorder]: Subscribed to topic '/tf_static'[0m
+[0m[INFO] [1790766328.159623245] [rosbag2_recorder]: Subscribed to topic '/groundtruth/pose'[0m
+[0m[INFO] [1790766328.160052294] [rosbag2_recorder]: Subscribed to topic '/initialpose'[0m
+[0m[INFO] [1790766328.160777327] [rosbag2_recorder]: Subscribed to topic '/map/points'[0m
+[0m[INFO] [1790766630.589695220] [rosbag2_recorder]: Topics discovery stopped.[0m
+[0m[INFO] [1790766630.590033298] [rosbag2_recorder]: Pausing recording.[0m
+[0m[INFO] [1790766630.590252188] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while[0m
+[0m[INFO] [1790766630.601733009] [rosbag2_recorder]: Recording stopped[0m
+[0m[INFO] [1790766630.608842051] [rosbag2_recorder]: Event publisher thread: Exited[0m
