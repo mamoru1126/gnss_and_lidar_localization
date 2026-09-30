@@ -28,6 +28,7 @@ from drive_core import PurePursuit  # noqa: E402
 G = 9.80665
 ORIGIN = np.array([81200.0, 49800.0])  # 地図座標（MGRS 54SUE の中）
 R_BASE_IMU = A.rpy_to_rot(math.pi, 0.0, math.radians(90))  # 上下逆さまで 90° 回った IMU
+X_CM = 1.4  # 重心の前後の位置（base_link から前へ）[m]
 # AWSIM v1.3.1 の velodyne_top と同じく、センサキットの上で約 90° 回っている
 T_BASE_LIDAR = A.se3(A.rpy_to_rot(0.0, math.radians(1.0), math.radians(88.0)), [0.9, 0.0, 2.0])
 ROUTE = ORIGIN + np.array([[0, 0], [40, 0], [40, 20], [0, 20], [0, 0.5]], dtype=float)
@@ -156,9 +157,11 @@ def main():
         msgs.append((int(ts[i] * 1e9), ch_imu, c.bytes()))
         c = MB.Cdr()
         c.header(int(ts[i] * 1e9), "base_link")
+        # AWSIM と同じく、重心（base_link の前 X_CM）の速さ: 曲がると横向きに X_CM × yaw レートが出る。
+        # yaw レートの符号も AWSIM と同じく逆
         c.f32(vs[i])
-        c.f32(0.0)
-        c.f32(wzs[i])
+        c.f32(X_CM * wzs[i])
+        c.f32(-wzs[i])
         msgs.append((int(ts[i] * 1e9), ch_vel, c.bytes()))
     for i in range(0, len(ts), 10):  # 10 Hz
         T_wb = A.se3(A.rot_z(yaws[i]), [xs[i], ys[i], z])

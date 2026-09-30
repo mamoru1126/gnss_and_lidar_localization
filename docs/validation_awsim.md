@@ -35,7 +35,7 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 | 車両 | Lexus RX 450h（ホイールベース 2.79 m） | 車輪型、最高 6 km/h | `awsim_drive.py` で、決めた経路を 6 km/h で走らせる（3.2 節） |
 | 真値 | `/awsim/ground_truth/vehicle/pose`（`PoseStamped`、100 Hz、base_link の姿勢、地図座標） | — | そのまま真値にする。UTM に直して CSV に書く |
 | IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**重力が逆向きに入っている**ので直して出す（9 章）。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
-| ODOM | `/vehicle/status/velocity_status`（`autoware_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。ヨーレートも twist に入れる（**符号が逆**なので直す。9 章） |
+| ODOM | `/vehicle/status/velocity_status`（`autoware_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。**重心の速さ**なので、横の速さから（重心の前後の位置）×（ヨーレート）を取り除いて base_link の速さにする。ヨーレートは IMU の値を入れる（`heading_rate` は符号が逆で遅れもある。9 章） |
 | GNSS | `/sensing/gnss/pose`（`Pose`、1 Hz） | u-blox F9P の RTK-FIX（`NavSatFix`、10 Hz） | **AWSIM の出力は使わず**、真値から `NavSatFix`（10 Hz、σ 2 cm、アンテナの位置 = base_link の上 1.5 m）を作る。途切れは時間か範囲で入れる（status = −1） |
 | LiDAR | `/sensing/lidar/top/pointcloud_raw`（`PointCloud2`、10 Hz、frame **`velodyne_top`**。VLP-16 相当） | Livox Mid-360 | 中身はそのまま出す。base_link → `velodyne_top` の位置は**地図と照らして確かめる**（3.4 節）。点ごとの時刻の列があれば `lidar.time_field: auto` で使われ、無ければデスキューしない |
 | 地図 | 西新宿の `pointcloud_map.pcd` と `lanelet2_map.osm`（MGRS 54SUE の区画の中の座標） | UTM の地図グループとアンカー | `tiled_pcd_map_tiler` でタイル化。地図座標 = UTM − (300000, 3900000)（54 帯）なので、アンカーは回転なし・縮尺なしで決まる（3.3 節） |
@@ -248,7 +248,7 @@ AWSIM の bag と同じトピック・型の小さな合成データ（壁と建
 1. **西新宿の地図のライセンス**: CC BY-NC 4.0（非営利に限る）。業務の検証に使ってよいかを確認する。使えない場合は、ライセンスの合う別の地図か、AWSIM の上で自分で作った地図（Unity のシーンの点群）を使う。
 2. **LiDAR の取り付け位置**: 3.4 節の探索で (0.9, 0, 2.04) m・roll 0.9°・yaw 88.2°（割合 72.1 %）。AWSIM の車両の設定（(0.9, 0, 2.0) m、yaw 約 88°）とほぼ合う。
 3. **IMU の重力**: AWSIM v1.3.1 の `ImuSensor` は加速度に `Physics.gravity` を**足している**ので、止まっていると下向きに g が出る（ふつうの IMU と逆）。加速度だけで向きを当てはめると 180° 回した向きになり、yaw レートの符号が逆になる（初回の V-A0 が最初の曲がり角で発散した原因）。変換は、重力の向きの両方の仮説で当てはめて角速度も合う方を採り、ふつうの比力に直して出す。IMU・車速の yaw レートと真値の比（+1 前後のはず）も表示する。
-4. **車速の yaw レート**: AWSIM v1.3.1 の `VelocityReport` の `heading_rate` は、真値と符号が逆（比 −1.16）。変換が真値と比べて検出し、直して出す（推定ノードは IMU が途切れたときだけ使う）。
+4. **車速（VelocityReport）**: 速さは Rigidbody の**重心**の速さ。曲がると横向きに（重心の前後の位置）×（yaw レート）が出て、推定ノードには base_link が横に滑っているように見える（初回の V-A1 で曲がり角ごとに横にずれ、LiDAR がゲートに落ちて LOST になった原因と見ている）。変換が真値と比べてこの分を求めて取り除く。また AWSIM v1.3.1 の `VelocityReport` の `heading_rate` は、真値と符号が逆（比 −1.16）。変換が真値と比べて検出し、直して出す（推定ノードは IMU が途切れたときだけ使う）。
 5. **IMU の加速度の雑音**: 位置の差分から作っているので雑音が大きい（向きの当てはめの加速度の残差 6.8 m/s²）。向きは角速度も合わせて当てはめるので決まるが、ピッチが −1.9° と出ている。
 6. **曲がり角での GNSS と LiDAR の食い違い**: 2 回目の V-A0 で、曲がっている間だけ GNSS の観測がゲートに落ち、再アンカー → DEGRADED を繰り返した。点群（か IMU）のスタンプのずれを疑っている（3.4 節の `--time-offset`）。V-A1（LiDAR だけ）でも確かめる。
 7. **`debug_events_path` の実装**（5.2 節。V-A1 の前に）。

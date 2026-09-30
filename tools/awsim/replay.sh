@@ -29,7 +29,17 @@ bag="${bag%.mcap}"
 params="${bag}_params.yaml"
 [ -d "$bag" ] || { echo "$bag が無い（awsim_to_bag.py の出力のフォルダを指定する）"; exit 1; }
 [ -f "$params" ] || { echo "$params が無い"; exit 1; }
-ros2 pkg prefix gll_ros2 >/dev/null || { echo "gll_ros2 がビルド・source されていない"; exit 1; }
+prefix="$(ros2 pkg prefix gll_ros2 2>/dev/null)" || { echo "gll_ros2 がビルド・source されていない"; exit 1; }
+# 古いビルドで動かしていないか: ソースの方が新しければ注意を出す（colcon build は /ws で行う）
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+node_bin="$prefix/lib/gll_ros2/localizer_node"
+echo "推定ノード: $node_bin"
+if [ -f "$node_bin" ] && [ -n "$(find "$repo/core" "$repo/ros2" "$repo/tiled_pcd_map" -newer "$node_bin" \( -name '*.cpp' -o -name '*.hpp' \) 2>/dev/null | head -1)" ]; then
+  echo "!!!! 注意: ソースの方が推定ノードのビルドより新しい。cd /ws && colcon build してから動かす"
+fi
+if [ -d "$repo/install" ] && [ "${prefix#"$repo"/install}" = "$prefix" ]; then
+  echo "!!!! 注意: $repo/install がある（リポジトリの中で colcon build した?）。使われているのは $prefix"
+fi
 
 pids=()
 stop() {  # SIGINT → 30 s 待って SIGTERM → 30 s 待って SIGKILL（CSV と録った bag は SIGINT で閉じられる）

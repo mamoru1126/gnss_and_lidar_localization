@@ -11,3 +11,6 @@ __pycache__/
 # エディタ
 .vscode/
 *.swp
+
+# colcon のログ（リポジトリの中で colcon build したとき）
+/log/
