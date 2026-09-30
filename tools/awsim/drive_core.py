@@ -109,7 +109,7 @@ class PurePursuit:
         k = int(np.argmin(np.hypot(seg[:, 0] - x, seg[:, 1] - y)))
         self.idx += k
         rem = self.remaining()
-        done = rem < 0.5
+        done = rem < 0.5 or (rem < 1.5 and v < 0.05)  # 終わりの手前で止まり切った場合も終わり
         # 目標速度: 曲がる所と終わりの手前で落とした速度（speed_profile）。止まり切らないよう、0.3 m/s は残す
         v_ref = 0.0 if done else max(float(self.v_prof[self.idx]), min(0.3, self.v_ref))
         if rem < self.stop_dist:

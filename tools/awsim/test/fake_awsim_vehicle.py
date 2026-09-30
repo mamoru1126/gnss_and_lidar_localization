@@ -72,8 +72,13 @@ def main():
             self.pub.publish(m)
             now = self.get_clock().now().nanoseconds * 1e-9
             if self.moved > 1.0 and self.v < 0.01 and math.hypot(self.x - gx, self.y - gy) < 1.0:
-                self.result = 0
-            elif now - self.t0 > args.timeout:
+                # 止まった後も 3 s は姿勢を出し続ける（awsim_drive.py が止まったことを見て終われるように）
+                self.stopped_at = getattr(self, "stopped_at", None) or now
+                if now - self.stopped_at > 3.0:
+                    self.result = 0
+            else:
+                self.stopped_at = None
+            if self.result is None and now - self.t0 > args.timeout:
                 self.result = 1
             if self.result is not None:
                 print(f"vehicle: ({self.x:.2f}, {self.y:.2f}), moved {self.moved:.1f} m, "
