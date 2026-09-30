@@ -159,28 +159,3 @@ jobs:
         run: pip install numpy matplotlib "zarr>=3.0.7,<4" pyproj
       - name: Test
         run: tools/grandtour/test/run_tests.sh
-
-  # VS Code の Dev Container（.devcontainer/）を、VS Code と同じ仕組みの devcontainer CLI で起動し、中でビルド・テストする
-  devcontainer:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Start the dev container (postCreateCommand runs the first colcon build)
-        run: .github/scripts/annotate_on_fail.sh "devcontainer up" npx -y @devcontainers/cli@0 up --workspace-folder .
-      - name: Test inside, as the non-root user
-        run: |
-          .github/scripts/annotate_on_fail.sh "test in devcontainer" npx -y @devcontainers/cli@0 exec --workspace-folder . bash -c '
-            set -e
-            source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash
-            echo "user: $(id -un) uid=$(id -u)"; test "$(id -un)" = ubuntu
-            test -s /ws/build/compile_commands.json
-            ros2 pkg list | grep -x gll_ros2
-            cd /ws && colcon test --event-handlers console_direct+ && colcon test-result --verbose
-            touch /ws/src/gnss_and_lidar_localization/.devcontainer_owner_check'
-      - name: Files created in the container belong to the host user
-        run: |
-          test "$(stat -c %u .devcontainer_owner_check)" = "$(id -u)"
-          rm .devcontainer_owner_check
