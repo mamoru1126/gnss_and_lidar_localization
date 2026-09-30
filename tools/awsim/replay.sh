@@ -57,6 +57,13 @@ if [ -n "$rec" ]; then
   # メッセージの header.stamp は bag の時刻なので、Foxglove では「header の時刻」で並べて見られる
   ros2 bag record -s mcap -o "$rec" --topics "${topics[@]}" > "${rec%/}.record.log" 2>&1 &
   pids+=($!)
+  # 録画が始まったか（bag のフォルダができるか）を確かめる。始まらなければログを見せて止める
+  for _ in $(seq 1 20); do [ -d "$rec" ] && break; kill -0 "${pids[-1]}" 2>/dev/null || break; sleep 0.5; done
+  if [ ! -d "$rec" ]; then
+    echo "!!!! 録画が始まらない（$rec ができない）。${rec%/}.record.log:"
+    cat "${rec%/}.record.log"
+    exit 1
+  fi
 fi
 
 log="${bag}_node.log"
@@ -72,7 +79,8 @@ stop "${pids[@]}"
 echo "---- node log (last lines)"
 tail -n 20 "$log"
 if [ -n "$rec" ]; then
-  echo "---- recorded: $rec"
+  echo "---- recorded: $rec（録画のログ: ${rec%/}.record.log）"
+  tail -n 5 "${rec%/}.record.log"
   if [ ! -f "$rec/metadata.yaml" ]; then
     # 録画がきれいに止まらなかったとき: 索引と metadata.yaml を作り直す
     echo "metadata.yaml が無いので作り直す（ros2 bag reindex）"
