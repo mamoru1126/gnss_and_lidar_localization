@@ -10,6 +10,7 @@
 | `awsim_to_bag.py` | dev コンテナ | 変換。GNSS（NavSatFix）を真値から作り、途切れ・LiDAR の欠落・ODOM の劣化・初期姿勢の誤差を入れられる |
 | `run_scenario.sh` | dev コンテナ | **シナリオを 1 回で通す**（取り付け位置の確認 → 変換 → 再生・録画 → 評価）。ターミナルの出力と結果を `log/<名前>/` にまとめ、`summary.md` に要約する。`--push` でコミットして push |
 | `replay.sh` | dev コンテナ | 変換した bag を推定ノードに通す（起動・再生・停止）。`--record` で推定の様子（地図・スキャン・姿勢）を bag に録る |
+| `plot_run.py` | どこでも（numpy だけ） | 真値と推定をグラフで比べる HTML（軌跡の重ね描き・誤差の拡大表示、横・縦・yaw の誤差と x・y・yaw の時間変化）。結果のフォルダを 2〜3 個渡すと推定どうしも重ねる |
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
 
@@ -120,12 +121,19 @@ tools/awsim/run_scenario.sh v_a1 --push     # v_a0（GNSS + LiDAR）/ v_a1（LiD
 | ファイル | 内容 |
 |---|---|
 | `summary.md` | 要約: 変換の確認項目、評価の表、10 秒ごとの誤差と状態、状態の移り変わり、警告の種類ごとの数 |
+| `report.html` | 真値と推定のグラフ（ブラウザで開く）。軌跡の重ね描き（誤差を ×10〜×1000 に拡大して描ける）、横・縦・yaw の誤差、x・y・yaw の真値と推定の時間変化。グラフの上にマウスを置くと、その時刻の値と軌跡の上の位置が出る |
 | `terminal.log` | ターミナルの出力すべて |
 | `extrinsic.log`、`convert.log`、`replay.log`、`node.log`、`evaluate.md` | 各段の出力 |
 | `params.yaml`、`maps.yaml`、`output.csv.gz`、`groundtruth.csv.gz` | 推定ノードのパラメータ、地図の設定、推定の出力と真値（gzip） |
 
 `--push` を付けると、このフォルダをコミットして push する（コンテナの中で push できないときは、ホストで打つコマンドを出す）。
 録った bag は大きいのでリポジトリには入れない。
+
+2 つ以上の結果を重ねて比べるとき（例: 照合の方式を変えた 2 回）:
+
+```bash
+python3 tools/awsim/plot_run.py tools/awsim/log/v_a1 tools/awsim/log/v_a1_vgicp --out compare.html
+```
 
 以下は、各段を手で動かすとき。
 

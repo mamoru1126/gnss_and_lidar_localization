@@ -70,7 +70,7 @@ finish() {
       echo "  git add tools/awsim/log/$name && git commit -m 'awsim log: $name' && git push"
     fi
   else
-    echo "結果: tools/awsim/log/$name/（summary.md）。送るときは --push を付けるか:"
+    echo "結果: tools/awsim/log/$name/（summary.md、グラフは report.html）。送るときは --push を付けるか:"
     echo "  git add tools/awsim/log/$name && git commit -m 'awsim log: $name' && git push"
   fi
   exit "$rc"
@@ -115,5 +115,7 @@ cp "${out}_params.yaml" "$logdir/params.yaml"
 cp "${out}_maps.yaml" "$logdir/maps.yaml" 2>/dev/null || true
 gzip -c "${out}_output.csv" > "$logdir/output.csv.gz"
 gzip -c "${out}_groundtruth.csv" > "$logdir/groundtruth.csv.gz"
+# 真値と推定のグラフ（ブラウザで開く）
+python3 "$here/plot_run.py" "$logdir" --title "$name" || echo "グラフを作れなかった（plot_run.py）"
 [ "$record" = 1 ] && echo "録った bag: ${out}_rec（リポジトリの data/awsim/out/${name}_rec。Foxglove で開き、frame map_local で見る）"
 finish 0
