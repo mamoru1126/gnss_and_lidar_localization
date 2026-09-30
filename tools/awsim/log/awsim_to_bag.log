@@ -1,0 +1,11 @@
+buntu@PC-20211221A020:/ws/src/gnss_and_lidar_localization$ python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0.mcap  --lidar-extrinsic 0.900,0.000,2.040,0.900,0.000,88.200  --tiles $D/nsj_tiles
+真値 17953（60 Hz）、IMU 8977、速度 8977、点群 2992（frame velodyne_top、列 ['x', 'y', 'z', 'intensity', 'channel']、27451 点）、299.2 s
+最初の停止 54.8 s → attitude.static_init_time = 3.0 s
+IMU（tamagawa/imu_link）→ base_link の向き: rpy [-179.92   -1.91 -179.67] deg、当てはめの残差 加速度 6.759 m/s²・角速度 0.0053 rad/s、重力 あり・向きが逆（AWSIM。直して出す）
+車速と真値の比: 前後 +0.999、yaw レート -1.163（yaw レートの符号が逆。直して出す）
+IMU の yaw レートと真値の比 +1.000（+1 に近いはず）
+GNSS: 2992 件（RTK-FIX 2992、外した 0）、10 Hz、σ 0.02 m
+data/awsim/out/v_a0.mcap: 29920 メッセージ
+  data/awsim/out/v_a0_groundtruth.csv
+  data/awsim/out/v_a0_maps.yaml
+  data/awsim/out/v_a0_params.yaml

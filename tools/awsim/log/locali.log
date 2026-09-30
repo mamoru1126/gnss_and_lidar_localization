@@ -1,0 +1,83 @@
+ros2 bag play $D/out/v_a0.mcap --clock 100
+[INFO] [1790758991.051775676] [rosbag2_player]: Set rate to 1
+[INFO] [1790758991.059910386] [rosbag2_player]: Adding keyboard callbacks.
+[INFO] [1790758991.059933874] [rosbag2_player]: Press SPACE for Pause/Resume
+[INFO] [1790758991.059937105] [rosbag2_player]: Press CURSOR_RIGHT for Play Next Message
+[INFO] [1790758991.059940096] [rosbag2_player]: Press CURSOR_UP for Increase Rate 10%
+[INFO] [1790758991.059943593] [rosbag2_player]: Press CURSOR_DOWN for Decrease Rate 10%
+[INFO] [1790758991.061151128] [rosbag2_player]: Playback until timestamp: -1
+[localizer_node-1] [WARN] [1790758991.329708089] [gll_localizer]: point cloud has no per-point time field: deskew is disabled
+[localizer_node-1] [INFO] [1790759046.964737285] [gll_localizer]: filter initialized by InvariantEKF
+[localizer_node-1] [INFO] [1790759046.965084090] [gll_localizer]: active map group: (none) -> awsim
+[localizer_node-1] [INFO] [1790759047.045264685] [gll_localizer]: status: INITIALIZING -> LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759047.085217848] [gll_localizer]: status: LIDAR_AIDED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759051.165128922] [gll_localizer]: re-anchored to GNSS (d2=30.6)
+[localizer_node-1] [WARN] [1790759051.864843425] [gll_localizer]: re-anchored to GNSS (d2=38.6)
+[localizer_node-1] [WARN] [1790759052.565085824] [gll_localizer]: re-anchored to GNSS (d2=37.8)
+[localizer_node-1] [INFO] [1790759052.565309420] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [WARN] [1790759053.465420042] [gll_localizer]: re-anchored to GNSS (d2=29.6)
+[localizer_node-1] [INFO] [1790759055.405093065] [gll_localizer]: status: DEGRADED -> GNSS_AIDED
+[localizer_node-1] [WARN] [1790759056.365569186] [gll_localizer]: re-anchored to GNSS (d2=50.2)
+[localizer_node-1] [INFO] [1790759056.645160462] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759061.864818215] [gll_localizer]: re-anchored to GNSS (d2=14.7)
+[localizer_node-1] [WARN] [1790759084.265126278] [gll_localizer]: re-anchored to GNSS (d2=46.5)
+[localizer_node-1] [WARN] [1790759085.065453465] [gll_localizer]: re-anchored to GNSS (d2=30.8)
+[localizer_node-1] [INFO] [1790759085.165049865] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759085.205099635] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759085.265048919] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759085.325258002] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759085.385195924] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759085.445185770] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759085.485218655] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759085.605255695] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759085.765473889] [gll_localizer]: re-anchored to GNSS (d2=32.2)
+[localizer_node-1] [INFO] [1790759085.785176160] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [WARN] [1790759086.865475319] [gll_localizer]: re-anchored to GNSS (d2=39.7)
+[localizer_node-1] [WARN] [1790759087.965150462] [gll_localizer]: re-anchored to GNSS (d2=31.8)
+[localizer_node-1] [WARN] [1790759090.965333173] [gll_localizer]: re-anchored to GNSS (d2=34.4)
+[localizer_node-1] [INFO] [1790759091.545166879] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759112.565419837] [gll_localizer]: re-anchored to GNSS (d2=19.4)
+[localizer_node-1] [WARN] [1790759113.165338137] [gll_localizer]: re-anchored to GNSS (d2=31.5)
+[localizer_node-1] [INFO] [1790759113.365044508] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759113.405164516] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759113.465151943] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759113.485067671] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759113.565035565] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [INFO] [1790759113.645066353] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759113.865155744] [gll_localizer]: re-anchored to GNSS (d2=28.0)
+[localizer_node-1] [INFO] [1790759113.885211214] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [WARN] [1790759114.364905788] [gll_localizer]: re-anchored to GNSS (d2=27.2)
+[localizer_node-1] [WARN] [1790759115.065451980] [gll_localizer]: re-anchored to GNSS (d2=47.7)
+[localizer_node-1] [WARN] [1790759116.065307403] [gll_localizer]: re-anchored to GNSS (d2=65.8)
+[localizer_node-1] [WARN] [1790759116.964995412] [gll_localizer]: re-anchored to GNSS (d2=43.5)
+[localizer_node-1] [INFO] [1790759123.965300742] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759159.364904253] [gll_localizer]: re-anchored to GNSS (d2=32.1)
+[localizer_node-1] [WARN] [1790759161.464765807] [gll_localizer]: re-anchored to GNSS (d2=16.2)
+[localizer_node-1] [WARN] [1790759168.765247910] [gll_localizer]: re-anchored to GNSS (d2=17.0)
+[localizer_node-1] [WARN] [1790759169.665354674] [gll_localizer]: re-anchored to GNSS (d2=46.3)
+[localizer_node-1] [WARN] [1790759170.365544056] [gll_localizer]: re-anchored to GNSS (d2=47.1)
+[localizer_node-1] [INFO] [1790759170.385106203] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [WARN] [1790759171.064821229] [gll_localizer]: re-anchored to GNSS (d2=58.0)
+[localizer_node-1] [WARN] [1790759171.965114924] [gll_localizer]: re-anchored to GNSS (d2=81.2)
+[localizer_node-1] [WARN] [1790759172.864973466] [gll_localizer]: re-anchored to GNSS (d2=42.0)
+[localizer_node-1] [WARN] [1790759179.965112425] [gll_localizer]: re-anchored to GNSS (d2=16.6)
+[localizer_node-1] [INFO] [1790759181.385160645] [gll_localizer]: status: DEGRADED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [WARN] [1790759181.965468007] [gll_localizer]: re-anchored to GNSS (d2=24.1)
+[localizer_node-1] [WARN] [1790759206.164950933] [gll_localizer]: re-anchored to GNSS (d2=25.5)
+[localizer_node-1] [WARN] [1790759207.064874809] [gll_localizer]: re-anchored to GNSS (d2=88.1)
+[localizer_node-1] [INFO] [1790759207.065035427] [gll_localizer]: status: GNSS_LIDAR_AIDED -> DEGRADED
+[localizer_node-1] [WARN] [1790759207.465284179] [gll_localizer]: re-anchored to GNSS (d2=21.6)
+[localizer_node-1] [WARN] [1790759208.065090492] [gll_localizer]: re-anchored to GNSS (d2=56.5)
+[localizer_node-1] [WARN] [1790759208.564877130] [gll_localizer]: re-anchored to GNSS (d2=43.9)
+[localizer_node-1] [WARN] [1790759209.264945006] [gll_localizer]: re-anchored to GNSS (d2=63.7)
+[localizer_node-1] [WARN] [1790759209.964820135] [gll_localizer]: re-anchored to GNSS (d2=50.2)
+[localizer_node-1] [INFO] [1790759209.965035876] [gll_localizer]: status: DEGRADED -> LOST
+[localizer_node-1] [WARN] [1790759210.664836821] [gll_localizer]: re-anchored to GNSS (d2=42.2)
+[localizer_node-1] [INFO] [1790759212.145128631] [gll_localizer]: status: LOST -> DEGRADED
+[localizer_node-1] [INFO] [1790759219.065076629] [gll_localizer]: status: DEGRADED -> GNSS_AIDED
+[localizer_node-1] [INFO] [1790759225.945168157] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759259.245216195] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED
+[localizer_node-1] [INFO] [1790759269.245259363] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759281.545237755] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED
+[localizer_node-1] [INFO] [1790759282.245144617] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED
+[localizer_node-1] [INFO] [1790759284.345081573] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED
