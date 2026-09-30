@@ -34,12 +34,12 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 | 動かす環境 | Ubuntu 22.04、GPU（RTX 2080 Ti 以上、ドライバ 550 推奨）。ROS 2 は AWSIM の中にある | ROS 2 Jazzy（Docker） | **記録と走行は Humble のコンテナ（`docker/awsim/Dockerfile`）で、変換と推定は dev コンテナ（Jazzy）で**行う。bag（MCAP）はリポジトリの `data/awsim/` で渡す（3 章） |
 | 車両 | Lexus RX 450h（ホイールベース 2.79 m） | 車輪型、最高 6 km/h | `awsim_drive.py` で、決めた経路を 6 km/h で走らせる（3.2 節） |
 | 真値 | `/awsim/ground_truth/vehicle/pose`（`PoseStamped`、100 Hz、base_link の姿勢、地図座標） | — | そのまま真値にする。UTM に直して CSV に書く |
-| IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
-| ODOM | `/vehicle/status/velocity_status`（`autoware_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。ヨーレートも twist に入れる |
+| IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**重力が逆向きに入っている**ので直して出す（9 章）。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
+| ODOM | `/vehicle/status/velocity_status`（`autoware_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。ヨーレートも twist に入れる（**符号が逆**なので直す。9 章） |
 | GNSS | `/sensing/gnss/pose`（`Pose`、1 Hz） | u-blox F9P の RTK-FIX（`NavSatFix`、10 Hz） | **AWSIM の出力は使わず**、真値から `NavSatFix`（10 Hz、σ 2 cm、アンテナの位置 = base_link の上 1.5 m）を作る。途切れは時間か範囲で入れる（status = −1） |
 | LiDAR | `/sensing/lidar/top/pointcloud_raw`（`PointCloud2`、10 Hz、frame **`velodyne_top`**。VLP-16 相当） | Livox Mid-360 | 中身はそのまま出す。base_link → `velodyne_top` の位置は**地図と照らして確かめる**（3.4 節）。点ごとの時刻の列があれば `lidar.time_field: auto` で使われ、無ければデスキューしない |
 | 地図 | 西新宿の `pointcloud_map.pcd` と `lanelet2_map.osm`（MGRS 54SUE の区画の中の座標） | UTM の地図グループとアンカー | `tiled_pcd_map_tiler` でタイル化。地図座標 = UTM − (300000, 3900000)（54 帯）なので、アンカーは回転なし・縮尺なしで決まる（3.3 節） |
-| 時刻 | 各トピックの `header.stamp`（AWSIM の時刻でそろっている） | — | そのまま使う。推定ノードは `use_sim_time` で bag の時刻で動かす |
+| 時刻 | 各トピックの `header.stamp`（AWSIM の時刻） | — | 推定ノードは `use_sim_time` で bag の時刻で動かす。IMU・車速のずれは変換が真値と比べて直し、点群のずれは `check_lidar_extrinsic.py --time-offset` で求めて `lidar.stamp_offset` に入れる（3.4 節） |
 | ライセンス | AWSIM は Apache 2.0。**西新宿の地図は CC BY-NC 4.0（非営利に限る）** | — | 業務の検証に使ってよいかを確認する（9 章）。地図から作ったもの（タイル、bag、経路）はリポジトリに入れない |
 
 ---
@@ -106,16 +106,16 @@ map_groups:
 
 ### 3.4 LiDAR の取り付け位置を確かめる
 
-base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定による。v1.3.1 の車両（`Lexus RX450h 2015 Sample Sensor`）では、`sensor_kit_base_link` が base_link から (0.9, 0, 2.0) m、yaw 約 −2°・pitch 約 1° にあり、`velodyne_top` はその上に置かれている。Autoware のサンプルのセンサキットでは `velodyne_top` がセンサキットに対して yaw 約 90° 回っているので、点群の座標も同じように回っている可能性がある。そこで探索は、最初に yaw を 1 周（10° ごと）調べてから細かく探す。`check_lidar_extrinsic.py` で、真値の姿勢と取り付け位置で点群を地図に重ね、地図の点がある格子に入る割合を最大にする値を探す。見つけた値と割合を記録し、割合が低い（< 60 %）ときは、地図と真値の座標系が合っているかを先に確かめる。`--time-offset --turning` を付けると、曲がっている間のスキャンで真値の時刻をずらし、点群のスタンプのずれ（→ `lidar.stamp_offset`）も求める。スタンプがずれていると、曲がっている間だけ LiDAR の向きが GNSS とずれ、GNSS の観測がゲートに落ちて再アンカーが繰り返される（初回 V-A0 の 2 回目: 曲がり角ごとに `re-anchored to GNSS`）。IMU と車速のずれは、変換が真値の yaw レートと比べて求め、スタンプを直して出す。
+base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定による。v1.3.1 の車両（`Lexus RX450h 2015 Sample Sensor`）では、`sensor_kit_base_link` が base_link から (0.9, 0, 2.0) m、yaw 約 −2°・pitch 約 1° にあり、`velodyne_top` はその上に置かれている。Autoware のサンプルのセンサキットでは `velodyne_top` がセンサキットに対して yaw 約 90° 回っているので、点群の座標も同じように回っている可能性がある。そこで探索は、最初に yaw を 1 周（10° ごと）調べてから細かく探す。`check_lidar_extrinsic.py` で、真値の姿勢と取り付け位置で点群を地図に重ね、地図の点がある格子に入る割合を最大にする値を探す。v1.3.1 の Lexus で合わせた値は (0.9, 0, 2.04) m・roll 0.9°・pitch 0°・yaw 88.2°（割合 72.1 %）で、`check_lidar_extrinsic.py`・`awsim_to_bag.py` の既定値にしてある（`--no-yaw-sweep` で細かく探すだけでよい）。見つけた値と割合を記録し、割合が低い（< 60 %）ときは、地図と真値の座標系が合っているかを先に確かめる。`--time-offset --turning` を付けると、曲がっている間のスキャンで真値の時刻をずらし、点群のスタンプのずれ（→ `lidar.stamp_offset`）も求める。スタンプがずれていると、曲がっている間だけ LiDAR の向きが GNSS とずれ、GNSS の観測がゲートに落ちて再アンカーが繰り返される（初回 V-A0 の 2 回目: 曲がり角ごとに `re-anchored to GNSS`）。IMU と車速のずれは、変換が真値の yaw レートと比べて求め、スタンプを直して出す。
 
 ### 3.5 変換
 
 ```bash
 python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0 \
-    --lidar-extrinsic <3.4 節の値> --tiles data/awsim/nsj_tiles
+    --lidar-extrinsic <3.4 節の値> --lidar-stamp-offset <3.4 節の値> --tiles data/awsim/nsj_tiles
 ```
 
-出力は rosbag2 の bag のフォルダ（`v_a0/`: `.mcap` と `metadata.yaml`。`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`、表示用の全体の地図 `/map/points`）、真値の CSV、パラメータ、`maps.yaml`。IMU の取り付けの向き（当てはめの残差、重力の向き）、IMU・車速の yaw レートと真値の比（+1 前後でなければ変換がおかしい）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
+出力は rosbag2 の bag のフォルダ（`v_a0/`: `.mcap` と `metadata.yaml`（Jazzy の形式）。`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`、表示用の全体の地図 `/map/points`（`--tiles` のとき。`--full-map-voxel` で間引く）、`/tf_static` には `base_link → velodyne_top` と表示用の `map → map_local`）、真値の CSV、パラメータ（表示用の原点 `map_local_origin` も入れる）、`maps.yaml`。IMU の取り付けの向き（当てはめの残差、重力の向き）、IMU・車速の yaw レートと真値の比（+1 前後でなければ変換がおかしい。車速の yaw レートは AWSIM v1.3.1 では符号が逆なので、変換が直して出す）、IMU・車速の時刻のずれ（直して出す。`--no-fix-lag` で直さない）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
 
 ### 3.6 推定ノードで再生して評価する
 
@@ -244,7 +244,10 @@ AWSIM の bag と同じトピック・型の小さな合成データ（壁と建
 ## 9. 未決事項
 
 1. **西新宿の地図のライセンス**: CC BY-NC 4.0（非営利に限る）。業務の検証に使ってよいかを確認する。使えない場合は、ライセンスの合う別の地図か、AWSIM の上で自分で作った地図（Unity のシーンの点群）を使う。
-2. **LiDAR の取り付け位置**: AWSIM の車両の設定から確かめる（3.4 節の探索の結果と比べる）。
+2. **LiDAR の取り付け位置**: 3.4 節の探索で (0.9, 0, 2.04) m・roll 0.9°・yaw 88.2°（割合 72.1 %）。AWSIM の車両の設定（(0.9, 0, 2.0) m、yaw 約 88°）とほぼ合う。
 3. **IMU の重力**: AWSIM v1.3.1 の `ImuSensor` は加速度に `Physics.gravity` を**足している**ので、止まっていると下向きに g が出る（ふつうの IMU と逆）。加速度だけで向きを当てはめると 180° 回した向きになり、yaw レートの符号が逆になる（初回の V-A0 が最初の曲がり角で発散した原因）。変換は、重力の向きの両方の仮説で当てはめて角速度も合う方を採り、ふつうの比力に直して出す。IMU・車速の yaw レートと真値の比（+1 前後のはず）も表示する。
-4. **`debug_events_path` の実装**（5.2 節。V-A1 の前に）。
-5. **V-A6 の作り方**（地図の一部を外したタイルの集合を作るスクリプト）。
+4. **車速の yaw レート**: AWSIM v1.3.1 の `VelocityReport` の `heading_rate` は、真値と符号が逆（比 −1.16）。変換が真値と比べて検出し、直して出す（推定ノードは IMU が途切れたときだけ使う）。
+5. **IMU の加速度の雑音**: 位置の差分から作っているので雑音が大きい（向きの当てはめの加速度の残差 6.8 m/s²）。向きは角速度も合わせて当てはめるので決まるが、ピッチが −1.9° と出ている。
+6. **曲がり角での GNSS と LiDAR の食い違い**: 2 回目の V-A0 で、曲がっている間だけ GNSS の観測がゲートに落ち、再アンカー → DEGRADED を繰り返した。点群（か IMU）のスタンプのずれを疑っている（3.4 節の `--time-offset`）。V-A1（LiDAR だけ）でも確かめる。
+7. **`debug_events_path` の実装**（5.2 節。V-A1 の前に）。
+8. **V-A6 の作り方**（地図の一部を外したタイルの集合を作るスクリプト）。

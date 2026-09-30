@@ -6,8 +6,9 @@
 |---|---|---|
 | `plan_route.py` | どこでも（numpy だけ） | 車の今の姿勢から、lanelet2 の地図の進行方向と車線のつながりを守って経路を作る（長さを決めて乱数で、または通る点を並べて）。`--svg` で経路の図 |
 | `awsim_drive.py` | AWSIM の PC の Humble のコンテナ | 決めた経路を 6 km/h で走らせる ROS 2 ノード。`--check` なら ROS なしで経路を確かめるだけ |
-| `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す |
+| `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す。`--time-offset` で点群のスタンプのずれも求める |
 | `awsim_to_bag.py` | dev コンテナ | 変換。GNSS（NavSatFix）を真値から作り、途切れ・LiDAR の欠落・ODOM の劣化・初期姿勢の誤差を入れられる |
+| `replay.sh` | dev コンテナ | 変換した bag を推定ノードに通す（起動・再生・停止）。`--record` で推定の様子（地図・スキャン・姿勢）を bag に録る |
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
 

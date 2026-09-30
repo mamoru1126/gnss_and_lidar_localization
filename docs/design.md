@@ -1089,6 +1089,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | | `min_range` / `max_range` | 1.0 m / 50 m | |
 | | `extrinsic_xyz` / `extrinsic_rpy_deg` | 0 | base_link から見た LiDAR |
 | | `time_field` / `stamp_offset` | auto / 0 s | 点ごとの時刻（6.1 節） |
+| | `debug_points_voxel` | 0.2 m | `~/debug/scan_points`（表示用）の間引き（0 なら間引かない） |
 | | `max_correspondence_distance` | 1.0 m | |
 | | `max_jump_xy` / `max_jump_yaw` | 1.0 m / 5 deg | |
 | | `max_iterations` / `num_threads` | 20 / 4 | GICP の反復回数の上限、並列数（OpenMP） |
