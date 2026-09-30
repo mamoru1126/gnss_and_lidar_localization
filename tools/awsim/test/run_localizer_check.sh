@@ -43,7 +43,8 @@ run() {  # $1 = bag（<stem>_params.yaml が隣にある）
     > "${stem}_node.log" 2>&1 &
   local pid=$!
   sleep 5
-  timeout 300 ros2 bag play "$1" --clock 100 --disable-keyboard-controls
+  # 2 倍速で再生する（推定ノードは bag の時刻で動くので、結果は変わらない。PLAY_RATE で変えられる）
+  timeout 300 ros2 bag play "$1" --clock 100 --rate "${PLAY_RATE:-2}" --disable-keyboard-controls
   sleep 2
   # 止める: SIGINT → 30 s 待って SIGTERM → 30 s 待って SIGKILL（CSV は SIGINT で閉じられる）
   local sig

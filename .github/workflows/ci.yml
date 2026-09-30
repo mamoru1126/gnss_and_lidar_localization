@@ -3,7 +3,15 @@ name: CI
 on:
   push:
     branches: ["**"]
+    # 文書だけの変更では動かさない（GitHub Pages の公開は別のワークフロー）
+    paths-ignore: ["docs/**", "**/*.md", "tools/awsim/log/**"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md", "tools/awsim/log/**"]
+
+# 同じブランチに続けて push したら、前の実行は止める（main は止めない）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # 地図のライブラリ tiled_pcd_map を単体でビルド・テストする（small_gicp なし）。インストールしたものを
@@ -53,42 +61,46 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  # Docker の dev ステージの中で colcon ビルド・テストする（ROS 2 Jazzy）
+  # Docker の dev ステージの中で colcon ビルド・テストする（ROS 2 Jazzy）。
+  # イメージの層は GitHub Actions のキャッシュに置き、Dockerfile が変わらなければ作り直さない（キャッシュはブランチごと。
+  # 新しいブランチの最初の実行は main のキャッシュを使う）。
+  # 1 つのコンテナを動かしたままにして、colcon build は最初の 1 回だけにする（後のステップはその結果を使う）
   ros2:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Build dev image
-        run: docker build -f docker/Dockerfile --target dev -t gll:dev .
+      - uses: docker/setup-buildx-action@v3
+      - name: Build dev image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: dev
+          tags: gll:dev
+          load: true
+          cache-from: type=gha,scope=dev
+          cache-to: type=gha,scope=dev,mode=max
+      - name: Start the container
+        run: |
+          docker run -d --name ws -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev sleep infinity
       - name: colcon build and test
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
                      colcon build --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release && \
                      colcon test --event-handlers console_direct+ && \
                      colcon test-result --verbose"
       - name: Tile demo rosbag (make_bag.py) plays in ROS 2
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
-                     colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
-                     source install/setup.bash && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && source install/setup.bash && \
                      src/gnss_and_lidar_localization/tools/tile_demo/test/run_bag_check.sh"
       - name: GrandTour tools work in the dev image, and their bag / map work with ROS 2 and tiled_pcd_map_tiler
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
-                     colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
-                     source install/setup.bash && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && source install/setup.bash && \
                      GLL_REQUIRE_ROS=1 src/gnss_and_lidar_localization/tools/grandtour/test/run_tests.sh"
-
       - name: AWSIM tools - converted bag works with ROS 2 and the localizer tracks the ground truth
-        timeout-minutes: 25
+        timeout-minutes: 15
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
-                     colcon build --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-                     source install/setup.bash && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && source install/setup.bash && \
                      src/gnss_and_lidar_localization/tools/awsim/test/run_localizer_check.sh"
 
   # tools/awsim（AWSIM の bag の変換・走行・評価）を、合成の bag で確かめる
@@ -110,8 +122,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - name: Build the Humble image
-        run: docker build -f docker/awsim/Dockerfile -t gll:awsim-humble .
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the Humble image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/awsim/Dockerfile
+          tags: gll:awsim-humble
+          load: true
+          cache-from: type=gha,scope=awsim-humble
+          cache-to: type=gha,scope=awsim-humble,mode=max
       - name: Record and drive with a stand-in for the AWSIM vehicle
         timeout-minutes: 10
         run: |
@@ -139,28 +159,3 @@ jobs:
         run: pip install numpy matplotlib "zarr>=3.0.7,<4" pyproj
       - name: Test
         run: tools/grandtour/test/run_tests.sh
-
-  # VS Code の Dev Container（.devcontainer/）を、VS Code と同じ仕組みの devcontainer CLI で起動し、中でビルド・テストする
-  devcontainer:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Start the dev container (postCreateCommand runs the first colcon build)
-        run: .github/scripts/annotate_on_fail.sh "devcontainer up" npx -y @devcontainers/cli@0 up --workspace-folder .
-      - name: Test inside, as the non-root user
-        run: |
-          .github/scripts/annotate_on_fail.sh "test in devcontainer" npx -y @devcontainers/cli@0 exec --workspace-folder . bash -c '
-            set -e
-            source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash
-            echo "user: $(id -un) uid=$(id -u)"; test "$(id -un)" = ubuntu
-            test -s /ws/build/compile_commands.json
-            ros2 pkg list | grep -x gll_ros2
-            cd /ws && colcon test --event-handlers console_direct+ && colcon test-result --verbose
-            touch /ws/src/gnss_and_lidar_localization/.devcontainer_owner_check'
-      - name: Files created in the container belong to the host user
-        run: |
-          test "$(stat -c %u .devcontainer_owner_check)" = "$(id -u)"
-          rm .devcontainer_owner_check

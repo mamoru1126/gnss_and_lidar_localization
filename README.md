@@ -64,7 +64,7 @@ VS Code の拡張機能 [Dev Containers](https://marketplace.visualstudio.com/it
 - rosbag や地図はリポジトリの `data/`（`.gitignore` 済み。環境変数 `GLL_DATA` がここを指す）に置く。リポジトリの外に置く場合は、`.devcontainer/devcontainer.json` の `mounts` にバインドを足し、`GLL_DATA` をそこに向ける。
 - ネットワークはホストと共有（`--network=host`）なので、ホストや同じネットワークの機器と ROS 2 のトピックをやり取りできる。`ROS_DOMAIN_ID` はホストの環境変数を引き継ぐ（無ければ 0）。
 - RViz などの GUI は X11 で出す。Linux では、ホストで `xhost +local:` を実行してからコンテナを開く。Windows は WSL2（WSLg）の中で開けば、そのまま表示できる。macOS では XQuartz などの X サーバーが別に要る。
-- CI の `devcontainer` ジョブが、同じ設定を devcontainer CLI で起動し、中でビルド・テストしている。
+- ワークフロー `Dev Container`（`.github/workflows/devcontainer.yml`）が、同じ設定を devcontainer CLI で起動し、中でビルド・テストしている（`.devcontainer/` か `docker/Dockerfile` が変わったときと、手動で動かしたとき）。
 
 コアだけなら ROS なしでもビルドできる（`libeigen3-dev libgeographiclib-dev libgtest-dev libyaml-cpp-dev` と、ソースからインストールした [small_gicp](https://github.com/koide3/small_gicp) v1.0.1 が必要。手順は [.github/workflows/ci.yml](.github/workflows/ci.yml) の core ジョブを参照）。`core/` を CMake でビルドすると、`tiled_pcd_map/`（tiled_pcd_map）も一緒にビルドされる。tiled_pcd_map だけのビルドは [tiled_pcd_map/README.md](tiled_pcd_map/README.md)。
 
