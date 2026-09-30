@@ -4,6 +4,7 @@
   source /opt/ros/humble/setup.bash
   python3 awsim_drive.py route.txt [--speed 1.67] [--wait 5] [--max-distance 0]
   python3 awsim_drive.py route.txt --check      # ROS なしで、経路を走れるかだけ確かめる
+  python3 awsim_drive.py --print-pose           # 車の今の姿勢（plan_route.py の --start に渡す）
 
 - 真値（/awsim/ground_truth/vehicle/pose）を見て、pure pursuit で経路をなぞる。障害物・信号・ほかの車は見ない。
 - 最初に --wait 秒止まったまま待つ（推定ノードの静止初期化のため）。経路の終わりで止まって、ノードも終わる。
@@ -24,16 +25,20 @@ from drive_core import PurePursuit, load_route  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("route", type=Path)
+    ap.add_argument("route", type=Path, nargs="?")
     ap.add_argument("--speed", type=float, default=1.67, help="目標速度 [m/s]（既定 6 km/h）")
     ap.add_argument("--wait", type=float, default=5.0, help="走り出す前に止まっている時間 [s]")
     ap.add_argument("--wheelbase", type=float, default=2.79, help="ホイールベース [m]（AWSIM の Lexus RX 450h）")
     ap.add_argument("--max-distance", type=float, default=0.0, help="この距離 [m] を走ったら止まる（0 なら経路の終わりまで）")
     ap.add_argument("--gt-topic", default="/awsim/ground_truth/vehicle/pose")
+    ap.add_argument("--print-pose", action="store_true",
+                    help="車の今の姿勢を 'X,Y,YAW_DEG' で 1 行出して終わる（plan_route.py の --start に渡す）")
     ap.add_argument("--check", action="store_true",
                     help="ROS を使わず、経路を自転車モデルで走らせて、長さ・時間・急な曲がり・横ずれを出すだけ")
     args = ap.parse_args()
 
+    if not args.print_pose and args.route is None:
+        ap.error("経路のファイルを指定する（--print-pose のときだけ要らない）")
     if args.check:
         import numpy as np
         from drive_core import simulate
@@ -57,8 +62,31 @@ def main():
         from autoware_auto_control_msgs.msg import AckermannControlCommand
         from autoware_auto_vehicle_msgs.msg import Engage, GearCommand
     except ImportError:
-        sys.exit("autoware_auto_msgs が無い: docker/awsim/Dockerfile のコンテナで動かすか、"
-                 "sudo apt install ros-humble-autoware-auto-control-msgs ros-humble-autoware-auto-vehicle-msgs")
+        sys.exit("autoware_auto_msgs が無い: docker/awsim/Dockerfile のコンテナで動かす"
+                 "（apt の ros-humble-autoware-auto-msgs は中身が無いので、コンテナではソースからビルドしている）")
+
+    if args.print_pose:
+        got = []
+
+        def on_pose(m):
+            p, q = m.pose.position, m.pose.orientation
+            yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+            got.append(f"{p.x:.2f},{p.y:.2f},{math.degrees(yaw):.1f}")
+
+        rclpy.init()
+        node = rclpy.create_node("awsim_print_pose")
+        node.create_subscription(PoseStamped, args.gt_topic, on_pose,
+                                 QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
+        for _ in range(100):
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if got:
+                break
+        node.destroy_node()
+        rclpy.shutdown()
+        if not got:
+            sys.exit(f"{args.gt_topic} が 10 s 来ない（AWSIM が動いているか、ros2 topic list で確かめる）")
+        print(got[0])
+        return
 
     route = load_route(args.route)
 

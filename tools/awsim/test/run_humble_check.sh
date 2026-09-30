@@ -41,6 +41,9 @@ timeout -k 5 200 python3 "$here/fake_awsim_vehicle.py" --goal 40,20 --timeout 15
 veh=$!
 sleep 2
 timeout 20 ros2 topic list --no-daemon || true
+pose="$(timeout -k 5 20 python3 "$tools/awsim_drive.py" --print-pose)"
+stamp "--print-pose: $pose"
+test "$pose" = "0.00,0.00,0.0"
 stamp "start awsim_drive.py"
 timeout -k 5 60 python3 "$tools/awsim_drive.py" "$work/route.txt" --wait 3 &
 drv=$!

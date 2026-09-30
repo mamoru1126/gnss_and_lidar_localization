@@ -1,7 +1,7 @@
 # 検証計画: AWSIM を使った自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.14。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md) / スクリプトの使い方: [tools/awsim/README.md](../tools/awsim/README.md)
-- 状態: ドラフト（v0.3。記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
+- 状態: ドラフト（v0.4。経路を、進行方向と車線のつながりを守る plan_route.py で作ることにした。v0.3: 記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
 
 本書は、自動運転シミュレータ **AWSIM**（TIER IV。Unity で動く。v1.3.1）の西新宿の地図で車を走らせて記録したデータで、本システムを検証する計画である。確かめるのは、**LiDAR による自己位置推定**（Phase 2）と、**GNSS 区間と地図区間の切り替わり**である。
 
@@ -48,7 +48,7 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 
 ```
 [AWSIM の PC（Ubuntu 22.04）: AWSIM はホストで、記録と走行は Humble のコンテナで]
-  AWSIM を起動 → 車の位置を見る → 経路を作る（lanelet_route.py）→ awsim_drive.py で走らせながら ros2 bag record
+  AWSIM を起動 → 車の姿勢を見る → 経路を作る（plan_route.py）→ awsim_drive.py で走らせながら ros2 bag record
                                                                                         │ bag（MCAP）
 [dev コンテナ（Jazzy）]                                                                  ▼
   地図: pointcloud_map.pcd → tiled_pcd_map_tiler → タイル
@@ -75,8 +75,8 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
 ### 3.2 経路を作って走らせ、記録する（AWSIM の PC）
 
 1. AWSIM を起動し、車の位置を見る: `ros2 topic echo --once /awsim/ground_truth/vehicle/pose`。
-2. **車の位置から始まる経路**を `tools/tile_demo/lanelet_route.py` で作る（最初の通過点を車の位置にし、あとは通りたい交差点などを並べる）。
-3. `python3 tools/awsim/awsim_drive.py route.txt --check` で、ROS なしで経路を走れるかを確かめる。U ターンや鋭い折り返しがあると、曲がれない場所として出るので、通過点を変えて作り直す（`tools/tile_demo/route_nishishinjuku.txt` はタイルのデモ用で、途中に U ターンがあるので、そのままでは走れない）。
+2. **車の位置から始まる経路**を `tools/awsim/plan_route.py` で作る。車の今の姿勢（`awsim_drive.py --print-pose`）から、lanelet2 の地図の進行方向と車線のつながり（successor、破線の所だけの車線変更）を守って、長さを決めて乱数で（`--length`）、または通る点を並べて（`--via`）作る。地図の端で行き止まりになる道には入らない。`--svg` の図で経路を確かめる。
+3. `python3 tools/awsim/awsim_drive.py route.txt --check` で、ROS なしで経路を走れるかを確かめる（曲がれない急な所があれば出る）。`tools/tile_demo/lanelet_route.py`・`route_nishishinjuku.txt` はタイルのデモ用で、進行方向を見ず U ターンもあるので、走らせる経路には使わない。
 4. 記録を始めてから走らせる。最初は **5 s 止まっている**（推定ノードの静止初期化のため）。
    ```bash
    ros2 bag record -s mcap -o nsj_run1 /awsim/ground_truth/vehicle/pose /sensing/imu/tamagawa/imu_raw \

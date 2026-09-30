@@ -4,6 +4,7 @@
 
 | スクリプト | 動かす場所 | 内容 |
 |---|---|---|
+| `plan_route.py` | どこでも（numpy だけ） | 車の今の姿勢から、lanelet2 の地図の進行方向と車線のつながりを守って経路を作る（長さを決めて乱数で、または通る点を並べて）。`--svg` で経路の図 |
 | `awsim_drive.py` | AWSIM の PC の Humble のコンテナ | 決めた経路を 6 km/h で走らせる ROS 2 ノード。`--check` なら ROS なしで経路を確かめるだけ |
 | `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す |
 | `awsim_to_bag.py` | dev コンテナ | 変換。GNSS（NavSatFix）を真値から作り、途切れ・LiDAR の欠落・ODOM の劣化・初期姿勢の誤差を入れられる |
@@ -30,21 +31,25 @@ docker compose -f docker/compose.yaml run --rm awsim
 ```bash
 # 真値が出ているか
 ros2 topic list | grep ground_truth
-# 車の位置（地図座標）
-ros2 topic echo --once /awsim/ground_truth/vehicle/pose
+# 車の今の姿勢（地図座標 X,Y と向き [deg]）
+START=$(python3 tools/awsim/awsim_drive.py --print-pose)
 
-# 車の位置から始まる経路を、lanelet の中心線から作る（最初の通過点 = 車の位置。M は西新宿の地図のフォルダ）
-python3 tools/tile_demo/lanelet_route.py $M/lanelet2_map.osm '[[x0, y0], [x1, y1], [x2, y2]]' > route.txt
+# 車の位置から、交通ルール（一方通行・車線のつながり）どおりに 1.5 km 走る経路を作る。M は西新宿の地図のフォルダ
+python3 tools/awsim/plan_route.py $M/lanelet2_map.osm --start $START --length 1500 --seed 0 \
+    -o /data/awsim/route.txt --svg /data/awsim/route.svg
+# 通りたい所があるなら、--length の代わりに --via X1,Y1 X2,Y2 ...（座標は route.svg の目盛りで読む）
 
 # 走れる経路かを確かめる（U ターンなど、曲がれない所があれば出る。終了コード 1）
-python3 tools/awsim/awsim_drive.py route.txt --check
+python3 tools/awsim/awsim_drive.py /data/awsim/route.txt --check
 
 # 記録を始めてから、走らせる（5 s 止まってから走り出し、経路の終わりで止まってノードも終わる）
 ros2 bag record -s mcap -o /data/awsim/nsj_run1 /awsim/ground_truth/vehicle/pose /sensing/imu/tamagawa/imu_raw \
     /vehicle/status/velocity_status /sensing/lidar/top/pointcloud_raw
-python3 tools/awsim/awsim_drive.py route.txt --wait 5      # 別の端末
+python3 tools/awsim/awsim_drive.py /data/awsim/route.txt --wait 5      # 別の端末
 ```
 
+- 経路の決め方: まず `--length` で作り、`route.svg`（ブラウザで開く。灰 = 道路、赤 = 経路、緑 = 始点、青 = 終点）を見る。気に入らなければ `--seed` を変えるか、図の目盛りで通りたい交差点の座標を読んで `--via` に並べる。`--via` の点は近く（10 m 以内）の車線に寄せ、進行方向を守った最短の道でつなぐ。地図の端で行き止まりになる道の点を途中に置くと、そう表示して止まる。
+- `tools/tile_demo/lanelet_route.py` はタイルのデモ用で、進行方向を見ないので、走らせる経路には使わない。
 - `awsim_drive.py` は `/control/command/control_cmd`・`gear_cmd`・`/vehicle/engage` を出す。車が動かないときは、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
 - 障害物・信号・ほかの車は見ない。ぶつかったら記録をやり直す。
 - `--max-distance 300` で、300 m 走ったら止める。
