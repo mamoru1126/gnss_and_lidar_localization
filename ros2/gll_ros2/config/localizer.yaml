@@ -73,6 +73,7 @@ gll_localizer:
       max_rate_yaw_deg: 2.0
       offset_error_xy: 1.0
       offset_error_yaw_deg: 5.0
+      publish_height: true                # 出力（pose・TF）の z に推定した base_link の楕円体高を入れる（地図と高さをそろえて表示するため。false なら 0）
 
     monitor:
       aid_timeout: 1.0

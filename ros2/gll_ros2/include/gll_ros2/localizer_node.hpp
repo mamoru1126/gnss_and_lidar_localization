@@ -64,6 +64,7 @@ class LocalizerNode : public rclcpp::Node {
   std::string base_frame_;
   std::string local_frame_;
   bool publish_tf_ = true;
+  bool publish_height_ = true;  ///< 出力の z に推定した base_link の楕円体高を入れる（無ければ 0）
   double other_var_ = 1e4;
   std::optional<gll::Vec2> local_origin_;  ///< map → map_local のオフセット（UTM）
 

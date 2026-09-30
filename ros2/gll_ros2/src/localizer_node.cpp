@@ -220,6 +220,7 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
   base_frame_ = declare_parameter<std::string>("base_frame", "base_link");
   local_frame_ = map_frame_ + "_local";
   publish_tf_ = declare_parameter<bool>("publish_tf", true);
+  publish_height_ = declare_parameter<bool>("output.publish_height", true);
   const double rate = declare_parameter<double>("output_rate", 50.0);
   const std::string estimator = declare_parameter<std::string>("estimator.type", "invariant_ekf");
   const auto rpy = declare_parameter<std::vector<double>>("imu.rotation_rpy_deg", {0.0, 0.0, 0.0});
@@ -401,6 +402,10 @@ void LocalizerNode::onOutputTimer() {
   pose.header.frame_id = map_frame_;
   pose.pose.pose.position.x = out->pose.x;
   pose.pose.pose.position.y = out->pose.y;
+  // z: 推定は平面（x, y, yaw）だが、表示で地図と高さがそろうように、GNSS・LiDAR から求めた base_link の楕円体高を入れる
+  // （まだ分からなければ 0。output.publish_height: false なら常に 0）
+  const double z = publish_height_ ? localizer_->baseHeight().value_or(0.0) : 0.0;
+  pose.pose.pose.position.z = z;
   pose.pose.pose.orientation = yawToQuaternion(out->pose.yaw);
   pose.pose.covariance = toCovariance6(out->cov, other_var_);
   pose_pub_->publish(pose);
@@ -427,6 +432,7 @@ void LocalizerNode::onOutputTimer() {
     t.child_frame_id = base_frame_;
     t.transform.translation.x = out->pose.x;
     t.transform.translation.y = out->pose.y;
+    t.transform.translation.z = z;
     t.transform.rotation = pose.pose.pose.orientation;
     tf_->sendTransform(t);
   }
