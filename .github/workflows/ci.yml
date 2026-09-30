@@ -3,7 +3,15 @@ name: CI
 on:
   push:
     branches: ["**"]
+    # 文書だけの変更では動かさない（GitHub Pages の公開は別のワークフロー）
+    paths-ignore: ["docs/**", "**/*.md", "tools/awsim/log/**"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md", "tools/awsim/log/**"]
+
+# 同じブランチに続けて push したら、前の実行は止める（main は止めない）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # 地図のライブラリ tiled_pcd_map を単体でビルド・テストする（small_gicp なし）。インストールしたものを
@@ -53,42 +61,45 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  # Docker の dev ステージの中で colcon ビルド・テストする（ROS 2 Jazzy）
+  # Docker の dev ステージの中で colcon ビルド・テストする（ROS 2 Jazzy）。
+  # イメージの層は GitHub Actions のキャッシュに置き、Dockerfile が変わらなければ作り直さない。
+  # 1 つのコンテナを動かしたままにして、colcon build は最初の 1 回だけにする（後のステップはその結果を使う）
   ros2:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Build dev image
-        run: docker build -f docker/Dockerfile --target dev -t gll:dev .
+      - uses: docker/setup-buildx-action@v3
+      - name: Build dev image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: dev
+          tags: gll:dev
+          load: true
+          cache-from: type=gha,scope=dev
+          cache-to: type=gha,scope=dev,mode=max
+      - name: Start the container
+        run: |
+          docker run -d --name ws -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev sleep infinity
       - name: colcon build and test
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
                      colcon build --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release && \
                      colcon test --event-handlers console_direct+ && \
                      colcon test-result --verbose"
       - name: Tile demo rosbag (make_bag.py) plays in ROS 2
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
-                     colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
-                     source install/setup.bash && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && source install/setup.bash && \
                      src/gnss_and_lidar_localization/tools/tile_demo/test/run_bag_check.sh"
       - name: GrandTour tools work in the dev image, and their bag / map work with ROS 2 and tiled_pcd_map_tiler
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
-                     colcon build --event-handlers console_direct+ --packages-select tiled_pcd_map && \
-                     source install/setup.bash && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && source install/setup.bash && \
                      GLL_REQUIRE_ROS=1 src/gnss_and_lidar_localization/tools/grandtour/test/run_tests.sh"
-
       - name: AWSIM tools - converted bag works with ROS 2 and the localizer tracks the ground truth
-        timeout-minutes: 25
+        timeout-minutes: 15
         run: |
-          docker run --rm -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" gll:dev \
-            bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && \
-                     colcon build --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-                     source install/setup.bash && \
+          docker exec ws bash -c "source /opt/ros/jazzy/setup.bash && cd /ws && source install/setup.bash && \
                      src/gnss_and_lidar_localization/tools/awsim/test/run_localizer_check.sh"
 
   # tools/awsim（AWSIM の bag の変換・走行・評価）を、合成の bag で確かめる
@@ -110,8 +121,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - name: Build the Humble image
-        run: docker build -f docker/awsim/Dockerfile -t gll:awsim-humble .
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the Humble image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/awsim/Dockerfile
+          tags: gll:awsim-humble
+          load: true
+          cache-from: type=gha,scope=awsim-humble
+          cache-to: type=gha,scope=awsim-humble,mode=max
       - name: Record and drive with a stand-in for the AWSIM vehicle
         timeout-minutes: 10
         run: |
