@@ -106,7 +106,7 @@ map_groups:
 
 ### 3.4 LiDAR の取り付け位置を確かめる
 
-base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定による。v1.3.1 の車両（`Lexus RX450h 2015 Sample Sensor`）では、`sensor_kit_base_link` が base_link から (0.9, 0, 2.0) m、yaw 約 −2°・pitch 約 1° にあり、`velodyne_top` はその上に置かれている。Autoware のサンプルのセンサキットでは `velodyne_top` がセンサキットに対して yaw 約 90° 回っているので、点群の座標も同じように回っている可能性がある。そこで探索は、最初に yaw を 1 周（10° ごと）調べてから細かく探す。`check_lidar_extrinsic.py` で、真値の姿勢と取り付け位置で点群を地図に重ね、地図の点がある格子に入る割合を最大にする値を探す。見つけた値と割合を記録し、割合が低い（< 60 %）ときは、地図と真値の座標系が合っているかを先に確かめる。
+base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定による。v1.3.1 の車両（`Lexus RX450h 2015 Sample Sensor`）では、`sensor_kit_base_link` が base_link から (0.9, 0, 2.0) m、yaw 約 −2°・pitch 約 1° にあり、`velodyne_top` はその上に置かれている。Autoware のサンプルのセンサキットでは `velodyne_top` がセンサキットに対して yaw 約 90° 回っているので、点群の座標も同じように回っている可能性がある。そこで探索は、最初に yaw を 1 周（10° ごと）調べてから細かく探す。`check_lidar_extrinsic.py` で、真値の姿勢と取り付け位置で点群を地図に重ね、地図の点がある格子に入る割合を最大にする値を探す。見つけた値と割合を記録し、割合が低い（< 60 %）ときは、地図と真値の座標系が合っているかを先に確かめる。`--time-offset --turning` を付けると、曲がっている間のスキャンで真値の時刻をずらし、点群のスタンプのずれ（→ `lidar.stamp_offset`）も求める。スタンプがずれていると、曲がっている間だけ LiDAR の向きが GNSS とずれ、GNSS の観測がゲートに落ちて再アンカーが繰り返される（初回 V-A0 の 2 回目: 曲がり角ごとに `re-anchored to GNSS`）。IMU と車速のずれは、変換が真値の yaw レートと比べて求め、スタンプを直して出す。
 
 ### 3.5 変換
 

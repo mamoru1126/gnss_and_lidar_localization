@@ -76,11 +76,14 @@ python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 D=data/awsim
 tiled_pcd_map_tiler -i $D/nishishinjuku_autoware_map/pointcloud_map.pcd -o $D/nsj_tiles --tile-size 20 --voxel-size 0.2
 
-# LiDAR の取り付け位置（base_link → velodyne_top）。yaw を 1 周調べてから細かく探す。最後の行の値を次の --lidar-extrinsic に使う
-python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --extrinsic 0.9,0,2.0,0,0,0
+# LiDAR の取り付け位置（base_link → velodyne_top）と、点群のスタンプのずれ。
+# 既定の最初の値は v1.3.1 の Lexus で合わせた値（0.9,0,2.04,0.9,0,88.2）なので、--no-yaw-sweep で細かく探すだけでよい。
+# 「--lidar-extrinsic」と「lidar.stamp_offset」の行の値を次の変換に使う
+python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --no-yaw-sweep --time-offset --turning
 
 # 変換（出力: v_a0.mcap、v_a0_groundtruth.csv、v_a0_params.yaml、v_a0_maps.yaml）
-python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0.mcap --lidar-extrinsic <上の値> --tiles $D/nsj_tiles
+python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0.mcap --lidar-extrinsic <上の値> \
+    --lidar-stamp-offset <上の値> --tiles $D/nsj_tiles
 ```
 
 `awsim_to_bag.py` の主なオプション（全部は `--help`）:
@@ -93,6 +96,8 @@ python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0.mcap --lidar-extrins
 | `--initial-pose ERR_XY,ERR_YAW_DEG` | `/initialpose` を出す（真値からこれだけずらす。向きはランダム、`--seed` で変わる） |
 | `--drop-lidar START:DUR ...` | 点群を抜く |
 | `--odom-scale`、`--odom-noise` | ODOM の縮尺の誤差と雑音 |
+| `--lidar-stamp-offset` | パラメータ `lidar.stamp_offset`（点群のスタンプのずれ） |
+| `--no-fix-lag` | IMU・車速のスタンプのずれ（真値の yaw レートと比べて求める）を直さない |
 | `--gnss-rate`、`--gnss-sigma`、`--gnss-lever` | 作る GNSS の周期（10 Hz）、水平の σ（0.02 m）、アンテナの位置（0,0,1.5） |
 | `--mgrs-origin`、`--utm-zone` | 地図座標の原点の UTM（西新宿は 300000,3900000）と帯（54） |
 

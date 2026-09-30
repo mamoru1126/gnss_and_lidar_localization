@@ -213,6 +213,21 @@ def _gain(meas, ref):
     return float(np.sum(meas[ok] * ref[ok]) / den) if den > 1e-6 else 1.0
 
 
+def estimate_lag(gt_t, gt_R, t, wz, max_lag=0.2, step=0.002):
+    """yaw レートを真値と比べて、時刻の遅れ L [s] を求める（スタンプ t の値が、真値の t + L の値に最も合う L）。
+    曲がっていない（yaw レートが小さい）ときは 0。"""
+    wz = np.asarray(wz)
+    _, yr0 = gt_rates(gt_t, np.zeros((len(gt_t), 3)), gt_R, t)
+    if np.sqrt(np.mean(yr0 ** 2)) < 0.02:
+        return 0.0
+    lags = np.arange(-max_lag, max_lag + 1e-9, step)
+    cost = []
+    for L in lags:
+        _, yr = gt_rates(gt_t, np.zeros((len(gt_t), 3)), gt_R, t + L)
+        cost.append(np.nanmean((wz - yr) ** 2))
+    return float(lags[int(np.argmin(cost))])
+
+
 def check_gain(gt_t, gt_R, t, wz):
     """IMU の（base_link での）yaw レートと真値の yaw レートの比。"""
     _, yr = gt_rates(gt_t, np.zeros((len(gt_t), 3)), gt_R, t)
@@ -258,8 +273,11 @@ def main():
     ap.add_argument("--imu-topic", default="/sensing/imu/tamagawa/imu_raw")
     ap.add_argument("--vel-topic", default="/vehicle/status/velocity_status")
     ap.add_argument("--points-topic", default="/sensing/lidar/top/pointcloud_raw")
-    ap.add_argument("--lidar-extrinsic", default="0.9,0,2.0,0,0,0",
-                    help="base_link → 点群の frame 'x,y,z,roll,pitch,yaw'（m、deg）。check_lidar_extrinsic.py で確かめる")
+    ap.add_argument("--lidar-extrinsic", default="0.9,0,2.04,0.9,0,88.2",
+                    help="base_link → 点群の frame 'x,y,z,roll,pitch,yaw'（m、deg）。check_lidar_extrinsic.py で確かめる"
+                         "（既定は AWSIM v1.3.1 の Lexus で合わせた値）")
+    ap.add_argument("--lidar-stamp-offset", type=float, default=0.0,
+                    help="パラメータ lidar.stamp_offset [s]（check_lidar_extrinsic.py --time-offset で求める）")
     ap.add_argument("--mgrs-origin", default="300000,3900000", help="地図座標の原点の UTM 'E,N'（54SUE: 300000,3900000）")
     ap.add_argument("--utm-zone", type=int, default=54)
     ap.add_argument("--alt-offset", type=float, default=0.0, help="地図の z に足して楕円体高にする値 [m]")
@@ -275,6 +293,8 @@ def main():
                     help="/initialpose を出す（真値にこの誤差を足す。地図だけでの初期化の検証）")
     ap.add_argument("--odom-scale", type=float, default=1.0)
     ap.add_argument("--odom-noise", type=float, default=0.0)
+    ap.add_argument("--no-fix-lag", dest="fix_lag", action="store_false",
+                    help="IMU と車速の時刻のずれ（真値の yaw レートと比べて求める）を直さない")
     ap.add_argument("--drop-lidar", nargs="*", default=[], metavar="START:DURATION")
     ap.add_argument("--static-init", type=float, default=0.0, help="attitude.static_init_time（0 なら最初の停止から決める）")
     ap.add_argument("--map-config", default="", help="map.config_path に入れる maps.yaml（--tiles と一緒には使わない）")
@@ -360,6 +380,15 @@ def main():
         vel[:, 3] *= -1
     if odom_sign["vx_gain"] < 0:
         vel[:, 1:3] *= -1
+
+    # ---- 時刻の遅れ（yaw レートを真値と比べる）。IMU と車速はスタンプをずらして出す（ノードに時刻のずらしのパラメータが無いため）
+    lag_imu = estimate_lag(gt_t, gt_R, imu[:, 0], gyro_b[:, 2])
+    lag_vel = estimate_lag(gt_t, gt_R, vel[:, 0], vel[:, 3])
+    print(f"時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU {lag_imu * 1e3:+.0f} ms、車速 {lag_vel * 1e3:+.0f} ms"
+          + ("（直して出す）" if args.fix_lag else "（--no-fix-lag なので直さない）"))
+    if args.fix_lag:
+        imu[:, 0] += lag_imu
+        vel[:, 0] += lag_vel
 
     # ---- LiDAR の外部パラメータ
     T_bl =A.se3(A.rpy_to_rot(*np.deg2rad(ex[3:])), ex[:3])
@@ -472,6 +501,7 @@ def main():
     prm["lidar"]["extrinsic_xyz"] = [float(x) for x in ex[:3]]
     prm["lidar"]["extrinsic_rpy_deg"] = [float(x) for x in ex[3:]]
     prm["lidar"]["base_link_height"] = 0.0
+    prm["lidar"]["stamp_offset"] = args.lidar_stamp_offset
     prm["map"]["config_path"] = args.map_config
     if args.tiles is not None:
         # 地図座標 = UTM − MGRS の原点（回転なし・縮尺なし）。アンカー点は走り始めの位置にする

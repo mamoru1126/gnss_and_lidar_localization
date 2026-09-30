@@ -77,7 +77,8 @@ def full_definition(t):
     """MCAP のスキーマ（ros2msg）: 本体の定義に、依存する型の定義を区切り線付きで続ける。"""
     s = MSGDEFS[t]
     for d in DEPS[t]:
-        s += "\n" + "=" * 80 + "\nMSG: " + d + "\n" + MSGDEFS[d]
+        # 区切りの名前は「パッケージ/型」（/msg/ を入れない。rosbag2 と同じ形。Foxglove は /msg/ 付きだと型を見つけられない）
+        s += "\n" + "=" * 80 + "\nMSG: " + d.replace("/msg/", "/") + "\n" + MSGDEFS[d]
     return s
 
 

@@ -39,6 +39,17 @@ print("extrinsic found", v, "truth", truth)
 sys.exit(1 if bad else 0)
 EOF
 
+# 点群のスタンプのずれ（合成ではずれていない → 0 ms 前後）
+tof="$(python3 "$tools/check_lidar_extrinsic.py" "$work/fake/bag" "$work/fake/tiles" --extrinsic 0.9,0,2.0,0,1,88 \
+  --no-yaw-sweep --time-offset --turning --scans 15 --points 1500)"
+echo "$tof"
+python3 - "$tof" <<'EOF'
+import re, sys
+dt = float(re.search(r"lidar\.stamp_offset: ([-0-9.]+)", sys.argv[1]).group(1))
+print("stamp offset found", dt)
+sys.exit(1 if abs(dt) > 0.015 else 0)
+EOF
+
 python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/out/fake.mcap" --lidar-extrinsic 0.9,0,2.0,0,1,88 \
   --gnss-off-time 10:5 --initial-pose 0,0 --drop-lidar 20:2
 python3 "$here/check_awsim.py" "$work/out/fake.mcap"
