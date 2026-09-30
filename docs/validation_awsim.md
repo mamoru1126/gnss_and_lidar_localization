@@ -119,6 +119,8 @@ python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0 \
 
 ### 3.6 推定ノードで再生して評価する
 
+ふだんは `tools/awsim/run_scenario.sh <シナリオ>`（3.4〜3.6 節をまとめて行い、ターミナルの出力と結果・要約を `tools/awsim/log/<名前>/` に残す。`--push` でコミットして push）を使う。手で動かす場合:
+
 ```bash
 tools/awsim/replay.sh data/awsim/out/v_a0 --record data/awsim/out/v_a0_rec   # 起動・再生・停止。出力は v_a0_output.csv
 python3 tools/awsim/evaluate.py data/awsim/out/v_a0_output.csv data/awsim/out/v_a0_groundtruth.csv --out data/awsim/out/v_a0.md

@@ -8,6 +8,7 @@
 | `awsim_drive.py` | AWSIM の PC の Humble のコンテナ | 決めた経路を 6 km/h で走らせる ROS 2 ノード。`--check` なら ROS なしで経路を確かめるだけ |
 | `check_lidar_extrinsic.py` | dev コンテナ | LiDAR の取り付け位置を、地図のタイルと照らして確かめ、合うように直す。`--time-offset` で点群のスタンプのずれも求める |
 | `awsim_to_bag.py` | dev コンテナ | 変換。GNSS（NavSatFix）を真値から作り、途切れ・LiDAR の欠落・ODOM の劣化・初期姿勢の誤差を入れられる |
+| `run_scenario.sh` | dev コンテナ | **シナリオを 1 回で通す**（取り付け位置の確認 → 変換 → 再生・録画 → 評価）。ターミナルの出力と結果を `log/<名前>/` にまとめ、`summary.md` に要約する。`--push` でコミットして push |
 | `replay.sh` | dev コンテナ | 変換した bag を推定ノードに通す（起動・再生・停止）。`--record` で推定の様子（地図・スキャン・姿勢）を bag に録る |
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
@@ -103,7 +104,32 @@ python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0 --lidar-extrinsic <�
 | `--gnss-rate`、`--gnss-sigma`、`--gnss-lever` | 作る GNSS の周期（10 Hz）、水平の σ（0.02 m）、アンテナの位置（0,0,1.5） |
 | `--mgrs-origin`、`--utm-zone` | 地図座標の原点の UTM（西新宿は 300000,3900000）と帯（54） |
 
-## 3. 推定ノードで再生して評価する（dev コンテナ）
+## 3. シナリオを 1 回で通す（dev コンテナ）
+
+```bash
+tools/awsim/run_scenario.sh v_a1 --push     # v_a0（GNSS + LiDAR）/ v_a1（LiDAR だけ）/ v_a2（地図の上で初期化。--seed N）
+```
+
+1. LiDAR の取り付け位置と点群のスタンプのずれを求める（初回だけ。`data/awsim/out/<録った bag>_lidar_calib.env` に覚える。`--calib` で求め直す）
+2. 変換（シナリオのオプション。`--` の後ろに書いたものも足す）
+3. 推定ノードで再生し、推定の様子を `data/awsim/out/<名前>_rec` に録る（`--no-record` で録らない）
+4. 評価
+
+ターミナルの出力と結果は `tools/awsim/log/<名前>/` に残る（前の結果は消して作り直す）:
+
+| ファイル | 内容 |
+|---|---|
+| `summary.md` | 要約: 変換の確認項目、評価の表、10 秒ごとの誤差と状態、状態の移り変わり、警告の種類ごとの数 |
+| `terminal.log` | ターミナルの出力すべて |
+| `extrinsic.log`、`convert.log`、`replay.log`、`node.log`、`evaluate.md` | 各段の出力 |
+| `params.yaml`、`maps.yaml`、`output.csv.gz`、`groundtruth.csv.gz` | 推定ノードのパラメータ、地図の設定、推定の出力と真値（gzip） |
+
+`--push` を付けると、このフォルダをコミットして push する（コンテナの中で push できないときは、ホストで打つコマンドを出す）。
+録った bag は大きいのでリポジトリには入れない。
+
+以下は、各段を手で動かすとき。
+
+## 3.1 推定ノードで再生して評価する（手で動かすとき）
 
 ```bash
 # 推定ノードを起動して bag を再生し、終わったら止める。--record で推定の様子を bag に録る
