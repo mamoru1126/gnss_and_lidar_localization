@@ -115,7 +115,7 @@ python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0.mcap
     --lidar-extrinsic <3.4 節の値> --tiles data/awsim/nsj_tiles
 ```
 
-出力は bag（`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`）、真値の CSV、パラメータ、`maps.yaml`。IMU の取り付けの向き（当てはめの残差）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
+出力は bag（`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`）、真値の CSV、パラメータ、`maps.yaml`。IMU の取り付けの向き（当てはめの残差、重力の向き）、IMU・車速の yaw レートと真値の比（+1 前後でなければ変換がおかしい）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
 
 ### 3.6 推定ノードで再生して評価する
 
@@ -247,6 +247,6 @@ AWSIM の bag と同じトピック・型の小さな合成データ（壁と建
 
 1. **西新宿の地図のライセンス**: CC BY-NC 4.0（非営利に限る）。業務の検証に使ってよいかを確認する。使えない場合は、ライセンスの合う別の地図か、AWSIM の上で自分で作った地図（Unity のシーンの点群）を使う。
 2. **LiDAR の取り付け位置**: AWSIM の車両の設定から確かめる（3.4 節の探索の結果と比べる）。
-3. **IMU の重力**: AWSIM の IMU の加速度に重力が入っているか。変換はどちらでも扱える（入っていなければ足す）が、記録を見て確かめる。
+3. **IMU の重力**: AWSIM v1.3.1 の `ImuSensor` は加速度に `Physics.gravity` を**足している**ので、止まっていると下向きに g が出る（ふつうの IMU と逆）。加速度だけで向きを当てはめると 180° 回した向きになり、yaw レートの符号が逆になる（初回の V-A0 が最初の曲がり角で発散した原因）。変換は、重力の向きの両方の仮説で当てはめて角速度も合う方を採り、ふつうの比力に直して出す。IMU・車速の yaw レートと真値の比（+1 前後のはず）も表示する。
 4. **`debug_events_path` の実装**（5.2 節。V-A1 の前に）。
 5. **V-A6 の作り方**（地図の一部を外したタイルの集合を作るスクリプト）。

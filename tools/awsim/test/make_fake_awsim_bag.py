@@ -9,7 +9,7 @@
 <出力>/route.txt       走った経路（「x y」の行）
 場所は、壁で囲んだ 70 m × 50 m に、中の建物、柱と箱（地図上の初期化で位置が一つに決まるように不規則に置く）。
 車は西新宿の地図座標のあたりで、最初に 5 s 止まり、40 m × 20 m の四角を 6 km/h で 1 周する（drive_core の追従で走らせる）。
-IMU と LiDAR の取り付けは、下の R_BASE_IMU と T_BASE_LIDAR（真値）。
+IMU と LiDAR の取り付けは、下の R_BASE_IMU と T_BASE_LIDAR（真値）。IMU の重力は AWSIM と同じく逆向き。
 """
 import math
 import struct
@@ -135,7 +135,8 @@ def main():
         msgs.append((int(ts[i] * 1e9), ch_gt, c.bytes()))
     acc_long = np.gradient(vs, 0.01)
     for i in range(0, len(ts), 3):  # 約 33 Hz
-        f_base = np.array([acc_long[i], vs[i] * wzs[i], G])
+        # AWSIM v1.3.1 の ImuSensor と同じく、重力は逆向き（止まっていると下向きに g。加速度に Physics.gravity を足している）
+        f_base = np.array([acc_long[i], vs[i] * wzs[i], -G])
         w_base = np.array([0.0, 0.0, wzs[i]])
         f_imu, w_imu = R_BASE_IMU.T @ f_base, R_BASE_IMU.T @ w_base
         c = MB.Cdr()
