@@ -1,0 +1,7 @@
+ubuntu@PC-20211221A020:/ws/src/gnss_and_lidar_localization$ python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --extrinsic 0.9,0,2.0,0,0,0
+スキャン 40 個（各 4000 点まで）
+地図: タイル 575 枚、格子 2124330 個（0.3 m）
+最初の値 [0.9, 0.0, 2.0, 0.0, 0.0, 0.0]: 地図の格子に入る点の割合 14.9 %
+yaw を 1 周調べた結果: yaw 90°、割合 35.7 %
+見つけた値 [0.9, 0.0, 2.04, 0.9, 0.0, 88.2]: 割合 72.1 %
+  --lidar-extrinsic 0.900,0.000,2.040,0.900,0.000,88.200
