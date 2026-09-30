@@ -62,7 +62,8 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   # Docker の dev ステージの中で colcon ビルド・テストする（ROS 2 Jazzy）。
-  # イメージの層は GitHub Actions のキャッシュに置き、Dockerfile が変わらなければ作り直さない。
+  # イメージの層は GitHub Actions のキャッシュに置き、Dockerfile が変わらなければ作り直さない（キャッシュはブランチごと。
+  # 新しいブランチの最初の実行は main のキャッシュを使う）。
   # 1 つのコンテナを動かしたままにして、colcon build は最初の 1 回だけにする（後のステップはその結果を使う）
   ros2:
     runs-on: ubuntu-24.04
