@@ -3,9 +3,9 @@
 IMU（tamagawa/imu_link）→ base_link の向き: rpy [-179.92   -1.91 -179.67] deg、当てはめの残差 加速度 6.759 m/s²・角速度 0.0053 rad/s、重力 あり・向きが逆（AWSIM。直して出す）
 車速と真値の比: 前後 +0.999、yaw レート -1.163（yaw レートの符号が逆。直して出す）
 IMU の yaw レートと真値の比 +1.000（+1 に近いはず）
-時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU -18 ms、車速 +176 ms（直して出す）
+時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU -18 ms、車速 -68 ms（yaw レートで見ると +176 ms）（直して出す）
 全体の地図 /map/points: 460663 点（1.0 m で間引き、frame map_local）
-/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1/（rosbag2 の bag: v_a1.mcap、metadata.yaml）: 26925 メッセージ
+/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1/（rosbag2 の bag: v_a1.mcap、metadata.yaml）: 26928 メッセージ
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_groundtruth.csv
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_maps.yaml
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_params.yaml
