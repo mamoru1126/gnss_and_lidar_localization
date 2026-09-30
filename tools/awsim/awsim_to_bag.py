@@ -174,14 +174,55 @@ def estimate_imu_rotation(gt_t, gt_p, gt_R, t_imu, gyro, acc):
     w_base = A.rot_log(np.einsum("nji,njk->nik", Rm, Rp)) / (2 * h)
     still = np.linalg.norm(a_world, axis=1) < 0.05
     has_g = float(np.median(np.linalg.norm(acc[ok], axis=1))) > 3.0
-    f_world = a_world + (np.array([0.0, 0.0, G]) if has_g else 0.0)
-    f_base = np.einsum("nji,nj->ni", R0, f_world)
-    src = np.vstack([acc[ok], 5.0 * gyro[ok]])
-    dst = np.vstack([f_base, 5.0 * w_base])
-    good = np.all(np.isfinite(dst), axis=1)
-    R, _ = A.kabsch_origin(src[good], dst[good])
-    res_acc = np.linalg.norm(acc[ok] @ R.T - f_base, axis=1)
-    return R, dict(has_gravity=has_g, acc_rms=float(np.sqrt(np.nanmean(res_acc ** 2))), still=int(still.sum()))
+    # 重力の向きの仮説: +1 = ふつうの IMU（止まっていると上向きに +g）、-1 = 逆向き（AWSIM v1.3.1 の ImuSensor は
+    # 加速度に Physics.gravity を足していて、止まっていると下向きに g が出る）。角速度も含めた残差が小さい方を採る。
+    # 加速度だけでは、逆向きの重力を 180° 回した向きでも説明できてしまい、そのときは角速度の z の符号が逆になる
+    best = None
+    for sign in ((1.0, -1.0) if has_g else (0.0,)):
+        f_world = a_world + sign * np.array([0.0, 0.0, G])
+        f_base = np.einsum("nji,nj->ni", R0, f_world)
+        src = np.vstack([acc[ok], 5.0 * gyro[ok]])
+        dst = np.vstack([f_base, 5.0 * w_base])
+        good = np.all(np.isfinite(dst), axis=1)
+        R, _ = A.kabsch_origin(src[good], dst[good])
+        res_acc = np.linalg.norm(acc[ok] @ R.T - f_base, axis=1)
+        res_gyro = np.linalg.norm(gyro[ok] @ R.T - w_base, axis=1)
+        cost = float(np.nanmean(res_acc ** 2) + 25.0 * np.nanmean(res_gyro ** 2))
+        if best is None or cost < best[0]:
+            best = (cost, R, sign, res_acc, res_gyro)
+    _, R, sign, res_acc, res_gyro = best
+    return R, dict(has_gravity=has_g, gravity_sign=sign, acc_rms=float(np.sqrt(np.nanmean(res_acc ** 2))),
+                   gyro_rms=float(np.sqrt(np.nanmean(res_gyro ** 2))), still=int(still.sum()))
+
+
+def gt_rates(gt_t, gt_p, gt_R, t):
+    """真値から、時刻 t の前向きの速さと yaw レート。"""
+    yaw = np.unwrap(np.arctan2(gt_R[:, 1, 0], gt_R[:, 0, 0]))
+    h = 0.1
+    yr = (np.interp(t + h, gt_t, yaw) - np.interp(t - h, gt_t, yaw)) / (2 * h)
+    d = np.stack([np.interp(t + h, gt_t, gt_p[:, k]) - np.interp(t - h, gt_t, gt_p[:, k]) for k in range(2)], axis=1)
+    y = np.interp(t, gt_t, yaw)
+    vf = (np.cos(y) * d[:, 0] + np.sin(y) * d[:, 1]) / (2 * h)
+    return vf, yr
+
+
+def _gain(meas, ref):
+    """meas ≈ gain·ref の最小二乗の gain（ref がほとんど動かないときは 1）。"""
+    ok = np.isfinite(meas) & np.isfinite(ref)
+    den = float(np.sum(ref[ok] ** 2))
+    return float(np.sum(meas[ok] * ref[ok]) / den) if den > 1e-6 else 1.0
+
+
+def check_gain(gt_t, gt_R, t, wz):
+    """IMU の（base_link での）yaw レートと真値の yaw レートの比。"""
+    _, yr = gt_rates(gt_t, np.zeros((len(gt_t), 3)), gt_R, t)
+    return _gain(np.asarray(wz), yr)
+
+
+def check_odom_signs(gt_t, gt_p, gt_R, vel):
+    """VelocityReport（t, vx, vy, wz）の前後の速さと yaw レートを、真値との比で返す（正しければどちらも +1 前後）。"""
+    vf, yr = gt_rates(gt_t, gt_p, gt_R, vel[:, 0])
+    return dict(vx_gain=_gain(vel[:, 1], vf), wz_gain=_gain(vel[:, 3], yr))
 
 
 def in_boxes(xy, boxes):
@@ -296,16 +337,32 @@ def main():
     # ---- IMU の取り付けの向き
     R_bi, info = estimate_imu_rotation(gt_t, gt_p, gt_R, imu[:, 0], imu[:, 1:4], imu[:, 4:7])
     rpy = np.rad2deg(A.rpy_of(R_bi))
-    print(f"IMU（{frames['imu']}）→ base_link の向き: rpy {np.round(rpy, 2)} deg、当てはめの残差 {info['acc_rms']:.3f} m/s²、"
-          f"重力 {'あり' if info['has_gravity'] else 'なし（足して出す）'}")
+    grav = {1.0: "あり", -1.0: "あり・向きが逆（AWSIM。直して出す）", 0.0: "なし（足して出す）"}[info["gravity_sign"]]
+    print(f"IMU（{frames['imu']}）→ base_link の向き: rpy {np.round(rpy, 2)} deg、当てはめの残差 加速度 {info['acc_rms']:.3f} m/s²・"
+          f"角速度 {info['gyro_rms']:.4f} rad/s、重力 {grav}")
     gyro_b = imu[:, 1:4] @ R_bi.T
     acc_b = imu[:, 4:7] @ R_bi.T
-    if not info["has_gravity"]:
+    if info["gravity_sign"] != 1.0:
+        # 止まっていると上向きに +g が出る、ふつうの比力に直す（なし: +g を足す、逆向き: 2g を足す）
         Rg = A.quat_to_rot(A.quat_interp(gt_t, gt[:, 4:8], imu[:, 0]))
-        acc_b += np.einsum("nji,j->ni", Rg, [0.0, 0.0, G])
+        acc_b += (1.0 - info["gravity_sign"]) * np.einsum("nji,j->ni", Rg, [0.0, 0.0, G])
+
+    # ---- 車速（VelocityReport）の符号を真値と比べる。逆なら直して出す
+    odom_sign = check_odom_signs(gt_t, gt_p, gt_R, vel)
+    print(f"車速と真値の比: 前後 {odom_sign['vx_gain']:+.3f}、yaw レート {odom_sign['wz_gain']:+.3f}"
+          + ("（yaw レートの符号が逆。直して出す）" if odom_sign["wz_gain"] < 0 else "")
+          + ("（前後の符号が逆。直して出す）" if odom_sign["vx_gain"] < 0 else ""))
+    gyro_gain = check_gain(gt_t, gt_R, imu[:, 0], gyro_b[:, 2])
+    print(f"IMU の yaw レートと真値の比 {gyro_gain:+.3f}（+1 に近いはず）")
+    if gyro_gain < 0:
+        print("  注意: IMU の yaw レートの符号が真値と逆。IMU の向きの当てはめがおかしい")
+    if odom_sign["wz_gain"] < 0:
+        vel[:, 3] *= -1
+    if odom_sign["vx_gain"] < 0:
+        vel[:, 1:3] *= -1
 
     # ---- LiDAR の外部パラメータ
-    T_bl = A.se3(A.rpy_to_rot(*np.deg2rad(ex[3:])), ex[:3])
+    T_bl =A.se3(A.rpy_to_rot(*np.deg2rad(ex[3:])), ex[:3])
     pframe = frames["points"][0]
 
     # ---- 書き出し
