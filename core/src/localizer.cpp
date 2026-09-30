@@ -445,6 +445,8 @@ void Localizer::processScan(const LidarScan& scan) {
     LidarMatchInfo info;
     info.t = scan.t;
     info.pose = found;
+    info.points = std::make_shared<const std::vector<Vec3f>>(pts);
+    info.T_utm_base = Tu;
     info.group = target->group;
     info.inlier_ratio = res.best.inlier_ratio;
     info.overlap = res.best_overlap;
@@ -533,6 +535,8 @@ void Localizer::processScan(const LidarScan& scan) {
   LidarMatchInfo info;
   info.t = scan.t;
   info.pose = Pose2D{Tu.translation().x(), Tu.translation().y(), yawOf(Tu.linear())};
+  info.points = std::make_shared<const std::vector<Vec3f>>(pts);
+  info.T_utm_base = Tu;
   info.group = target->group;
   info.inlier_ratio = r.inlier_ratio;
   info.overlap = r.overlap;

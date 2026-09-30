@@ -111,22 +111,20 @@ base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定に
 ### 3.5 変換
 
 ```bash
-python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0.mcap \
+python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0 \
     --lidar-extrinsic <3.4 節の値> --tiles data/awsim/nsj_tiles
 ```
 
-出力は bag（`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`）、真値の CSV、パラメータ、`maps.yaml`。IMU の取り付けの向き（当てはめの残差、重力の向き）、IMU・車速の yaw レートと真値の比（+1 前後でなければ変換がおかしい）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
+出力は rosbag2 の bag のフォルダ（`v_a0/`: `.mcap` と `metadata.yaml`。`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`、表示用の全体の地図 `/map/points`）、真値の CSV、パラメータ、`maps.yaml`。IMU の取り付けの向き（当てはめの残差、重力の向き）、IMU・車速の yaw レートと真値の比（+1 前後でなければ変換がおかしい）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
 
 ### 3.6 推定ノードで再生して評価する
 
 ```bash
-ros2 launch gll_ros2 localizer.launch.py params_file:=data/awsim/out/v_a0_params.yaml use_sim_time:=true &
-ros2 bag play data/awsim/out/v_a0.mcap --clock 100
-# 終わったらノードを止める（Ctrl-C）。出力は v_a0_output.csv
+tools/awsim/replay.sh data/awsim/out/v_a0 --record data/awsim/out/v_a0_rec   # 起動・再生・停止。出力は v_a0_output.csv
 python3 tools/awsim/evaluate.py data/awsim/out/v_a0_output.csv data/awsim/out/v_a0_groundtruth.csv --out data/awsim/out/v_a0.md
 ```
 
-RViz で見る場合は、`/groundtruth/pose` と推定ノードの出力、`~/debug/map_points`・`~/debug/lidar_pose` を並べる。
+`--record` で録った bag を Foxglove などで開き、frame `map_local` で、全体の地図（`/map/points`）・読み込んだ部分の地図（`~/debug/map_points`）・照合した姿勢に置いたスキャン（`~/debug/scan_points`）・推定と真値の姿勢を重ねて見る（トピックの一覧は `tools/awsim/README.md`）。
 
 ---
 

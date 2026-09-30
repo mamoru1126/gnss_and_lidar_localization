@@ -50,9 +50,9 @@ print("stamp offset found", dt)
 sys.exit(1 if abs(dt) > 0.015 else 0)
 EOF
 
-python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/out/fake.mcap" --lidar-extrinsic 0.9,0,2.0,0,1,88 \
+python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/out/fake" --lidar-extrinsic 0.9,0,2.0,0,1,88 \
   --gnss-off-time 10:5 --initial-pose 0,0 --drop-lidar 20:2
-python3 "$here/check_awsim.py" "$work/out/fake.mcap"
+python3 "$here/check_awsim.py" "$work/out/fake"
 if [ -n "${KEEP_OUT:-}" ]; then
   mkdir -p "$KEEP_OUT" && cp -r "$work/out" "$work/fake" "$KEEP_OUT/"
 fi

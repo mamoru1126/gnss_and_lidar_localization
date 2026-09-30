@@ -30,41 +30,26 @@ ros2 pkg prefix gll_ros2 >/dev/null || { echo "gll_ros2 is not built/sourced"; e
 python3 "$here/make_fake_awsim_bag.py" "$work/fake"
 "$tiler" -i "$work/fake/map.pcd" -o "$work/tiles" --tile-size 20 --voxel-size 0.2
 EXT=0.9,0,2.0,0,1,88
-python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/a/a.mcap" --lidar-extrinsic "$EXT" --gnss-off-time 30:20 \
+python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/a/a" --lidar-extrinsic "$EXT" --gnss-off-time 30:20 \
   --tiles "$work/tiles"
-python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/b/b.mcap" --lidar-extrinsic "$EXT" --no-gnss \
+python3 "$tools/awsim_to_bag.py" "$work/fake/bag" "$work/b/b" --lidar-extrinsic "$EXT" --no-gnss \
   --initial-pose 1.0,10 --tiles "$work/tiles" --seed 3
-python3 "$here/check_bag_ros2.py" "$work/a/a.mcap"
-python3 "$here/check_bag_ros2.py" "$work/b/b.mcap" --no-gnss --initial-pose
+python3 "$here/check_bag_ros2.py" "$work/a/a"
+python3 "$here/check_bag_ros2.py" "$work/b/b" --no-gnss --initial-pose
 
-run() {  # $1 = bag（<stem>_params.yaml が隣にある）
-  local stem="${1%.mcap}"
-  ros2 launch gll_ros2 localizer.launch.py params_file:="${stem}_params.yaml" use_sim_time:=true \
-    > "${stem}_node.log" 2>&1 &
-  local pid=$!
-  sleep 5
+run() {  # $1 = bag のフォルダ（<フォルダ>_params.yaml が隣にある）、残りは replay.sh に渡す
   # 2 倍速で再生する（推定ノードは bag の時刻で動くので、結果は変わらない。PLAY_RATE で変えられる）
-  timeout 300 ros2 bag play "$1" --clock 100 --rate "${PLAY_RATE:-2}" --disable-keyboard-controls
-  sleep 2
-  # 止める: SIGINT → 30 s 待って SIGTERM → 30 s 待って SIGKILL（CSV は SIGINT で閉じられる）
-  local sig
-  for sig in INT TERM KILL; do
-    kill -"$sig" -- -"$pid" 2>/dev/null || kill -"$sig" "$pid" 2>/dev/null || true
-    for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
-    kill -0 "$pid" 2>/dev/null || break
-    echo "node did not stop on SIG$sig"
-  done
-  wait "$pid" 2>/dev/null || true
-  echo "---- node log (last lines)"
-  tail -n 25 "${stem}_node.log"
-  test -s "${stem}_output.csv" || { echo "no output csv"; exit 1; }
+  timeout 400 "$tools/replay.sh" "$1" --rate "${PLAY_RATE:-2}" "${@:2}"
+  test -s "${1}_output.csv" || { echo "no output csv"; exit 1; }
 }
 
-run "$work/a/a.mcap"
+run "$work/a/a" --record "$work/a_rec"
+# 録った bag に、推定の様子を見るためのトピックが入っているか
+python3 "$here/check_bag_ros2.py" "$work/a_rec" --recorded
 python3 "$tools/evaluate.py" "$work/a/a_output.csv" "$work/a/a_groundtruth.csv" --title "A: GNSS + LiDAR" --out "$work/a.md" \
   --max xy_rms=0.15 yaw_rms_deg=1.0 lost_share=0 --min lidar_share=0.2
 
-run "$work/b/b.mcap"
+run "$work/b/b"
 python3 "$tools/evaluate.py" "$work/b/b_output.csv" "$work/b/b_groundtruth.csv" --title "B: 地図だけ（初期姿勢 1 m・10° ずれ）" --out "$work/b.md" \
   --max xy_rms=0.15 yaw_rms_deg=1.0 lost_share=0 init_time=20 --min lidar_share=0.9
 # 通ったときも、指標の表を GitHub Actions の注釈に出す（ログを開かなくても値が見えるように）

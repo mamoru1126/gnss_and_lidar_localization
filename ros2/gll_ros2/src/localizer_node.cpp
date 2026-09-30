@@ -1,5 +1,9 @@
 #include "gll_ros2/localizer_node.hpp"
 
+#include <cmath>
+#include <cstdint>
+#include <unordered_set>
+
 #include "gll_ros2/diagnostics.hpp"
 
 #include <gll/common/pose_store.hpp>
@@ -13,7 +17,9 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
+#include <unordered_set>
 #include <vector>
 
 namespace gll_ros2 {
@@ -171,6 +177,7 @@ gll::LocalizerConfig LocalizerNode::loadConfig() {
 void LocalizerNode::setupMap(const gll::LocalizerConfig& cfg) {
   const std::string path = declare_parameter<std::string>("map.config_path", "");
   map_points_max_ = static_cast<std::size_t>(declare_parameter<int64_t>("map.publish_points_max", 200000));
+  scan_points_voxel_ = declare_parameter<double>("lidar.debug_points_voxel", 0.2);
   if (path.empty()) {
     RCLCPP_INFO(get_logger(), "map.config_path is empty: LiDAR localization is disabled (GNSS + dead reckoning)");
     return;
@@ -288,6 +295,7 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
     lidar_pose_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("~/debug/lidar_pose", 10);
     map_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         "~/debug/map_points", rclcpp::QoS(1).transient_local().reliable());
+    scan_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>("~/debug/scan_points", 5);
   }
   if (publish_tf_) tf_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
@@ -438,6 +446,23 @@ void LocalizerNode::publishLidarDebug() {
   T.topLeftCorner<2, 2>() = gll::SE2::rot(info->pose.yaw);
   m.pose.covariance = toCovariance6(T * info->cov_body * T.transpose(), other_var_);
   lidar_pose_pub_->publish(m);
+
+  // 照合に使った点を、照合結果の姿勢で map_local に置く（地図と重なっていれば照合が合っている）
+  if (!info->points || !local_origin_ || scan_points_pub_->get_subscription_count() == 0) return;
+  std::vector<gll::Vec3f> out;
+  out.reserve(info->points->size());
+  std::unordered_set<std::int64_t> seen;
+  const double inv = scan_points_voxel_ > 0.0 ? 1.0 / scan_points_voxel_ : 0.0;
+  for (const auto& p : *info->points) {
+    const gll::Vec3 q = info->T_utm_base * p.cast<double>();
+    const gll::Vec3 l(q.x() - local_origin_->x(), q.y() - local_origin_->y(), q.z());
+    if (inv > 0.0) {
+      const auto k = [&](double v) { return static_cast<std::int64_t>(std::floor(v * inv)) & 0x1FFFFF; };
+      if (!seen.insert((k(l.x()) << 42) | (k(l.y()) << 21) | k(l.z())).second) continue;
+    }
+    out.emplace_back(l.cast<float>());
+  }
+  scan_points_pub_->publish(toPointCloud2(out, local_frame_, toStamp(info->t)));
 }
 
 void LocalizerNode::publishMapPoints() {

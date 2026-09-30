@@ -255,6 +255,8 @@ class McapWriter:
         self.schemas, self.channels = [], []
         self.chunk_indexes = []
         self.counts = {}
+        self.schema_names, self.topics = {}, {}
+        self.path = pathlib.Path(path)
         self.start = self.end = None
         self.n = 0
         self._reset_chunk()
@@ -270,6 +272,7 @@ class McapWriter:
                 + full_definition(name).encode())
         self.schemas.append(r)
         self.f.write(r)
+        self.schema_names[sid] = name
         return sid
 
     def channel(self, sid, topic, qos):
@@ -278,6 +281,7 @@ class McapWriter:
         self.channels.append(r)
         self.f.write(r)
         self.counts[cid] = 0
+        self.topics[cid] = (topic, self.schema_names[sid], qos)
         return cid
 
     def message(self, cid, t, data):
@@ -341,6 +345,30 @@ class McapWriter:
         self.f.write(rec(0x02, struct.pack("<QQI", summary_start, offset_start, 0)))
         self.f.write(MAGIC)
         self.f.close()
+
+
+def write_rosbag2_metadata(w, bag_dir):
+    """閉じた McapWriter の中身から、rosbag2（Jazzy。version 9）の metadata.yaml を bag のフォルダに書く。
+    .mcap はこのフォルダの中に置く（relative_file_paths はファイルの名前だけ）。"""
+    start = w.start or 0
+    dur = (w.end or 0) - start
+    topics = []
+    for cid, (topic, typ, qos) in w.topics.items():
+        topics.append({"topic_metadata": {"name": topic, "type": typ, "serialization_format": "cdr",
+                                          "offered_qos_profiles": yaml.safe_load(qos), "type_description_hash": ""},
+                       "message_count": w.counts[cid]})
+    info = {"rosbag2_bagfile_information": {
+        "version": 9, "storage_identifier": "mcap",
+        "duration": {"nanoseconds": dur}, "starting_time": {"nanoseconds_since_epoch": start},
+        "message_count": w.n, "topics_with_message_count": topics,
+        "compression_format": "", "compression_mode": "",
+        "relative_file_paths": [w.path.name],
+        "files": [{"path": w.path.name, "starting_time": {"nanoseconds_since_epoch": start},
+                   "duration": {"nanoseconds": dur}, "message_count": w.n}],
+        "custom_data": {}, "ros_distro": "jazzy"}}
+    path = pathlib.Path(bag_dir) / "metadata.yaml"
+    path.write_text(yaml.safe_dump(info, sort_keys=False))
+    return path
 
 
 def qos_yaml(transient_local, depth):

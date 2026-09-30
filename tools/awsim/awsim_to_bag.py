@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """AWSIM で録った bag（ROS 2 Humble、MCAP）から、推定ノード用の ROS 2 bag（MCAP）を作る（検証計画 3 章）。
 
-  python3 awsim_to_bag.py <録った bag（ディレクトリか .mcap）> <出力.mcap> \\
-      [--lidar-extrinsic 0.9,0,2.0,0,0,0] [--gnss-off-time 120:30 ...] [--gnss-off-box x0,y0,x1,y1 ...]
+  python3 awsim_to_bag.py <録った bag（ディレクトリか .mcap）> <出力の bag のフォルダ> \\
+      [--lidar-extrinsic 0.9,0,2.04,0.9,0,88.2] [--gnss-off-time 120:30 ...] [--gnss-off-box x0,y0,x1,y1 ...]
 
 入力（AWSIM の既定のトピック。--*-topic で変えられる）:
   /awsim/ground_truth/vehicle/pose        geometry_msgs/PoseStamped（真値。地図座標 = MGRS の区画の中の座標）
   /sensing/imu/tamagawa/imu_raw           sensor_msgs/Imu
   /vehicle/status/velocity_status         autoware_vehicle_msgs/VelocityReport
   /sensing/lidar/top/pointcloud_raw       sensor_msgs/PointCloud2
-出力:
-  <out>.mcap                  /sensing/imu（base_link）、/sensing/odom、/sensing/gnss/fix、/sensing/lidar/points、
-                              /tf_static、/groundtruth/pose（と、--initial-pose なら /initialpose）
+出力（<out> の末尾の .mcap は取る）:
+  <out>/<名前>.mcap、<out>/metadata.yaml
+                              rosbag2 の bag。/sensing/imu（base_link）、/sensing/odom、/sensing/gnss/fix、
+                              /sensing/lidar/points、/tf_static、/groundtruth/pose（と、--initial-pose なら /initialpose、
+                              --tiles なら全体の地図 /map/points（表示用、frame map_local））
   <out>_groundtruth.csv       真値（base_link、UTM）
   <out>_params.yaml           推定ノードのパラメータ（config/localizer.yaml にこの bag 用の値を入れたもの）
   <out>_maps.yaml             --tiles を指定したとき。地図グループ 1 つと、MGRS の原点から決めたアンカー（縮尺なし）
@@ -147,12 +149,14 @@ def ser_pose_cov(t, frame, p, q, cov):
     return c.bytes()
 
 
-def ser_tf(t, parent, child, T):
+def ser_tf(t, transforms):
+    """tf2_msgs/TFMessage。transforms = [(parent, child, T), ...]（/tf_static は 1 つのメッセージにまとめる）"""
     c = MB.Cdr()
-    c.u32(1)
-    c.header(ns(t), parent)
-    c.string(child)
-    _pose(c, T[:3, 3], A.rot_to_quat(T[:3, :3]))
+    c.u32(len(transforms))
+    for parent, child, T in transforms:
+        c.header(ns(t), parent)
+        c.string(child)
+        _pose(c, T[:3, 3], A.rot_to_quat(T[:3, :3]))
     return c.bytes()
 
 
@@ -300,6 +304,8 @@ def main():
     ap.add_argument("--map-config", default="", help="map.config_path に入れる maps.yaml（--tiles と一緒には使わない）")
     ap.add_argument("--tiles", type=Path, default=None,
                     help="地図のタイルのフォルダ（tiled_pcd_map_tiler の -o）。<out>_maps.yaml を作って map.config_path に入れる")
+    ap.add_argument("--full-map-voxel", type=float, default=1.0,
+                    help="全体の地図（/map/points、表示用）を間引く大きさ [m]（0 なら出さない。--tiles のときだけ）")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     rng = np.random.default_rng(args.seed)
@@ -395,10 +401,18 @@ def main():
     pframe = frames["points"][0]
 
     # ---- 書き出し
-    out = args.out.expanduser()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    stem = out.with_suffix("")
+    # bag は rosbag2 の形のフォルダ（<stem>/<名前>.mcap と metadata.yaml）。ほかの出力は <stem>_*.csv などに置く
+    stem = args.out.expanduser()
+    if stem.suffix == ".mcap":
+        stem = stem.with_suffix("")
+    stem.mkdir(parents=True, exist_ok=True)
+    for old in list(stem.glob("*.mcap")) + [stem / "metadata.yaml"]:
+        old.unlink(missing_ok=True)
+    out = stem / f"{stem.name}.mcap"
     w = MB.McapWriter(str(out))
+    # 表示用の map_local（ノードのパラメータ map_local_origin と同じ）: 走り始めの位置を 100 m 単位に丸めた UTM
+    p_start = gt_p[np.searchsorted(gt_t, t0)] + [E0, N0, 0.0]
+    local_origin = [float(np.round(p_start[0] / 100.0) * 100.0), float(np.round(p_start[1] / 100.0) * 100.0)]
     q100 = MB.qos_yaml(False, 100)
     ch = {}
     for topic, typ, q in [("/sensing/imu", "sensor_msgs/msg/Imu", q100), ("/sensing/odom", "nav_msgs/msg/Odometry", q100),
@@ -406,14 +420,18 @@ def main():
                           ("/sensing/lidar/points", "sensor_msgs/msg/PointCloud2", MB.qos_yaml(False, 10)),
                           ("/tf_static", "tf2_msgs/msg/TFMessage", MB.qos_yaml(True, 1)),
                           ("/groundtruth/pose", "geometry_msgs/msg/PoseStamped", q100),
-                          ("/initialpose", "geometry_msgs/msg/PoseWithCovarianceStamped", MB.qos_yaml(False, 1))]:
+                          ("/initialpose", "geometry_msgs/msg/PoseWithCovarianceStamped", MB.qos_yaml(False, 1)),
+                          ("/map/points", "sensor_msgs/msg/PointCloud2", MB.qos_yaml(True, 1))]:
         if topic == "/sensing/gnss/fix" and args.no_gnss:
+            continue
+        if topic == "/map/points" and (args.tiles is None or args.full_map_voxel <= 0):
             continue
         if topic == "/initialpose" and not args.initial_pose:
             continue
         ch[topic] = w.channel(w.schema(typ), topic, q)
 
-    msgs = [(ns(t0), ch["/tf_static"], ser_tf(t0, "base_link", pframe, T_bl))]
+    T_ml = A.se3(np.eye(3), [local_origin[0], local_origin[1], 0.0])  # map（UTM）→ map_local（表示用）
+    msgs = [(ns(t0), ch["/tf_static"], ser_tf(t0, [("base_link", pframe, T_bl), ("map", "map_local", T_ml)]))]
     for r, g, a in zip(imu, gyro_b, acc_b):
         if t0 <= r[0] <= t1:
             msgs.append((ns(r[0]), ch["/sensing/imu"], ser_imu(r[0], "base_link", g, a)))
@@ -462,6 +480,14 @@ def main():
         pi[:2] += e_xy * np.array([math.cos(ang), math.sin(ang)])
         cov = np.diag([max(e_xy, 0.5) ** 2, max(e_xy, 0.5) ** 2, 0.25, 0.0003, 0.0003, math.radians(max(e_yaw, 5.0)) ** 2])
         msgs.append((ns(ti), ch["/initialpose"], ser_pose_cov(ti, "map", pi, A.rot_to_quat(A.rot_z(yaw)), cov)))
+    if "/map/points" in ch:
+        # 全体の地図（表示用）: タイルを全部読み、間引いて map_local に置く
+        index = yaml.safe_load((args.tiles / "tile_index.yaml").read_text())
+        mp = np.vstack([MB.read_tile(args.tiles / t["file"]) for t in index["tiles"]])
+        mp = MB.voxel_first(mp, args.full_map_voxel)
+        loc = mp + [E0 - local_origin[0], N0 - local_origin[1], args.alt_offset]
+        msgs.append((ns(t0), ch["/map/points"], MB.ser_cloud(ns(t0), "map_local", loc, np.zeros(len(loc)))))
+        print(f"全体の地図 /map/points: {len(loc)} 点（{args.full_map_voxel} m で間引き、frame map_local）")
     msgs.sort(key=lambda x: x[0])
 
     drops = [(t0 + float(a), t0 + float(a) + float(b)) for a, b in (s.split(":") for s in args.drop_lidar)]
@@ -477,7 +503,8 @@ def main():
         w.message(cid, tns, data)
         n += 1
     w.close()
-    print(f"{out}: {n} メッセージ")
+    MB.write_rosbag2_metadata(w, stem)
+    print(f"{stem}/（rosbag2 の bag: {out.name}、metadata.yaml）: {n} メッセージ")
 
     # ---- 真値の CSV（base_link、UTM）
     gcsv = Path(str(stem) + "_groundtruth.csv")
@@ -521,6 +548,7 @@ def main():
             "use_scale_factor: false, stddev_xy: 0.01, stddev_yaw_deg: 0.05}\n")
         prm["map"]["config_path"] = str(mfile.resolve())
         print(f"  {mfile}")
+    prm["map_local_origin"] = local_origin
     prm["debug_csv_path"] = str(Path(str(stem) + "_output.csv"))
     pfile = Path(str(stem) + "_params.yaml")
     pfile.write_text(f"# {args.bag} から tools/awsim/awsim_to_bag.py が作った（config/localizer.yaml に値を入れたもの）\n"
