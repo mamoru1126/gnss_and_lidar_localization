@@ -124,6 +124,19 @@ class TestPlanRoute(unittest.TestCase):
         self.assertLess(np.hypot(*(r[-1] - [50, 60 + W / 2])), 3.0)
         self.assertTrue(out.with_suffix(".svg").read_text().startswith("<svg"))
 
+    def test_off_world(self):
+        # 点群が環状の道の所にしか無ければ、東へ出る行き止まりの道（x = 104〜160）は世界の外として使わない
+        pts = np.vstack([np.c_[np.linspace(-5, 105, 200), np.full(200, y)] for y in (-5, 0, 60, 65)]
+                        + [np.c_[np.full(200, x), np.linspace(-5, 65, 200)] for x in (-5, 0, 100, 105)])
+        pcd = Path(self.tmp.name) / "pointcloud_map.pcd"
+        pcd.write_text("# .PCD v0.7\nVERSION 0.7\nFIELDS x y z\nSIZE 4 4 4\nTYPE F F F\nCOUNT 1 1 1\n"
+                       f"WIDTH {len(pts)}\nHEIGHT 1\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS {len(pts)}\nDATA ascii\n"
+                       + "\n".join(f"{x:.2f} {y:.2f} 0" for x, y in pts) + "\n")
+        off = P.mark_off_world(P.load_lanelets(self.osm), P.read_pcd_xy(pcd), 20.0)
+        self.assertEqual(len(off), 1)
+        spur = [ll for ll in self.lls.values() if ll.center[:, 0].max() > 150]
+        self.assertEqual(off, {spur[0].id})
+
     def test_wrong_direction_start(self):
         self.assertIsNone(P.find_lanelet(self.lls, np.array([20.0, -W / 2]), math.pi))
 

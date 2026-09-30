@@ -77,7 +77,7 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
 
 1. AWSIM を `tools/awsim/run_awsim.sh` で起動する。Quick start demo の通信の設定（`ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`、CycloneDDS のための `sysctl` とループバックのマルチキャスト）を、このスクリプトがまとめて行う。
 2. `tools/awsim/container.sh` で Humble のコンテナに入る（記録用と走行用に 2 つの端末で）。
-3. **車の位置から始まる経路**を `tools/awsim/plan_route.py` で作る。車の今の姿勢（`awsim_drive.py --print-pose`）から、lanelet2 の地図の進行方向と車線のつながり（successor、破線の所だけの車線変更）を守って、長さを決めて乱数で（`--length`）、または通る点を並べて（`--via`）作る。地図の端で行き止まりになる道には入らない。`--svg` の図で経路を確かめる。
+3. **車の位置から始まる経路**を `tools/awsim/plan_route.py` で作る。車の今の姿勢（`awsim_drive.py --print-pose`）から、lanelet2 の地図の進行方向と車線のつながり（successor、破線の所だけの車線変更）を守って、長さを決めて乱数で（`--length`）、または通る点を並べて（`--via`）作る。地図の端で行き止まりになる道には入らない。lanelet2 の地図は AWSIM の世界より広い（東の端など、点群地図の外にも車線がある）ので、点群地図から 20 m より離れた所を通る車線は使わない（世界の外へ出て車が落ちたことがあった）。`--svg` の図で経路を確かめる。
 4. `python3 tools/awsim/awsim_drive.py data/awsim/route.txt --check` で、ROS なしで経路を走れるかを確かめる（曲がれない急な所があれば出る）。`tools/tile_demo/lanelet_route.py`・`route_nishishinjuku.txt` はタイルのデモ用で、進行方向を見ず U ターンもあるので、走らせる経路には使わない。
 5. 記録を始めてから走らせる。最初は **5 s 止まっている**（推定ノードの静止初期化のため）。
    ```bash
@@ -85,7 +85,7 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
    python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5 # 2 つ目の端末。経路の終わりで止まって終わる
    ```
 
-`awsim_drive.py` は真値を見て経路をなぞる（pure pursuit）。速さは既定 6 km/h で、`--kmh` で上げられる（曲がる所では横加速度 1.5 m/s² 以下に減速する）。6 km/h を超える記録は要件の外なので、評価では 6 km/h の記録と分けて扱う。障害物・信号・ほかの車は見ないので、NPC の車が出るシーンでは、ぶつかったら記録をやり直す。
+`awsim_drive.py` は真値を見て経路をなぞる（pure pursuit）。速さは既定 6 km/h で、`--kmh` で上げられる（曲がる所では横加速度 1.5 m/s² 以下に減速する）。6 km/h を超える記録は要件の外なので、評価では 6 km/h の記録と分けて扱う。障害物・信号・ほかの車は見ないので、`run_awsim.sh` は既定でほかの車（NPC）を出さない（AWSIM の `--json_path` の設定 `MaxVehicleCount: 0`。25 km/h の走行で前のトラックにぶつかり、地図の外へ落ちたことがあった）。ほかの車は点群の中の動く物になるので、地図との照合への影響を見たいときだけ `--traffic` で出す（その場合は短い経路にし、ぶつかったら記録をやり直す）。
 
 ### 3.3 地図（dev コンテナ）
 
