@@ -232,6 +232,17 @@ def estimate_lag(gt_t, gt_R, t, wz, max_lag=0.2, step=0.002):
     return float(lags[int(np.argmin(cost))])
 
 
+def estimate_lag_speed(gt_t, gt_p, gt_R, t, v, max_lag=0.3, step=0.002):
+    """前後の速さを真値と比べて、時刻の遅れ L [s] を求める（estimate_lag の速さ版。加減速が無いときは 0）。"""
+    v = np.asarray(v)
+    vf0, _ = gt_rates(gt_t, gt_p, gt_R, t)
+    if np.std(np.gradient(vf0, t)) < 0.05:
+        return 0.0
+    lags = np.arange(-max_lag, max_lag + 1e-9, step)
+    cost = [np.nanmean((v - gt_rates(gt_t, gt_p, gt_R, t + L)[0]) ** 2) for L in lags]
+    return float(lags[int(np.argmin(cost))])
+
+
 def check_gain(gt_t, gt_R, t, wz):
     """IMU の（base_link での）yaw レートと真値の yaw レートの比。"""
     _, yr = gt_rates(gt_t, np.zeros((len(gt_t), 3)), gt_R, t)
@@ -388,9 +399,12 @@ def main():
         vel[:, 1:3] *= -1
 
     # ---- 時刻の遅れ（yaw レートを真値と比べる）。IMU と車速はスタンプをずらして出す（ノードに時刻のずらしのパラメータが無いため）
+    # 車速は前後の速さで決める（ODOM の主な値。yaw レートの heading_rate は別の遅れを持つことがあるので参考に出すだけ）
     lag_imu = estimate_lag(gt_t, gt_R, imu[:, 0], gyro_b[:, 2])
-    lag_vel = estimate_lag(gt_t, gt_R, vel[:, 0], vel[:, 3])
+    lag_vel = estimate_lag_speed(gt_t, gt_p, gt_R, vel[:, 0], vel[:, 1])
+    lag_vel_wz = estimate_lag(gt_t, gt_R, vel[:, 0], vel[:, 3])
     print(f"時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU {lag_imu * 1e3:+.0f} ms、車速 {lag_vel * 1e3:+.0f} ms"
+          f"（yaw レートで見ると {lag_vel_wz * 1e3:+.0f} ms）"
           + ("（直して出す）" if args.fix_lag else "（--no-fix-lag なので直さない）"))
     if args.fix_lag:
         imu[:, 0] += lag_imu
