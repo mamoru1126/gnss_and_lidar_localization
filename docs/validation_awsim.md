@@ -119,6 +119,8 @@ python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0 \
 
 ### 3.6 推定ノードで再生して評価する
 
+照合の方式などパラメータを変えて比べるときは、名前を変えて `--set` を渡す: `tools/awsim/run_scenario.sh v_a1 --name v_a1_vgicp -- --set lidar.registration=vgicp`（`summary.md` に照合の時間と採用数が出る）。
+
 V-A1 の結果と推定している様子の動画: [LiDAR だけで西新宿を走る](https://mamoru1126.github.io/gnss_and_lidar_localization/awsim/)（ソース: `docs/awsim/`）。
 
 ふだんは `tools/awsim/run_scenario.sh <シナリオ>`（3.4〜3.6 節をまとめて行い、ターミナルの出力と結果・要約を `tools/awsim/log/<名前>/` に残す。`--push` でコミットして push）を使う。手で動かす場合:

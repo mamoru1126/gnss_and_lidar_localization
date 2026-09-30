@@ -101,6 +101,7 @@ class LocalizerNode : public rclcpp::Node {
   const gll::MatchTarget* last_published_target_ = nullptr;
   std::size_t map_points_max_ = 200000;
   double scan_points_voxel_ = 0.2;
+  std::string registration_ = "gicp";
   // 前回位置の保存（設計書 3.11 節）
   std::string saved_pose_path_;
   double save_interval_ = 1.0;

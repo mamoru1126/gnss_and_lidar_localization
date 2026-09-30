@@ -65,6 +65,8 @@ struct Diagnostics {
   std::size_t relocalize_success = 0;
   std::size_t map_init_attempts = 0;
   double last_match_ms = 0.0;
+  double match_ms_sum = 0.0;          ///< 追跡の照合（前処理を含む）の時間の合計 [ms]（平均は ÷ lidar_matched）
+  double match_ms_max = 0.0;
   double last_inlier_ratio = 0.0;
   double last_overlap = 0.0;
   MapTileManager::Stats map;

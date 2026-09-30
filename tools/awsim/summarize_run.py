@@ -107,7 +107,7 @@ def main():
     cv = read(d / "convert.log")
     if cv:
         L += ["", "## 変換", "", "```"]
-        L += pick(cv, ["真値 ", "最初の停止", "IMU（", "車速と真値", "IMU の yaw", "時刻のずれ", "横向きの速さ", "GNSS:", "全体の地図",
+        L += pick(cv, ["真値 ", "最初の停止", "IMU（", "車速と真値", "IMU の yaw", "時刻のずれ", "横向きの速さ", "パラメータ ", "GNSS:", "全体の地図",
                        "注意", "Error", "Traceback"])
         L += ["```"]
 
@@ -127,7 +127,8 @@ def main():
     if nl:
         trans, kinds, first, t0 = node_summary(nl)
         rel = (lambda t: t - t0) if t0 else (lambda t: t)
-        L += ["", "## 推定ノードのログ", "", f"状態の移り変わり {len(trans)} 回（時刻は初期化からの秒）:", "", "```"]
+        ms = [l.split("]: ", 1)[-1] for l in nl.splitlines() if "LiDAR matching summary" in l]
+        L += ["", "## 推定ノードのログ", ""] + ([f"照合: `{ms[-1]}`", ""] if ms else []) + [ f"状態の移り変わり {len(trans)} 回（時刻は初期化からの秒）:", "", "```"]
         L += [f"{rel(t):8.1f}  {m}" for t, m in trans[:60]]
         if len(trans) > 60:
             L.append(f"... ほか {len(trans) - 60} 回")

@@ -326,6 +326,8 @@ def main():
                     help="地図のタイルのフォルダ（tiled_pcd_map_tiler の -o）。<out>_maps.yaml を作って map.config_path に入れる")
     ap.add_argument("--full-map-voxel", type=float, default=1.0,
                     help="全体の地図（/map/points、表示用）を間引く大きさ [m]（0 なら出さない。--tiles のときだけ）")
+    ap.add_argument("--set", nargs="*", default=[], action="extend", metavar="KEY=VALUE",
+                    help="推定ノードのパラメータを上書きする（例: --set lidar.registration=vgicp lidar.vgicp_voxel_size=0.5）")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     rng = np.random.default_rng(args.seed)
@@ -589,6 +591,16 @@ def main():
             "use_scale_factor: false, stddev_xy: 0.01, stddev_yaw_deg: 0.05}\n")
         prm["map"]["config_path"] = str(mfile.resolve())
         print(f"  {mfile}")
+    for kv in args.set:
+        key, _, val = kv.partition("=")
+        node = prm
+        *path, last = key.split(".")
+        for k in path:
+            node = node.setdefault(k, {})
+        if last not in node:
+            print(f"注意: --set {key} は config/localizer.yaml に無いパラメータ（そのまま入れる）")
+        node[last] = yaml.safe_load(val)
+        print(f"パラメータ {key} = {node[last]!r}")
     prm["map_local_origin"] = local_origin
     prm["debug_csv_path"] = str(Path(str(stem) + "_output.csv"))
     pfile = Path(str(stem) + "_params.yaml")

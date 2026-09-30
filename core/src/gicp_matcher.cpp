@@ -36,6 +36,7 @@ class GicpTarget : public MatchTarget {
   std::shared_ptr<SgCloud> cloud;
   std::shared_ptr<SgTree> tree;
   double coarse_voxel = 2.0;
+  double fine_voxel = 1.0;
 
   /// 粗い位置合わせ用のボクセル地図（地図上での初期化と再位置推定のときだけ必要なので、初回に作る）。
   const SgVoxelMap& voxels() const {
@@ -44,6 +45,15 @@ class GicpTarget : public MatchTarget {
       voxelmap_->insert(*cloud);
     });
     return *voxelmap_;
+  }
+
+  /// 追跡の VGICP 用のボクセル地図（lidar.registration: vgicp のとき、初回に作る）。
+  const SgVoxelMap& fineVoxels() const {
+    std::call_once(fine_once_, [this] {
+      fine_voxelmap_ = std::make_shared<SgVoxelMap>(fine_voxel);
+      fine_voxelmap_->insert(*cloud);
+    });
+    return *fine_voxelmap_;
   }
 
   std::optional<double> groundHeight(double x, double y, double radius, double fraction) const override {
@@ -71,6 +81,8 @@ class GicpTarget : public MatchTarget {
  private:
   mutable std::once_flag voxel_once_;
   mutable std::shared_ptr<SgVoxelMap> voxelmap_;
+  mutable std::once_flag fine_once_;
+  mutable std::shared_ptr<SgVoxelMap> fine_voxelmap_;
 };
 
 class GicpSource : public SourceCloud {
@@ -109,7 +121,12 @@ double yawDiff(const Eigen::Isometry3d& a, const Eigen::Isometry3d& b) {
 
 }  // namespace
 
-GicpMatcher::GicpMatcher(const LidarConfig& lidar, const RelocalizeConfig& reloc) : cfg_(lidar), reloc_(reloc) {}
+GicpMatcher::GicpMatcher(const LidarConfig& lidar, const RelocalizeConfig& reloc) : cfg_(lidar), reloc_(reloc) {
+  if (cfg_.registration != "gicp" && cfg_.registration != "vgicp")
+    throw std::invalid_argument("lidar.registration must be gicp or vgicp: " + cfg_.registration);
+  if (cfg_.registration == "vgicp" && !(cfg_.vgicp_voxel_size > 0.0))
+    throw std::invalid_argument("lidar.vgicp_voxel_size must be positive");
+}
 
 std::shared_ptr<const MatchTarget> GicpMatcher::buildTarget(
     const std::string& group, const MapAnchor& anchor,
@@ -118,6 +135,7 @@ std::shared_ptr<const MatchTarget> GicpMatcher::buildTarget(
   t->group = group;
   t->anchor = anchor;
   t->coarse_voxel = reloc_.coarse_voxel_size;
+  t->fine_voxel = cfg_.vgicp_voxel_size;
   std::size_t n = 0;
   for (const auto& tile : tiles) n += tile->points.size();
   t->cloud = std::make_shared<SgCloud>();
@@ -162,12 +180,12 @@ std::shared_ptr<const SourceCloud> GicpMatcher::prepareSource(const std::vector<
 }
 
 double GicpMatcher::overlap(const SourceCloud& source, const MatchTarget& target, const Eigen::Isometry3d& T,
-                            double distance, int num_threads) const {
+                            double distance, int num_threads, bool structure_only) const {
   const int threads = num_threads > 0 ? num_threads : cfg_.num_threads;
   const GicpSource& src = asSource(source);
   const GicpTarget& tgt = asTarget(target);
   if (!tgt.tree || src.size() == 0) return 0.0;
-  const bool use_structure = src.structure.size() >= kMinStructurePoints;
+  const bool use_structure = structure_only && src.structure.size() >= kMinStructurePoints;
   const std::int64_t n = static_cast<std::int64_t>(use_structure ? src.structure.size() : src.size());
   const double d2max = distance * distance;
   std::int64_t hits = 0;
@@ -197,7 +215,18 @@ RegistrationResult GicpMatcher::align(const SourceCloud& source, const MatchTarg
   reg.criteria.translation_eps = cfg_.translation_eps;
   reg.criteria.rotation_eps = cfg_.rotation_eps;
   reg.optimizer.max_iterations = cfg_.max_iterations;
-  const auto r = reg.align(*tgt.cloud, *src.cloud, *tgt.tree, init);
+  const bool vgicp = cfg_.registration == "vgicp";
+  small_gicp::RegistrationResult r;
+  if (vgicp) {
+    // VGICP: スキャンの点を、入ったボクセル（地図の点の平均と共分散）に合わせる。近傍の探索は要らない。
+    // ボクセルの平均との距離はボクセルの大きさ程度になりうるので、対応の距離の上限もそれに合わせる
+    const SgVoxelMap& voxels = tgt.fineVoxels();
+    reg.rejector.max_dist_sq =
+        std::pow(std::max(cfg_.max_correspondence_distance, 2.0 * cfg_.vgicp_voxel_size), 2);
+    r = reg.align(voxels, *src.cloud, voxels, init);
+  } else {
+    r = reg.align(*tgt.cloud, *src.cloud, *tgt.tree, init);
+  }
 
   out.converged = r.converged;
   out.iterations = static_cast<int>(r.iterations);
@@ -206,6 +235,11 @@ RegistrationResult GicpMatcher::align(const SourceCloud& source, const MatchTarg
   out.error = r.error;
   out.num_inliers = r.num_inliers;
   out.inlier_ratio = static_cast<double>(r.num_inliers) / static_cast<double>(src.size());
+  if (vgicp) {
+    // VGICP の「対応がある点」はボクセルに入った点なので、GICP の意味（max_correspondence_distance 以内に地図の点が
+    // ある点）とは違う。採用の判定（min_inlier_ratio）をそろえるため、地図の点との距離で数え直す
+    out.inlier_ratio = overlap(source, target, out.T_map_base, cfg_.max_correspondence_distance, 0, false);
+  }
   out.error_per_point = r.num_inliers > 0 ? r.error / static_cast<double>(r.num_inliers) : 0.0;
   out.overlap = overlap(source, target, out.T_map_base, cfg_.overlap_distance);
   return out;
