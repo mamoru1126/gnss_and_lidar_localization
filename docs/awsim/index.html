@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LiDAR だけで西新宿を走る</title>
+<meta name="description" content="AWSIM の西新宿で、点群地図と LiDAR の照合だけで自己位置を推定した様子（V-A1）">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F3F6F5; --surface:#FFFFFF; --ink:#15201F; --muted:#586664; --line:#D3DCDA;
+  --gnss:#A8680F; --gnss-soft:#F4E4C6;
+  --lidar:#1D6A86; --lidar-soft:#D2E7EF;
+  --dr:#56733F; --dr-soft:#DEE9D4;
+  --warn:#B0412B; --warn-soft:#F4D8CF;
+  --code-bg:#EAF0EE;
+  --display:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --body:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F1515; --surface:#162020; --ink:#E3ECEA; --muted:#9AAAA7; --line:#2C3A38;
+    --gnss:#E3AA4E; --gnss-soft:#3A2D14;
+    --lidar:#62B6D3; --lidar-soft:#12313B;
+    --dr:#9CC07F; --dr-soft:#223020;
+    --warn:#E68068; --warn-soft:#3C221C;
+    --code-bg:#1C2828;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0F1515; --surface:#162020; --ink:#E3ECEA; --muted:#9AAAA7; --line:#2C3A38;
+  --gnss:#E3AA4E; --gnss-soft:#3A2D14;
+  --lidar:#62B6D3; --lidar-soft:#12313B;
+  --dr:#9CC07F; --dr-soft:#223020;
+  --warn:#E68068; --warn-soft:#3C221C;
+  --code-bg:#1C2828;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15.5px;line-height:1.8;padding-inline:16px;padding-block:28px 64px}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+header{display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,6vw,40px);line-height:1.3;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.4;margin:0;text-wrap:balance}
+h3{font-family:var(--display);font-weight:700;font-size:17px;margin:0}
+p{margin:0;max-width:65ch}
+.lead{font-size:16.5px;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:12.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);line-height:1.6}
+.chip b{color:var(--ink);font-weight:500}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:0}
+.sw.g{background:var(--gnss)} .sw.l{background:var(--lidar)} .sw.d{background:var(--dr)} .sw.w{background:var(--warn)}
+nav{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-block:12px}
+nav ol{margin:0;padding-left:1.4em;columns:2;column-gap:28px;font-size:14px}
+nav a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+nav a:hover,nav a:focus-visible{border-color:var(--lidar);outline:none}
+section{display:flex;flex-direction:column;gap:16px;scroll-margin-top:16px}
+.secno{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em}
+figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 12px 10px;display:flex;flex-direction:column;gap:8px}
+figure svg{width:100%;height:auto;display:block;max-width:560px;margin:0 auto}
+figcaption{font-size:13px;color:var(--muted);line-height:1.6}
+.scroll{overflow-x:auto}
+.scroll img{max-width:none;width:760px;display:block;border-radius:6px;background:#fff}
+.math{overflow-x:auto;padding:4px 0;font-size:15px}
+.callout{border-left:3px solid var(--lidar);background:var(--surface);padding:10px 14px;border-radius:0 8px 8px 0;font-size:14.5px}
+.callout.w{border-color:var(--warn)}
+table{border-collapse:collapse;font-size:13.5px;width:100%;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:12.5px}
+td.n{text-align:right;font-family:var(--mono);font-size:13px}
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px 6px}
+code{font-family:var(--mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+ul.tight{margin:0;padding-left:1.2em}
+ul.tight li{margin:2px 0}
+.good{color:var(--dr);font-weight:500}.bad{color:var(--warn);font-weight:500}
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;margin:0;overflow-x:auto;font-size:13px}
+footer{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--lidar)}
+/* SVG tokens */
+.s-box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+.s-g{fill:var(--gnss-soft);stroke:var(--gnss);stroke-width:1.2}
+.s-l{fill:var(--lidar-soft);stroke:var(--lidar);stroke-width:1.2}
+.s-d{fill:var(--dr-soft);stroke:var(--dr);stroke-width:1.2}
+.s-w{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.2}
+.s-core{fill:var(--ink);stroke:none}
+.t{fill:var(--ink);font-family:var(--body);font-size:13px}
+.tb{fill:var(--ink);font-family:var(--body);font-size:13.5px;font-weight:700}
+.tm{fill:var(--muted);font-family:var(--body);font-size:11.5px}
+.tinv{fill:var(--bg);font-family:var(--body);font-size:13px}
+.tinvb{fill:var(--bg);font-family:var(--body);font-size:14px;font-weight:700}
+.tg{fill:var(--gnss);font-family:var(--body);font-size:12px;font-weight:500}
+.tl{fill:var(--lidar);font-family:var(--body);font-size:12px;font-weight:500}
+.tw{fill:var(--warn);font-family:var(--body);font-size:12px;font-weight:500}
+.td{fill:var(--dr);font-family:var(--body);font-size:12px;font-weight:500}
+.ln{stroke:var(--muted);stroke-width:1.4;fill:none}
+.ln-ink{stroke:var(--ink);stroke-width:1.6;fill:none}
+.ln-g{stroke:var(--gnss);stroke-width:2;fill:none}
+.ln-l{stroke:var(--lidar);stroke-width:2;fill:none}
+.ln-w{stroke:var(--warn);stroke-width:2;fill:none}
+.ln-d{stroke:var(--dr);stroke-width:2;fill:none}
+.dash{stroke-dasharray:5 4}
+.grid{stroke:var(--line);stroke-width:1;fill:none}
+.ah{fill:var(--muted)} .ah-ink{fill:var(--ink)} .ah-g{fill:var(--gnss)} .ah-l{fill:var(--lidar)} .ah-w{fill:var(--warn)} .ah-d{fill:var(--dr)}
+.dot-w{fill:var(--warn)} .dot-l{fill:var(--lidar)} .dot-ink{fill:var(--ink)}
+.car{fill:var(--ink)} .car-ghost{fill:none;stroke:var(--warn);stroke-width:1.5;stroke-dasharray:3 3}
+.fill-g{fill:var(--gnss)} .fill-gs{fill:var(--gnss-soft)} .fill-l{fill:var(--lidar)} .fill-ls{fill:var(--lidar-soft)}
+.hatch-l{fill:url(#hl)} .hatch-g{fill:url(#hg)}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
+@media (max-width:520px){nav ol{columns:1}}
+
+.video video{width:100%;height:auto;display:block;border-radius:6px;background:#111}
+figure.video{padding:8px}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;font-size:13.5px;line-height:1.6}
+.legend>div{display:flex;gap:10px;align-items:flex-start}
+.legend .key{flex:none;width:14px;height:14px;border-radius:3px;margin-top:4px;border:1px solid var(--line)}
+.legend b{font-weight:500}
+@media (max-width:560px){.legend{grid-template-columns:1fr}}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.tl-label{font-size:12.5px;color:var(--muted)}
+.tl-num{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.2;font-variant-numeric:tabular-nums}
+.tl-num small{font-size:15px;font-weight:500;color:var(--muted)}
+.tl-sub{font-size:12px;color:var(--muted)}
+@media (max-width:520px){.tiles{grid-template-columns:1fr}}
+:root{--s-b:#B5650A;--s-a:#0B6E99;--st-l:#DDE7E4;--st-d:#E9C77E;--st-x:#B0412B}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--s-b:#C98422;--s-a:#2F95C4;--st-l:#2A3937;--st-d:#8A6A26;--st-x:#E68068}}
+:root[data-theme="dark"]{--s-b:#C98422;--s-a:#2F95C4;--st-l:#2A3937;--st-d:#8A6A26;--st-x:#E68068}
+.chart-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 14px;align-items:baseline}
+.chart-title{font-size:14px;font-weight:500}
+.chart-legend,.strip-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted)}
+.ln-key{display:inline-block;width:16px;height:0;border-top:2px solid;vertical-align:4px;margin-right:6px}
+.ln-key.b{border-color:var(--s-b)} .ln-key.a{border-color:var(--s-a)}
+.sk{display:inline-block;width:12px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+.sk.L{background:var(--st-l);border:1px solid var(--line)} .sk.D{background:var(--st-d)} .sk.X{background:var(--st-x)}
+.chart-box{position:relative;touch-action:pan-y}
+.chart-box svg,#route{width:100%;height:auto;display:block}
+.ax{fill:var(--muted);font-family:var(--mono);font-size:12px}
+.lab{fill:var(--ink);font-family:var(--body);font-size:13px}
+.lab.w{fill:var(--warn)}
+.series{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.series.b{stroke:var(--s-b)} .series.a{stroke:var(--s-a)}
+.dot{stroke:var(--surface);stroke-width:2} .dot.b{fill:var(--s-b)} .dot.a{fill:var(--s-a)}
+.cross{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.st.L{fill:var(--st-l)} .st.D{fill:var(--st-d)} .st.X{fill:var(--st-x)}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;line-height:1.6;box-shadow:0 4px 14px rgba(0,0,0,.12);white-space:nowrap}
+.tip span{color:var(--muted);font-size:11.5px;margin-left:4px}
+.route{fill:none;stroke:var(--muted);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round;opacity:.7}
+.route.bad{stroke:var(--warn);stroke-width:5;opacity:1}
+.start{fill:var(--surface);stroke:var(--ink);stroke-width:2}
+.scale{stroke:var(--ink);stroke-width:2}
+details summary{cursor:pointer;font-size:13px;color:var(--muted)}
+details .tbl{margin-top:8px;max-height:320px;overflow:auto}
+.fixes{display:flex;flex-direction:column;gap:14px}
+.fix{display:flex;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.fix-no{flex:none;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-family:var(--mono);font-size:13px}
+.fix>div{display:flex;flex-direction:column;gap:6px}
+.fix p{font-size:14.5px}
+.fix .fx{color:var(--dr);font-size:14px}
+pre.cmd{margin:0;background:var(--code-bg);border-radius:8px;padding:10px 12px;overflow-x:auto}
+pre.cmd code{background:none;padding:0}
+footer{display:flex;flex-direction:column;gap:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">gnss_and_lidar_localization ・ AWSIM 検証 V-A1</span>
+  <h1>LiDAR だけで西新宿を走る</h1>
+  <p class="lead">シミュレータ AWSIM で車を約 5 分走らせ、GNSS を使わずに <b>点群地図と LiDAR の照合（small_gicp）</b> だけで自己位置を推定した様子です。真値との差は xy で <b>RMS 7 cm</b>、走行時間の <b>93 %</b> で LiDAR の照合が使えていました。</p>
+  <div class="chips">
+    <span class="chip"><b>シミュレータ</b> AWSIM v1.3.1（西新宿）</span>
+    <span class="chip"><span class="sw l"></span><b>LiDAR</b> VLP-16 相当 10 Hz</span>
+    <span class="chip"><span class="sw d"></span><b>IMU・車速</b> 30 Hz</span>
+    <span class="chip"><b>GNSS</b> 使わない</span>
+    <span class="chip"><b>速さ</b> 最高 約 25 km/h</span>
+  </div>
+</header>
+
+<nav aria-label="目次">
+  <ol>
+    <li><a href="#video">推定している様子</a></li>
+    <li><a href="#how">1 スキャンごとにしていること</a></li>
+    <li><a href="#result">結果</a></li>
+    <li><a href="#error">誤差の時間変化</a></li>
+    <li><a href="#fixes">ここまでに直したこと</a></li>
+    <li><a href="#left">残っている課題</a></li>
+    <li><a href="#repro">条件と再現のしかた</a></li>
+  </ol>
+</nav>
+
+<!-- 1 -->
+<section id="video">
+  <span class="secno">1 / 7</span>
+  <h2>推定している様子</h2>
+  <figure class="video">
+    <video controls muted playsinline preload="metadata" poster="poster.jpg">
+      <source src="lidar_localization.mp4" type="video/mp4">
+      お使いのブラウザでは動画を再生できません。<a href="lidar_localization.mp4">動画ファイル</a>を開いてください。
+    </video>
+    <figcaption>推定ノードの出力を録った rosbag を Foxglove で再生したもの（約 95 秒。視点は途中で動かしている）。</figcaption>
+  </figure>
+  <div class="legend" role="list">
+    <div role="listitem"><span class="key" style="background:#E8E8E8"></span><div><b>白: 全体の点群地図</b><br>西新宿の地図を 1 m に間引いたもの。表示用で、推定には使わない</div></div>
+    <div role="listitem"><span class="key" style="background:#3BE35A"></span><div><b>緑: 読み込んだ部分の地図</b><br>20 m 角のタイルのうち、車の周り（半径 60 m ＋ 3 秒先）だけをメモリに載せて照合に使う</div></div>
+    <div role="listitem"><span class="key" style="background:#E0201A"></span><div><b>赤: いまのスキャン</b><br>LiDAR の点を、照合で求めた姿勢で地図の上に置いたもの。緑の地図に重なっていれば照合が合っている</div></div>
+    <div role="listitem"><span class="key" style="background:#E6E23A"></span><div><b>黄: 座標系のつながり（TF）</b><br>Foxglove の表示。遠くにある <code>map</code> の原点と車を結んでいるだけで、推定とは関係ない</div></div>
+  </div>
+  <p>車が進むと緑の範囲が一緒に動きます。前方のタイルを先に読み込み、遠ざかったタイルは捨てるので、西新宿全体（約 46 万点に間引いても大きい）を常に持っている必要はありません。赤いスキャンの同心円は、地面に当たった LiDAR の各レーザーの軌跡です。</p>
+</section>
+
+<!-- 2 -->
+<section id="how">
+  <span class="secno">2 / 7</span>
+  <h2>1 スキャンごとにしていること</h2>
+  <p>推定器は 1 つ（SE(2) の Invariant EKF）で、IMU と車速で動きを積み上げて予測し、LiDAR のスキャンが届くたびに地図と照合して補正します。</p>
+  <figure>
+    <svg viewBox="0 0 400 392" role="img" aria-label="IMU と車速で予測し、GICP で地図と照合し、ゲートを通ったら補正する流れ">
+      <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker></defs>
+      <rect class="s-d" x="10" y="10" width="380" height="56" rx="8"/>
+      <text class="tb" x="24" y="33">① 予測（IMU・車速、30 Hz）</text>
+      <text class="tm" x="24" y="53">角速度と前進速度で、前の姿勢から今の姿勢を積み上げる</text>
+      <path class="ln" d="M200 66V90" marker-end="url(#a1)"/>
+      <rect class="s-l" x="10" y="94" width="380" height="56" rx="8"/>
+      <text class="tb" x="24" y="117">② 照合（small_gicp の GICP、10 Hz）</text>
+      <text class="tm" x="24" y="137">予測した姿勢を初期値に、スキャンを読み込み済みの地図に合わせる</text>
+      <path class="ln" d="M200 150V174" marker-end="url(#a1)"/>
+      <rect class="s-box" x="10" y="178" width="380" height="72" rx="8"/>
+      <text class="tb" x="24" y="201">③ 確かめる</text>
+      <text class="tm" x="24" y="221">照合: 地図に近い点の割合 ≥ 0.6、地図との重なり ≥ 0.5</text>
+      <text class="tm" x="24" y="239">ゲート: 予測との食い違いが、共分散から見てあり得る範囲か</text>
+      <path class="ln" d="M110 250V274" marker-end="url(#a1)"/>
+      <path class="ln" d="M290 250V274" marker-end="url(#a1)"/>
+      <text class="td" x="118" y="266">通った</text><text class="tw" x="298" y="266">通らない</text>
+      <rect class="s-l" x="10" y="278" width="190" height="104" rx="8"/>
+      <text class="tb" x="24" y="301">④ 補正</text>
+      <text class="tm" x="24" y="321">照合の姿勢で推定を直す</text>
+      <text class="tm" x="24" y="339">状態 LIDAR_AIDED</text>
+      <rect class="s-w" x="210" y="278" width="180" height="104" rx="8"/>
+      <text class="tb" x="224" y="301">④' 予測だけで進む</text>
+      <text class="tm" x="224" y="321">DEAD_RECKONING</text>
+      <text class="tm" x="224" y="339">続いたら周りを探し直す</text>
+      <text class="tm" x="224" y="357">（再位置推定）→ LOST</text>
+    </svg>
+    <figcaption>地図のタイルの読み込み・捨てる処理は照合とは別に進み、照合は読み込み済みのタイルだけを使う。</figcaption>
+  </figure>
+</section>
+
+<!-- 3 -->
+<section id="result">
+  <span class="secno">3 / 7</span>
+  <h2>結果</h2>
+  <div class="tiles">
+    <div class="tile"><span class="tl-label">xy の誤差（RMS）</span><span class="tl-num">7.1<small> cm</small></span><span class="tl-sub">95 % 点 15 cm・最大 30 cm</span></div>
+    <div class="tile"><span class="tl-label">向きの誤差（RMS）</span><span class="tl-num">0.06<small>°</small></span><span class="tl-sub">最大 0.36°</span></div>
+    <div class="tile"><span class="tl-label">LiDAR が使えた時間</span><span class="tl-num">93<small> %</small></span><span class="tl-sub">LOST 2.7 %</span></div>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>状態</th><th>時間の割合</th><th>横 RMS</th><th>縦 RMS</th><th>向き RMS</th></tr></thead>
+      <tbody>
+        <tr><td>LIDAR_AIDED（照合で補正）</td><td class="n">93.0 %</td><td class="n">0.016 m</td><td class="n">0.063 m</td><td class="n">0.06°</td></tr>
+        <tr><td>DEAD_RECKONING（予測だけ）</td><td class="n">4.2 %</td><td class="n">0.055 m</td><td class="n">0.093 m</td><td class="n">0.07°</td></tr>
+        <tr><td>LOST（位置を見失った扱い）</td><td class="n">2.7 %</td><td class="n">0.109 m</td><td class="n">0.105 m</td><td class="n">0.10°</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>「横」は車の左右方向、「縦」は進行方向の誤差です。縦の方が大きいのは、道に沿った方向は地図の形から決まりにくいため（長い直線では特に）。LOST の間も誤差は 11 cm 程度で、実際には見失っていません（6 章）。</p>
+</section>
+
+<!-- 4 -->
+<section id="error">
+  <span class="secno">4 / 7</span>
+  <h2>誤差の時間変化</h2>
+  <p>同じ走行データで、車速の扱いを直す前と後を比べます（5 章の 3）。直す前は曲がり角のたびに横へずれて LiDAR の照合を捨て、見失っていました。</p>
+  <figure class="chart">
+    <div class="chart-head">
+      <span class="chart-title">横方向の誤差（0.5 秒ごとの最大、m）</span>
+      <span class="chart-legend"><span><i class="ln-key b"></i>直す前</span><span><i class="ln-key a"></i>直した後</span></span>
+    </div>
+    <div class="chart-box" id="chart" aria-label="横方向の誤差の時間変化。直す前は曲がり角で最大 1.2 m、直した後は最大 0.16 m">
+      <svg id="chart-svg" role="img"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="strip-legend">
+      <span>帯: 推定の状態</span>
+      <span><i class="sk L"></i>LIDAR_AIDED</span><span><i class="sk D"></i>DEAD_RECKONING・DEGRADED</span><span><i class="sk X"></i>LOST</span>
+    </div>
+    <figcaption>横軸は推定の開始からの秒。下の 2 本の帯は、上が直す前、下が直した後の状態。最初の約 50 秒は止まっている。</figcaption>
+    <details><summary>10 秒ごとの表</summary><div class="tbl"><table id="tbl"></table></div></details>
+  </figure>
+  <figure>
+    <div class="chart-head"><span class="chart-title">走った経路と、照合が使えなかった場所（直した後）</span></div>
+    <svg id="route" role="img" aria-label="走った経路。照合が使えなかったのは南向きの長い直線の 2 か所"></svg>
+    <figcaption>灰色の線が走った経路（真値）、赤の区間が LIDAR_AIDED 以外。上が北、始点は丸。</figcaption>
+  </figure>
+</section>
+
+<!-- 5 -->
+<section id="fixes">
+  <span class="secno">5 / 7</span>
+  <h2>ここまでに直したこと</h2>
+  <p>推定器そのものより、<b>AWSIM のセンサ出力の癖</b>を推定器の前提（ふつうの IMU、base_link の速さ）に合わせる変換で詰まっていました。どれも「真値と比べて癖を見つけ、変換で直す」形にしています。</p>
+  <div class="fixes">
+    <div class="fix"><span class="fix-no">1</span><div><h3>IMU の重力が逆向き</h3>
+      <p>AWSIM の IMU は、止まっていると下向きに重力が出ます（ふつうは上向き）。そのまま取り付けの向きを求めると「上下逆さまに付いている」ことになり、<b>曲がる向きが逆</b>に推定されて、最初の角で数百 m ずれました。</p>
+      <p class="fx">直し方: 重力の向きの両方の場合で当てはめ、角速度も合う方を採る。</p></div></div>
+    <div class="fix"><span class="fix-no">2</span><div><h3>車速の時刻と yaw レートの符号</h3>
+      <p>車速（VelocityReport）の yaw レートは符号が逆で、遅れもあります。時刻のずれを yaw レートで求めていたため、車速を 0.18 秒もずらしてしまい、減速のたびに進行方向にずれていました。</p>
+      <p class="fx">直し方: 時刻のずれは前後の速さで求める（−68 ms）。yaw レートは IMU の値を使う。</p></div></div>
+    <div class="fix"><span class="fix-no">3</span><div><h3>車速が重心の速さ</h3>
+      <p>AWSIM の車速は車体の<b>重心</b>の速さで、重心は base_link（後輪軸）の約 1.1 m 前にあります。曲がると横向きに「1.1 m × yaw レート」（約 0.35 m/s）の速さが出て、推定器には車が横に滑っているように見えていました。これが曲がり角ごとのずれの原因です。</p>
+      <p class="fx">直し方: 真値と比べて yaw レートに比例する横の速さを求め、取り除く（横の速さの誤差 0.093 → 0.011 m/s）。</p></div></div>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>V-A1（LiDAR だけ）</th><th>xy RMS</th><th>横 RMS</th><th>LiDAR が使えた時間</th><th>LOST</th></tr></thead>
+      <tbody>
+        <tr><td>1 まで</td><td class="n">0.53 m</td><td class="n">0.22 m</td><td class="n">71 %</td><td class="n">10.5 %</td></tr>
+        <tr><td>2 まで</td><td class="n">0.47 m</td><td class="n">0.37 m</td><td class="n">73 %</td><td class="n">8.0 %</td></tr>
+        <tr><td><b>3 まで（いま）</b></td><td class="n"><b>0.071 m</b></td><td class="n"><b>0.026 m</b></td><td class="n"><b>93 %</b></td><td class="n"><b>2.7 %</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="left">
+  <span class="secno">6 / 7</span>
+  <h2>残っている課題</h2>
+  <p>照合が使えなかったのは、南向きの長い直線の 2 か所だけです（開始から約 220 秒と 264 秒、速さ約 7 m/s）。どちらも推定の誤差は 10 cm 程度と小さいままでしたが、照合の結果の「地図との重なり」が 0.30〜0.44 と基準の 0.5 を下回ったため、補正に使いませんでした。周りを探し直す再位置推定も、同じ理由で失敗しています。</p>
+  <div class="callout w">スキャンの見えている範囲に、地図に無いもの・地図が薄いところが多い場所と見ています（点群地図が薄い、AWSIM の世界と点群地図の違い、構造物の少ない広い道）。録った rosbag でその時刻の赤いスキャンと地図を重ねて確かめ、基準の値（<code>lidar.min_overlap</code>）を下げるか、重なりの数え方を変えるかを決めます。</div>
+  <p>ほかに、AWSIM の IMU の加速度は雑音が大きく（位置の差分から作っているため）、取り付けの向きのピッチが −1.9° と出ています。平面の推定には影響が小さいので後回しにしています。</p>
+</section>
+
+<!-- 7 -->
+<section id="repro">
+  <span class="secno">7 / 7</span>
+  <h2>条件と再現のしかた</h2>
+  <ul class="tight">
+    <li>AWSIM v1.3.1（Lexus RX450h、西新宿）で、lanelet の地図から作った約 1.5 km の経路を最高 約 25 km/h で走らせて記録。ほかの車は出さない</li>
+    <li>点群地図は 0.2 m に間引いて 20 m のタイルに分けたもの。LiDAR の取り付け位置は地図との重なりから求めた (0.9, 0, 2.04) m・roll 0.9°・yaw 88.2°</li>
+    <li>最初の姿勢は真値を <code>/initialpose</code> で与える（地図の上で合わせてから始める）。GNSS は使わない</li>
+  </ul>
+  <pre class="cmd"><code>tools/awsim/run_scenario.sh v_a1 --push</code></pre>
+  <p>変換・推定ノードでの再生と録画・評価までを 1 回で行い、ログと要約を <code>tools/awsim/log/v_a1/</code> に残します。手順の全体は <a href="https://github.com/mamoru1126/gnss_and_lidar_localization/blob/main/docs/validation_awsim.md">検証計画（AWSIM）</a> と <a href="https://github.com/mamoru1126/gnss_and_lidar_localization/tree/main/tools/awsim">tools/awsim</a>。</p>
+</section>
+
+<footer>
+  <p>動画と経路の図には、TIER IV の <a href="https://github.com/tier4/AWSIM">AWSIM</a> の西新宿の地図（<code>nishishinjuku_autoware_map</code>）から作ったもの（点群・経路）が映っています。これらは元の地図と同じく <a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a> で、非営利の目的に限って使えます（<a href="../demo/LICENSE-nishishinjuku.txt">ライセンスの全文</a>）。改変: 点群を間引いて表示し、推定の結果を重ねた。リポジトリのほかの部分の MIT ライセンスは、これらには及びません。</p>
+  <p>推定の仕組みの図解は <a href="../explainer/">GNSS・LiDAR 融合アルゴリズム</a>、地図の部分読み込みは <a href="../tiled_pcd_map/">点群地図の部分ロード</a> を参照。</p>
+</footer>
+
+</div>
+
+<script>
+const DATA = {"before":[[0.0,0.001,0.001,"L",0.0,0.0],[0.5,0.001,0.001,"L",0.0,0.0],[1.0,0.001,0.001,"L",0.0,0.0],[1.5,0.001,0.001,"L",0.0,0.0],[2.0,0.001,0.001,"L",0.0,0.0],[2.5,0.001,0.001,"L",0.0,0.0],[3.0,0.001,0.001,"L",0.0,0.0],[3.5,0.001,0.001,"L",0.0,0.0],[4.0,0.001,0.001,"L",0.0,0.0],[4.5,0.001,0.001,"L",0.0,0.0],[5.0,0.001,0.001,"L",0.0,0.0],[5.5,0.001,0.001,"L",0.0,0.0],[6.0,0.001,0.001,"L",0.0,0.0],[6.5,0.001,0.001,"L",0.0,0.0],[7.0,0.001,0.001,"L",0.0,0.0],[7.5,0.001,0.001,"L",0.0,0.0],[8.0,0.001,0.001,"L",0.0,0.0],[8.5,0.001,0.001,"L",0.0,0.0],[9.0,0.001,0.001,"L",0.0,0.0],[9.5,0.001,0.001,"L",0.0,0.0],[10.0,0.001,0.001,"L",0.0,0.0],[10.5,0.001,0.001,"L",0.0,0.0],[11.0,0.001,0.001,"L",0.0,0.0],[11.5,0.001,0.001,"L",0.0,0.0],[12.0,0.001,0.001,"L",0.0,0.0],[12.5,0.001,0.001,"L",0.0,0.0],[13.0,0.001,0.001,"L",0.0,0.0],[13.5,0.001,0.001,"L",0.0,0.0],[14.0,0.001,0.001,"L",0.0,0.0],[14.5,0.001,0.001,"L",0.0,0.0],[15.0,0.001,0.001,"L",0.0,0.0],[15.5,0.001,0.001,"L",0.0,0.0],[16.0,0.001,0.001,"L",0.0,0.0],[16.5,0.001,0.001,"L",0.0,0.0],[17.0,0.001,0.001,"L",0.0,0.0],[17.5,0.001,0.001,"L",0.0,0.0],[18.0,0.001,0.001,"L",0.0,0.0],[18.5,0.001,0.001,"L",0.0,0.0],[19.0,0.001,0.001,"L",0.0,0.0],[19.5,0.001,0.001,"L",0.0,0.0],[20.0,0.001,0.001,"L",0.0,0.0],[20.5,0.001,0.001,"L",0.0,0.0],[21.0,0.001,0.001,"L",0.0,0.0],[21.5,0.001,0.001,"L",0.0,0.0],[22.0,0.001,0.001,"L",0.0,0.0],[22.5,0.001,0.001,"L",0.0,0.0],[23.0,0.001,0.001,"L",0.0,0.0],[23.5,0.001,0.001,"L",0.0,0.0],[24.0,0.001,0.001,"L",0.0,0.0],[24.5,0.001,0.001,"L",0.0,0.0],[25.0,0.001,0.001,"L",0.0,0.0],[25.5,0.001,0.001,"L",0.0,0.0],[26.0,0.001,0.001,"L",0.0,0.0],[26.5,0.001,0.001,"L",0.0,0.0],[27.0,0.001,0.001,"L",0.0,0.0],[27.5,0.001,0.001,"L",0.0,0.0],[28.0,0.001,0.001,"L",0.0,0.0],[28.5,0.001,0.001,"L",0.0,0.0],[29.0,0.001,0.001,"L",0.0,0.0],[29.5,0.001,0.001,"L",0.0,0.0],[30.0,0.001,0.001,"L",0.0,0.0],[30.5,0.001,0.001,"L",0.0,0.0],[31.0,0.001,0.001,"L",0.0,0.0],[31.5,0.001,0.001,"L",-0.0,0.0],[32.0,0.001,0.001,"L",0.0,0.0],[32.5,0.001,0.001,"L",0.0,0.0],[33.0,0.001,0.001,"L",0.0,0.0],[33.5,0.001,0.001,"L",0.0,0.0],[34.0,0.001,0.001,"L",0.0,0.0],[34.5,0.001,0.001,"L",0.0,0.0],[35.0,0.001,0.001,"L",0.0,0.0],[35.5,0.001,0.001,"L",0.0,0.0],[36.0,0.001,0.001,"L",0.0,0.0],[36.5,0.001,0.001,"L",0.0,0.0],[37.0,0.001,0.001,"L",0.0,0.0],[37.5,0.001,0.001,"L",0.0,0.0],[38.0,0.001,0.001,"L",0.0,0.0],[38.5,0.001,0.001,"L",0.0,0.0],[39.0,0.001,0.001,"L",0.0,0.0],[39.5,0.001,0.001,"L",0.0,0.0],[40.0,0.001,0.001,"L",0.0,0.0],[40.5,0.001,0.001,"L",0.0,0.0],[41.0,0.001,0.001,"L",0.0,0.0],[41.5,0.001,0.001,"L",0.0,0.0],[42.0,0.001,0.001,"L",0.0,0.0],[42.5,0.001,0.001,"L",0.0,0.0],[43.0,0.001,0.001,"L",0.0,0.0],[43.5,0.001,0.001,"L",0.0,0.0],[44.0,0.001,0.001,"L",0.0,0.0],[44.5,0.001,0.001,"L",0.0,0.0],[45.0,0.001,0.001,"L",0.0,0.0],[45.5,0.001,0.001,"L",0.0,0.0],[46.0,0.001,0.001,"L",0.0,0.0],[46.5,0.001,0.001,"L",0.0,0.0],[47.0,0.001,0.001,"L",0.0,0.0],[47.5,0.001,0.001,"L",0.0,0.0],[48.0,0.001,0.001,"L",0.0,0.0],[48.5,0.001,0.001,"L",0.0,0.0],[49.0,0.001,0.001,"L",-0.0,0.0],[49.5,0.001,0.001,"L",0.0,0.0],[50.0,0.001,0.001,"L",0.0,0.0],[50.5,0.001,0.001,"L",0.0,0.0],[51.0,0.011,0.035,"L",0.0,0.0],[51.5,0.046,0.082,"L",0.3,0.2],[52.0,0.067,0.083,"L",1.0,0.7],[52.5,0.073,0.053,"L",2.2,1.4],[53.0,0.067,0.05,"L",3.8,2.3],[53.5,0.049,0.039,"L",5.7,3.6],[54.0,0.029,0.09,"L",7.9,4.9],[54.5,0.02,0.108,"L",10.3,6.5],[55.0,0.057,0.101,"L",13.0,8.3],[55.5,0.128,0.082,"L",15.5,10.2],[56.0,0.215,0.103,"L",17.8,12.2],[56.5,0.371,0.099,"L",19.7,14.3],[57.0,0.542,0.113,"L",21.2,16.5],[57.5,0.697,0.061,"R",22.3,18.7],[58.0,0.851,0.066,"R",23.2,21.0],[58.5,0.926,0.142,"R",23.7,23.5],[59.0,0.105,0.051,"G",23.9,26.2],[59.5,0.135,0.053,"G",23.8,28.9],[60.0,0.129,0.085,"G",23.5,31.8],[60.5,0.117,0.025,"G",23.0,35.1],[61.0,0.088,0.07,"G",22.4,38.5],[61.5,0.063,0.084,"G",21.8,42.0],[62.0,0.037,0.085,"G",21.3,45.5],[62.5,0.018,0.119,"G",20.7,49.1],[63.0,0.006,0.149,"G",20.2,52.9],[63.5,0.003,0.187,"G",19.6,56.5],[64.0,0.007,0.216,"G",19.1,60.1],[64.5,0.006,0.215,"G",18.5,63.9],[65.0,0.006,0.217,"G",18.0,67.5],[65.5,0.007,0.219,"G",17.4,71.1],[66.0,0.01,0.218,"G",16.9,74.6],[66.5,0.012,0.211,"L",16.4,78.2],[67.0,0.013,0.221,"L",15.9,81.7],[67.5,0.015,0.202,"L",15.4,85.1],[68.0,0.014,0.181,"L",14.9,88.5],[68.5,0.013,0.153,"L",14.4,92.1],[69.0,0.014,0.132,"L",13.9,95.6],[69.5,0.016,0.12,"L",13.4,99.0],[70.0,0.021,0.084,"L",13.0,102.4],[70.5,0.022,0.074,"L",12.5,105.8],[71.0,0.021,0.094,"L",12.1,109.3],[71.5,0.02,0.104,"L",11.7,112.7],[72.0,0.018,0.106,"L",11.2,116.2],[72.5,0.016,0.099,"L",10.8,119.4],[73.0,0.011,0.086,"L",10.4,122.9],[73.5,0.008,0.106,"L",9.9,126.4],[74.0,0.005,0.08,"L",9.5,129.7],[74.5,0.005,0.061,"L",9.1,132.9],[75.0,0.006,0.084,"L",8.6,136.4],[75.5,0.006,0.104,"L",8.1,140.0],[76.0,0.007,0.09,"L",7.6,143.4],[76.5,0.008,0.068,"L",7.1,146.8],[77.0,0.008,0.106,"L",6.5,150.4],[77.5,0.007,0.094,"L",6.0,153.8],[78.0,0.005,0.106,"L",5.5,157.1],[78.5,0.004,0.098,"L",4.9,160.8],[79.0,0.003,0.071,"L",4.4,164.2],[79.5,0.005,0.107,"L",3.8,167.6],[80.0,0.007,0.088,"L",3.3,171.1],[80.5,0.007,0.051,"L",2.7,174.5],[81.0,0.008,0.062,"L",2.2,178.0],[81.5,0.01,0.066,"L",1.7,181.4],[82.0,0.01,0.06,"L",1.1,184.8],[82.5,0.011,0.044,"L",0.6,188.3],[83.0,0.011,0.052,"L",0.0,191.7],[83.5,0.012,0.041,"L",-0.5,195.1],[84.0,0.011,0.054,"L",-1.0,198.6],[84.5,0.012,0.046,"L",-1.6,202.0],[85.0,0.01,0.056,"L",-2.1,205.3],[85.5,0.011,0.079,"L",-2.7,208.7],[86.0,0.008,0.047,"L",-3.2,212.4],[86.5,0.007,0.053,"L",-3.7,215.7],[87.0,0.008,0.064,"L",-4.3,219.1],[87.5,0.03,0.066,"L",-4.9,222.5],[88.0,0.071,0.041,"L",-5.3,225.8],[88.5,0.134,0.048,"L",-5.7,229.2],[89.0,0.234,0.042,"L",-5.7,232.3],[89.5,0.396,0.064,"L",-5.4,235.2],[90.0,0.541,0.087,"L",-4.8,237.7],[90.5,0.688,0.134,"R",-3.9,240.0],[91.0,0.813,0.214,"R",-2.8,242.1],[91.5,0.893,0.344,"R",-1.5,244.0],[92.0,0.1,0.057,"G",0.2,245.8],[92.5,0.16,0.081,"G",2.1,247.5],[93.0,0.213,0.052,"G",4.0,248.9],[93.5,0.244,0.045,"G",6.0,250.0],[94.0,0.276,0.077,"G",8.2,251.0],[94.5,0.29,0.109,"G",10.6,251.8],[95.0,0.282,0.169,"X",13.3,252.5],[95.5,0.269,0.164,"G",16.4,253.2],[96.0,0.251,0.138,"G",19.6,253.8],[96.5,0.219,0.169,"G",22.9,254.5],[97.0,0.189,0.104,"G",26.4,255.2],[97.5,0.153,0.116,"G",29.9,255.9],[98.0,0.13,0.153,"G",33.4,256.7],[98.5,0.11,0.156,"G",37.0,257.4],[99.0,0.096,0.14,"G",40.6,258.0],[99.5,0.084,0.143,"G",44.2,258.7],[100.0,0.071,0.036,"G",47.7,259.4],[100.5,0.06,0.104,"G",51.2,260.0],[101.0,0.049,0.067,"G",54.8,260.7],[101.5,0.042,0.096,"G",58.3,261.3],[102.0,0.034,0.048,"G",61.8,262.0],[102.5,0.031,0.058,"G",65.2,262.6],[103.0,0.025,0.051,"G",68.6,263.2],[103.5,0.023,0.102,"G",72.0,263.9],[104.0,0.018,0.076,"G",75.7,264.5],[104.5,0.016,0.074,"L",79.0,265.2],[105.0,0.015,0.069,"L",82.3,265.8],[105.5,0.013,0.099,"L",85.9,266.5],[106.0,0.012,0.08,"L",89.3,267.1],[106.5,0.012,0.074,"L",92.7,267.7],[107.0,0.014,0.079,"L",96.2,268.4],[107.5,0.013,0.096,"L",99.6,269.0],[108.0,0.013,0.083,"L",103.0,269.6],[108.5,0.014,0.069,"L",106.4,270.3],[109.0,0.015,0.08,"L",109.7,270.9],[109.5,0.015,0.1,"L",113.1,271.5],[110.0,0.014,0.078,"L",116.5,272.1],[110.5,0.014,0.072,"L",119.8,272.8],[111.0,0.015,0.082,"L",123.2,273.4],[111.5,0.015,0.083,"L",126.7,274.0],[112.0,0.014,0.187,"L",130.0,274.6],[112.5,0.014,0.086,"L",133.5,275.3],[113.0,0.013,0.081,"L",136.9,275.9],[113.5,0.013,0.09,"L",140.2,276.5],[114.0,0.012,0.083,"L",143.6,277.2],[114.5,0.012,0.075,"L",147.2,277.8],[115.0,0.013,0.092,"L",150.6,278.5],[115.5,0.01,0.091,"L",153.9,279.1],[116.0,0.031,0.136,"L",157.2,279.7],[116.5,0.095,0.113,"L",160.4,280.5],[117.0,0.178,0.106,"L",163.3,281.4],[117.5,0.275,0.089,"L",165.8,282.4],[118.0,0.447,0.094,"L",168.0,283.7],[118.5,0.592,0.061,"L",169.9,285.1],[119.0,0.749,0.104,"R",171.4,286.6],[119.5,0.879,0.218,"R",172.8,288.4],[120.0,0.952,0.278,"R",173.7,290.1],[120.5,0.133,0.055,"G",174.4,291.9],[121.0,0.193,0.075,"X",174.9,293.9],[121.5,0.236,0.081,"X",175.1,296.0],[122.0,0.253,0.143,"X",175.1,298.1],[122.5,0.257,0.165,"X",174.9,300.3],[123.0,0.246,0.216,"X",174.5,302.9],[123.5,0.213,0.266,"X",173.9,306.0],[124.0,0.167,0.267,"G",173.3,309.1],[124.5,0.134,0.258,"G",172.6,312.2],[125.0,0.093,0.223,"G",171.9,315.8],[125.5,0.06,0.219,"G",171.3,319.2],[126.0,0.043,0.198,"G",170.6,322.6],[126.5,0.023,0.165,"G",170.0,326.1],[127.0,0.016,0.178,"G",169.4,329.6],[127.5,0.008,0.131,"G",168.7,333.1],[128.0,0.004,0.17,"G",168.1,336.6],[128.5,0.005,0.191,"G",167.4,340.2],[129.0,0.005,0.098,"G",166.7,343.8],[129.5,0.007,0.073,"G",166.1,347.2],[130.0,0.007,0.079,"G",165.5,350.6],[130.5,0.01,0.099,"G",164.9,353.9],[131.0,0.012,0.082,"G",164.2,357.4],[131.5,0.012,0.117,"G",163.6,360.9],[132.0,0.011,0.058,"G",163.0,364.2],[132.5,0.008,0.053,"L",162.4,367.4],[133.0,0.008,0.056,"L",161.7,371.0],[133.5,0.009,0.062,"L",161.1,374.5],[134.0,0.012,0.046,"L",160.5,377.9],[134.5,0.011,0.052,"L",159.9,381.2],[135.0,0.012,0.073,"L",159.2,384.7],[135.5,0.012,0.053,"L",158.6,388.2],[136.0,0.01,0.058,"L",157.9,391.7],[136.5,0.011,0.047,"L",157.3,394.9],[137.0,0.011,0.066,"L",156.7,398.3],[137.5,0.012,0.056,"L",156.0,401.9],[138.0,0.014,0.045,"L",155.4,405.3],[138.5,0.014,0.051,"L",154.8,408.8],[139.0,0.014,0.058,"L",154.1,412.2],[139.5,0.014,0.081,"L",153.5,415.6],[140.0,0.014,0.059,"L",152.9,419.1],[140.5,0.015,0.072,"L",152.2,422.5],[141.0,0.015,0.082,"L",151.6,425.9],[141.5,0.014,0.076,"L",151.0,429.3],[142.0,0.012,0.062,"L",150.3,432.7],[142.5,0.008,0.053,"L",149.7,436.1],[143.0,0.007,0.072,"L",149.1,439.6],[143.5,0.009,0.068,"L",148.5,442.9],[144.0,0.01,0.061,"L",147.8,446.2],[144.5,0.009,0.142,"L",147.2,449.6],[145.0,0.01,0.058,"L",146.6,452.9],[145.5,0.012,0.06,"L",146.0,456.4],[146.0,0.015,0.059,"L",145.3,459.8],[146.5,0.013,0.035,"L",144.7,463.1],[147.0,0.016,0.052,"L",144.1,466.6],[147.5,0.016,0.044,"L",143.4,470.1],[148.0,0.014,0.085,"L",142.8,473.5],[148.5,0.015,0.049,"L",142.2,477.0],[149.0,0.014,0.099,"L",141.6,480.4],[149.5,0.017,0.091,"L",140.9,483.8],[150.0,0.016,0.049,"L",140.3,487.2],[150.5,0.015,0.087,"L",139.7,490.6],[151.0,0.016,0.06,"L",139.1,494.0],[151.5,0.019,0.04,"L",138.5,497.4],[152.0,0.022,0.058,"L",137.9,500.8],[152.5,0.025,0.052,"L",137.3,504.2],[153.0,0.029,0.047,"L",136.8,507.7],[153.5,0.033,0.123,"L",136.2,511.0],[154.0,0.035,0.046,"L",135.7,514.4],[154.5,0.036,0.046,"L",135.3,517.7],[155.0,0.036,0.044,"L",134.8,521.1],[155.5,0.035,0.068,"L",134.3,524.6],[156.0,0.03,0.05,"L",133.9,528.1],[156.5,0.028,0.059,"L",133.5,531.5],[157.0,0.023,0.052,"L",133.0,535.1],[157.5,0.019,0.053,"L",132.6,538.5],[158.0,0.016,0.083,"L",132.2,541.8],[158.5,0.013,0.062,"L",131.9,545.0],[159.0,0.012,0.116,"L",131.5,548.2],[159.5,0.01,0.066,"L",131.1,551.6],[160.0,0.009,0.028,"L",130.6,555.1],[160.5,0.007,0.065,"L",130.2,558.5],[161.0,0.005,0.067,"L",129.8,561.9],[161.5,0.005,0.089,"L",129.3,565.2],[162.0,0.012,0.066,"L",128.8,568.5],[162.5,0.018,0.092,"L",128.4,571.9],[163.0,0.019,0.052,"L",127.8,575.4],[163.5,0.055,0.05,"L",127.3,578.6],[164.0,0.112,0.062,"L",127.0,581.5],[164.5,0.14,0.068,"L",126.9,584.4],[165.0,0.135,0.039,"L",127.0,587.5],[165.5,0.095,0.105,"L",127.1,590.5],[166.0,0.036,0.053,"L",127.0,593.8],[166.5,0.081,0.13,"L",126.8,597.3],[167.0,0.098,0.1,"L",126.3,600.8],[167.5,0.098,0.125,"L",125.8,604.3],[168.0,0.084,0.142,"L",125.1,608.0],[168.5,0.064,0.138,"L",124.5,611.5],[169.0,0.042,0.09,"L",123.8,615.0],[169.5,0.028,0.067,"L",123.1,618.6],[170.0,0.021,0.075,"L",122.5,622.1],[170.5,0.016,0.123,"L",121.8,625.6],[171.0,0.012,0.06,"L",121.2,629.2],[171.5,0.009,0.072,"L",120.6,632.7],[172.0,0.013,0.038,"L",119.9,636.2],[172.5,0.054,0.078,"L",119.4,639.6],[173.0,0.115,0.064,"L",118.9,643.0],[173.5,0.211,0.056,"L",118.7,646.1],[174.0,0.342,0.081,"L",118.9,649.1],[174.5,0.516,0.063,"L",119.3,651.7],[175.0,0.707,0.126,"L",120.2,654.0],[175.5,0.872,0.232,"R",121.4,656.3],[176.0,1.008,0.389,"R",122.8,658.0],[176.5,1.119,0.569,"R",124.4,659.6],[177.0,0.142,0.064,"X",126.4,660.8],[177.5,0.206,0.132,"X",128.6,661.8],[178.0,0.216,0.16,"X",130.9,662.5],[178.5,0.206,0.148,"X",133.5,663.0],[179.0,0.178,0.124,"X",136.5,663.5],[179.5,0.145,0.154,"X",139.9,663.9],[180.0,0.098,0.18,"X",143.3,664.4],[180.5,0.061,0.133,"X",146.8,664.9],[181.0,0.036,0.184,"X",150.3,665.5],[181.5,0.024,0.206,"X",154.0,666.1],[182.0,0.019,0.093,"X",157.5,666.7],[182.5,0.017,0.123,"X",161.1,667.4],[183.0,0.016,0.123,"G",164.8,668.1],[183.5,0.029,0.091,"G",168.4,668.7],[184.0,0.07,0.128,"G",171.8,669.3],[184.5,0.128,0.125,"G",175.2,669.7],[185.0,0.171,0.051,"G",178.9,669.8],[185.5,0.165,0.058,"G",182.5,669.8],[186.0,0.132,0.043,"G",185.8,669.7],[186.5,0.057,0.081,"G",189.1,669.7],[187.0,0.069,0.071,"G",192.7,670.0],[187.5,0.085,0.043,"G",196.2,670.4],[188.0,0.086,0.072,"G",199.6,671.0],[188.5,0.078,0.052,"G",203.0,671.6],[189.0,0.061,0.075,"G",206.5,672.3],[189.5,0.041,0.133,"G",210.0,672.9],[190.0,0.024,0.096,"G",213.6,673.6],[190.5,0.013,0.11,"L",217.1,674.2],[191.0,0.01,0.057,"L",220.6,674.9],[191.5,0.006,0.087,"L",224.1,675.5],[192.0,0.005,0.052,"L",227.6,676.1],[192.5,0.005,0.053,"L",230.9,676.8],[193.0,0.004,0.079,"L",234.4,677.4],[193.5,0.003,0.069,"L",238.0,678.1],[194.0,0.004,0.037,"L",241.3,678.7],[194.5,0.004,0.07,"L",244.7,679.3],[195.0,0.003,0.055,"L",248.2,680.0],[195.5,0.002,0.066,"L",251.7,680.7],[196.0,0.005,0.066,"L",255.2,681.3],[196.5,0.007,0.056,"L",258.5,682.0],[197.0,0.009,0.058,"L",261.8,682.6],[197.5,0.015,0.174,"L",265.1,683.2],[198.0,0.033,0.059,"L",268.7,683.9],[198.5,0.066,0.102,"L",272.1,684.4],[199.0,0.081,0.059,"L",275.7,684.9],[199.5,0.092,0.069,"L",279.1,685.3],[200.0,0.083,0.04,"L",282.4,685.5],[200.5,0.069,0.071,"L",285.9,685.8],[201.0,0.054,0.074,"L",289.2,686.0],[201.5,0.037,0.072,"L",292.7,686.3],[202.0,0.018,0.075,"L",296.3,686.6],[202.5,0.008,0.123,"L",299.7,687.0],[203.0,0.014,0.066,"L",303.1,687.4],[203.5,0.026,0.069,"L",306.5,687.8],[204.0,0.032,0.068,"L",309.9,688.3],[204.5,0.034,0.074,"L",313.5,688.9],[205.0,0.03,0.08,"L",316.9,689.5],[205.5,0.021,0.073,"L",320.2,690.1],[206.0,0.012,0.061,"L",323.6,690.7],[206.5,0.006,0.077,"L",327.2,691.4],[207.0,0.011,0.048,"L",330.6,692.0],[207.5,0.015,0.064,"L",333.9,692.6],[208.0,0.018,0.061,"L",337.3,693.2],[208.5,0.02,0.146,"L",340.8,693.9],[209.0,0.02,0.049,"L",344.0,694.5],[209.5,0.034,0.079,"L",347.3,695.0],[210.0,0.081,0.054,"L",350.8,695.6],[210.5,0.15,0.069,"L",354.2,696.0],[211.0,0.239,0.043,"L",357.3,696.2],[211.5,0.377,0.048,"L",360.2,696.0],[212.0,0.562,0.097,"L",362.8,695.4],[212.5,0.744,0.156,"R",365.0,694.6],[213.0,0.901,0.245,"R",366.9,693.5],[213.5,1.049,0.433,"R",368.5,692.1],[214.0,1.063,0.433,"X",369.8,690.6],[214.5,0.187,0.064,"X",370.9,688.9],[215.0,0.244,0.107,"X",371.7,686.9],[215.5,0.263,0.18,"X",372.3,684.9],[216.0,0.265,0.165,"X",372.8,682.4],[216.5,0.241,0.229,"X",373.3,679.5],[217.0,0.196,0.211,"X",373.8,676.3],[217.5,0.152,0.217,"X",374.3,672.8],[218.0,0.109,0.19,"X",374.8,669.5],[218.5,0.084,0.197,"X",375.4,666.0],[219.0,0.066,0.212,"X",376.1,662.5],[219.5,0.057,0.212,"X",376.7,658.9],[220.0,0.058,0.206,"G",377.4,655.2],[220.5,0.06,0.173,"G",378.1,651.7],[221.0,0.063,0.153,"G",378.7,648.1],[221.5,0.064,0.169,"G",379.4,644.6],[222.0,0.068,0.173,"G",380.0,641.2],[222.5,0.069,0.201,"G",380.6,637.7],[223.0,0.074,0.158,"G",381.3,634.1],[223.5,0.077,0.2,"G",381.9,630.7],[224.0,0.078,0.144,"G",382.5,627.2],[224.5,0.081,0.172,"G",383.1,623.8],[225.0,0.083,0.172,"G",383.7,620.6],[225.5,0.09,0.131,"G",384.3,617.1],[226.0,0.094,0.163,"G",385.0,613.6],[226.5,0.097,0.124,"X",385.6,610.3],[227.0,0.101,0.189,"X",386.2,607.1],[227.5,0.104,0.148,"X",386.8,603.5],[228.0,0.111,0.174,"X",387.4,599.9],[228.5,0.114,0.144,"X",388.0,596.6],[229.0,0.122,0.201,"X",388.7,593.2],[229.5,0.126,0.114,"X",389.3,589.8],[230.0,0.132,0.153,"X",389.9,586.3],[230.5,0.138,0.168,"X",390.5,582.9],[231.0,0.14,0.181,"L",391.1,579.5],[231.5,0.003,0.171,"L",391.8,575.9],[232.0,0.002,0.132,"L",392.4,572.5],[232.5,0.003,0.203,"L",393.0,569.1],[233.0,0.005,0.177,"L",393.6,565.6],[233.5,0.006,0.179,"L",394.3,562.2],[234.0,0.008,0.208,"L",394.9,558.8],[234.5,0.008,0.166,"L",395.5,555.3],[235.0,0.008,0.175,"L",396.2,551.9],[235.5,0.008,0.178,"L",396.8,548.5],[236.0,0.008,0.142,"L",397.4,545.0],[236.5,0.007,0.162,"L",398.0,541.8],[237.0,0.006,0.225,"L",398.7,538.3],[237.5,0.003,0.15,"L",399.4,534.7],[238.0,0.005,0.076,"L",400.0,531.3],[238.5,0.006,0.162,"L",400.6,528.0],[239.0,0.007,0.127,"L",401.2,524.7],[239.5,0.007,0.098,"L",401.9,521.1],[240.0,0.007,0.141,"L",402.5,517.7],[240.5,0.007,0.141,"L",403.1,514.3],[241.0,0.007,0.131,"L",403.8,510.9],[241.5,0.008,0.279,"L",404.4,507.5],[242.0,0.008,0.18,"L",405.0,504.0],[242.5,0.009,0.146,"L",405.7,500.6],[243.0,0.011,0.162,"L",406.3,497.2],[243.5,0.01,0.145,"L",407.0,493.8],[244.0,0.011,0.182,"L",407.6,490.3],[244.5,0.012,0.16,"L",408.2,486.9],[245.0,0.013,0.154,"L",408.9,483.5],[245.5,0.013,0.142,"L",409.5,480.1],[246.0,0.013,0.158,"L",410.1,476.7],[246.5,0.013,0.115,"L",410.7,473.4],[247.0,0.013,0.114,"L",411.3,470.1],[247.5,0.012,0.117,"L",412.0,466.5],[248.0,0.013,0.108,"L",412.7,463.0],[248.5,0.011,0.092,"L",413.3,459.6],[249.0,0.012,0.097,"L",413.9,456.2],[249.5,0.012,0.087,"L",414.6,452.8],[250.0,0.011,0.097,"L",415.2,449.4],[250.5,0.011,0.099,"L",415.8,446.0],[251.0,0.01,0.069,"L",416.4,442.6],[251.5,0.01,0.075,"L",417.1,439.1],[252.0,0.01,0.059,"L",417.7,435.7],[252.5,0.01,0.051,"L",418.3,432.3],[253.0,0.009,0.066,"L",419.0,428.9],[253.5,0.009,0.11,"L",419.6,425.7],[254.0,0.009,0.066,"L",420.2,422.3],[254.5,0.008,0.069,"L",420.8,418.7],[255.0,0.009,0.068,"L",421.4,415.5],[255.5,0.009,0.1,"L",422.1,412.1],[256.0,0.008,0.076,"L",422.7,408.5],[256.5,0.009,0.11,"L",423.4,405.0],[257.0,0.006,0.074,"L",424.0,401.7],[257.5,0.007,0.131,"L",424.6,398.4],[258.0,0.007,0.125,"L",425.2,395.0],[258.5,0.005,0.151,"L",425.9,391.5],[259.0,0.007,0.037,"L",426.5,388.1],[259.5,0.007,0.063,"L",427.1,384.6],[260.0,0.008,0.119,"L",427.7,381.3],[260.5,0.009,0.091,"L",428.3,378.0],[261.0,0.009,0.071,"L",429.0,374.5],[261.5,0.009,0.098,"L",429.6,371.1],[262.0,0.01,0.072,"L",430.3,367.5],[262.5,0.01,0.1,"L",430.9,364.2],[263.0,0.011,0.045,"L",431.5,360.8],[263.5,0.013,0.082,"L",432.2,357.2],[264.0,0.016,0.08,"L",432.8,353.8],[264.5,0.018,0.052,"R",433.4,350.5],[265.0,0.019,0.166,"R",434.0,347.1],[265.5,0.022,0.047,"R",434.7,343.6],[266.0,0.023,0.079,"R",435.3,340.2],[266.5,0.031,0.081,"R",435.9,336.8],[267.0,0.034,0.039,"R",436.6,333.4],[267.5,0.036,0.08,"R",437.2,330.1],[268.0,0.038,0.072,"R",437.8,326.7],[268.5,0.041,0.089,"R",438.4,323.3],[269.0,0.044,0.071,"R",439.0,320.0],[269.5,0.048,0.042,"R",439.7,316.6],[270.0,0.053,0.149,"R",440.4,313.0],[270.5,0.055,0.103,"R",441.0,309.4],[271.0,0.059,0.056,"X",441.7,306.1],[271.5,0.065,0.07,"X",442.3,302.6],[272.0,0.069,0.05,"X",442.9,299.3],[272.5,0.074,0.036,"X",443.6,295.9],[273.0,0.079,0.055,"X",444.2,292.4],[273.5,0.083,0.058,"X",444.8,289.0],[274.0,0.088,0.041,"X",445.5,285.7],[274.5,0.091,0.132,"L",446.1,282.4],[275.0,0.014,0.087,"L",446.8,278.7],[275.5,0.011,0.14,"L",447.4,275.3],[276.0,0.01,0.084,"L",448.0,271.9],[276.5,0.009,0.082,"L",448.6,268.6],[277.0,0.01,0.025,"L",449.2,265.3],[277.5,0.011,0.054,"L",449.8,262.3],[278.0,0.013,0.079,"L",450.3,259.4],[278.5,0.013,0.092,"L",450.8,256.7],[279.0,0.011,0.106,"L",451.3,254.2],[279.5,0.012,0.102,"L",451.7,252.0],[280.0,0.012,0.092,"L",452.0,250.0],[280.5,0.01,0.093,"L",452.4,248.2],[281.0,0.011,0.097,"L",452.7,246.5],[281.5,0.011,0.099,"L",452.9,245.1],[282.0,0.012,0.099,"L",453.2,243.9],[282.5,0.012,0.102,"L",453.3,242.9],[283.0,0.012,0.087,"L",453.5,242.2],[283.5,0.011,0.091,"L",453.6,241.7],[284.0,0.01,0.092,"L",453.6,241.4],[284.5,0.01,0.078,"L",453.7,241.2],[285.0,0.003,0.063,"L",453.7,241.2],[285.5,0.003,0.046,"L",453.7,241.2],[286.0,0.001,0.02,"L",453.7,241.2],[286.5,0.001,0.015,"L",453.7,241.2],[287.0,0.0,0.025,"L",453.7,241.2],[287.5,0.0,0.04,"L",453.7,241.2],[288.0,0.001,0.051,"L",453.7,241.2],[288.5,0.001,0.064,"L",453.7,241.2],[289.0,0.001,0.075,"L",453.7,241.2],[289.5,0.001,0.085,"L",453.7,241.2],[290.0,0.001,0.091,"L",453.7,241.2],[290.5,0.002,0.097,"L",453.7,241.2],[291.0,0.002,0.103,"L",453.7,241.2],[291.5,0.002,0.106,"L",453.7,241.2],[292.0,0.002,0.11,"L",453.7,241.2],[292.5,0.002,0.115,"L",453.7,241.2],[293.0,0.002,0.119,"L",453.7,241.2],[293.5,0.002,0.122,"L",453.7,241.2],[294.0,0.002,0.125,"L",453.7,241.2],[294.5,0.002,0.128,"L",453.7,241.2],[295.0,0.002,0.131,"L",453.7,241.2],[295.5,0.002,0.131,"L",453.7,241.2]],"after":[[0.0,0.001,0.001,"L",0.0,0.0],[0.5,0.001,0.001,"L",0.0,0.0],[1.0,0.001,0.001,"L",0.0,0.0],[1.5,0.001,0.001,"L",0.0,0.0],[2.0,0.001,0.001,"L",0.0,0.0],[2.5,0.001,0.001,"L",0.0,0.0],[3.0,0.001,0.001,"L",0.0,0.0],[3.5,0.001,0.001,"L",0.0,0.0],[4.0,0.001,0.001,"L",0.0,0.0],[4.5,0.001,0.001,"L",0.0,0.0],[5.0,0.001,0.001,"L",0.0,0.0],[5.5,0.001,0.001,"L",0.0,0.0],[6.0,0.001,0.001,"L",0.0,0.0],[6.5,0.001,0.001,"L",0.0,0.0],[7.0,0.001,0.001,"L",0.0,0.0],[7.5,0.001,0.001,"L",0.0,0.0],[8.0,0.001,0.001,"L",0.0,0.0],[8.5,0.001,0.001,"L",0.0,0.0],[9.0,0.001,0.001,"L",0.0,0.0],[9.5,0.001,0.001,"L",0.0,0.0],[10.0,0.001,0.001,"L",0.0,0.0],[10.5,0.001,0.001,"L",0.0,0.0],[11.0,0.001,0.001,"L",0.0,0.0],[11.5,0.001,0.001,"L",0.0,0.0],[12.0,0.001,0.001,"L",0.0,0.0],[12.5,0.001,0.001,"L",0.0,0.0],[13.0,0.001,0.001,"L",0.0,0.0],[13.5,0.001,0.001,"L",0.0,0.0],[14.0,0.001,0.001,"L",0.0,0.0],[14.5,0.001,0.001,"L",0.0,0.0],[15.0,0.001,0.001,"L",0.0,0.0],[15.5,0.001,0.001,"L",0.0,0.0],[16.0,0.001,0.001,"L",0.0,0.0],[16.5,0.001,0.001,"L",0.0,0.0],[17.0,0.001,0.001,"L",0.0,0.0],[17.5,0.001,0.001,"L",0.0,0.0],[18.0,0.001,0.001,"L",0.0,0.0],[18.5,0.001,0.001,"L",0.0,0.0],[19.0,0.001,0.001,"L",0.0,0.0],[19.5,0.001,0.001,"L",0.0,0.0],[20.0,0.001,0.001,"L",0.0,0.0],[20.5,0.001,0.001,"L",0.0,0.0],[21.0,0.001,0.001,"L",0.0,0.0],[21.5,0.001,0.001,"L",0.0,0.0],[22.0,0.001,0.001,"L",0.0,0.0],[22.5,0.001,0.001,"L",0.0,0.0],[23.0,0.001,0.001,"L",0.0,0.0],[23.5,0.001,0.001,"L",0.0,0.0],[24.0,0.001,0.001,"L",0.0,0.0],[24.5,0.001,0.001,"L",0.0,0.0],[25.0,0.001,0.001,"L",0.0,0.0],[25.5,0.001,0.001,"L",0.0,0.0],[26.0,0.001,0.001,"L",0.0,0.0],[26.5,0.001,0.001,"L",0.0,0.0],[27.0,0.001,0.001,"L",0.0,0.0],[27.5,0.001,0.001,"L",0.0,0.0],[28.0,0.001,0.001,"L",0.0,0.0],[28.5,0.001,0.001,"L",0.0,0.0],[29.0,0.001,0.001,"L",0.0,0.0],[29.5,0.001,0.001,"L",0.0,0.0],[30.0,0.001,0.001,"L",0.0,0.0],[30.5,0.001,0.001,"L",0.0,0.0],[31.0,0.001,0.001,"L",0.0,0.0],[31.5,0.001,0.001,"L",0.0,0.0],[32.0,0.001,0.001,"L",0.0,0.0],[32.5,0.001,0.001,"L",0.0,0.0],[33.0,0.001,0.001,"L",0.0,0.0],[33.5,0.001,0.001,"L",0.0,0.0],[34.0,0.001,0.001,"L",0.0,0.0],[34.5,0.001,0.001,"L",0.0,0.0],[35.0,0.001,0.001,"L",0.0,0.0],[35.5,0.001,0.001,"L",0.0,0.0],[36.0,0.001,0.001,"L",0.0,0.0],[36.5,0.001,0.001,"L",0.0,0.0],[37.0,0.001,0.001,"L",0.0,0.0],[37.5,0.001,0.001,"L",0.0,0.0],[38.0,0.001,0.001,"L",0.0,0.0],[38.5,0.001,0.001,"L",0.0,0.0],[39.0,0.001,0.001,"L",0.0,0.0],[39.5,0.001,0.001,"L",0.0,0.0],[40.0,0.001,0.001,"L",0.0,0.0],[40.5,0.001,0.001,"L",0.0,0.0],[41.0,0.001,0.001,"L",0.0,0.0],[41.5,0.001,0.001,"L",0.0,0.0],[42.0,0.001,0.001,"L",0.0,0.0],[42.5,0.001,0.001,"L",0.0,0.0],[43.0,0.001,0.001,"L",0.0,0.0],[43.5,0.001,0.001,"L",0.0,0.0],[44.0,0.001,0.001,"L",0.0,0.0],[44.5,0.001,0.001,"L",0.0,0.0],[45.0,0.001,0.001,"L",0.0,0.0],[45.5,0.001,0.001,"L",0.0,0.0],[46.0,0.001,0.001,"L",0.0,0.0],[46.5,0.001,0.001,"L",0.0,0.0],[47.0,0.001,0.001,"L",0.0,0.0],[47.5,0.001,0.001,"L",0.0,0.0],[48.0,0.001,0.001,"L",0.0,0.0],[48.5,0.001,0.001,"L",0.0,0.0],[49.0,0.001,0.001,"L",0.0,0.0],[49.5,0.001,0.001,"L",0.0,0.0],[50.0,0.001,0.001,"L",0.0,0.0],[50.5,0.004,0.014,"L",0.0,0.0],[51.0,0.008,0.06,"L",0.1,0.1],[51.5,0.009,0.08,"L",0.6,0.4],[52.0,0.008,0.075,"L",1.5,0.9],[52.5,0.008,0.05,"L",2.8,1.7],[53.0,0.005,0.029,"L",4.5,2.8],[53.5,0.006,0.061,"L",6.6,4.1],[54.0,0.007,0.096,"L",9.0,5.7],[54.5,0.01,0.087,"L",11.5,7.3],[55.0,0.015,0.115,"L",14.1,9.1],[55.5,0.011,0.125,"L",16.5,11.0],[56.0,0.009,0.123,"L",18.6,13.1],[56.5,0.014,0.122,"L",20.4,15.2],[57.0,0.017,0.104,"L",21.7,17.4],[57.5,0.019,0.105,"L",22.8,19.8],[58.0,0.017,0.075,"L",23.4,22.2],[58.5,0.016,0.09,"L",23.8,24.6],[59.0,0.013,0.081,"L",23.9,27.3],[59.5,0.009,0.063,"L",23.7,30.1],[60.0,0.01,0.044,"L",23.3,33.1],[60.5,0.013,0.033,"L",22.7,36.5],[61.0,0.014,0.061,"L",22.2,39.9],[61.5,0.015,0.104,"L",21.6,43.5],[62.0,0.015,0.064,"L",21.0,47.1],[62.5,0.016,0.181,"L",20.5,50.7],[63.0,0.014,0.11,"L",19.9,54.6],[63.5,0.011,0.128,"L",19.4,58.2],[64.0,0.012,0.133,"L",18.8,61.8],[64.5,0.01,0.139,"L",18.3,65.5],[65.0,0.008,0.108,"L",17.8,68.9],[65.5,0.008,0.143,"L",17.2,72.5],[66.0,0.007,0.151,"L",16.7,76.1],[66.5,0.009,0.15,"L",16.2,79.6],[67.0,0.009,0.146,"L",15.7,83.1],[67.5,0.01,0.135,"L",15.2,86.6],[68.0,0.009,0.105,"L",14.7,90.1],[68.5,0.009,0.118,"L",14.2,93.6],[69.0,0.006,0.109,"L",13.7,97.0],[69.5,0.011,0.086,"L",13.2,100.5],[70.0,0.012,0.079,"L",12.8,103.9],[70.5,0.011,0.086,"L",12.3,107.3],[71.0,0.011,0.084,"L",11.9,110.7],[71.5,0.01,0.106,"L",11.5,114.1],[72.0,0.011,0.1,"L",11.1,117.6],[72.5,0.011,0.101,"L",10.6,121.0],[73.0,0.011,0.094,"L",10.2,124.4],[73.5,0.01,0.107,"L",9.8,127.8],[74.0,0.011,0.078,"L",9.3,131.3],[74.5,0.01,0.059,"L",8.8,134.7],[75.0,0.01,0.085,"L",8.4,138.1],[75.5,0.01,0.098,"L",7.9,141.6],[76.0,0.011,0.084,"L",7.4,145.0],[76.5,0.011,0.073,"L",6.9,148.4],[77.0,0.009,0.117,"L",6.3,151.8],[77.5,0.009,0.092,"L",5.8,155.3],[78.0,0.009,0.1,"L",5.2,158.7],[78.5,0.009,0.092,"L",4.7,162.1],[79.0,0.008,0.107,"L",4.2,165.5],[79.5,0.009,0.094,"L",3.6,169.0],[80.0,0.008,0.067,"L",3.1,172.4],[80.5,0.008,0.05,"L",2.5,175.8],[81.0,0.01,0.065,"L",2.0,179.3],[81.5,0.011,0.063,"L",1.4,182.7],[82.0,0.011,0.051,"L",0.9,186.3],[82.5,0.011,0.059,"L",0.4,189.7],[83.0,0.012,0.051,"L",-0.2,193.2],[83.5,0.012,0.051,"L",-0.7,196.6],[84.0,0.011,0.059,"L",-1.3,200.0],[84.5,0.012,0.064,"L",-1.8,203.4],[85.0,0.011,0.088,"L",-2.4,206.9],[85.5,0.011,0.06,"L",-2.9,210.3],[86.0,0.01,0.042,"L",-3.4,213.8],[86.5,0.011,0.057,"L",-4.0,217.2],[87.0,0.013,0.067,"L",-4.5,220.5],[87.5,0.017,0.076,"L",-5.1,224.0],[88.0,0.02,0.047,"L",-5.5,227.3],[88.5,0.026,0.051,"L",-5.7,230.4],[89.0,0.034,0.061,"L",-5.6,233.5],[89.5,0.035,0.071,"L",-5.2,236.2],[90.0,0.038,0.085,"L",-4.5,238.6],[90.5,0.048,0.085,"L",-3.5,240.9],[91.0,0.052,0.076,"L",-2.3,242.9],[91.5,0.053,0.057,"L",-0.8,244.8],[92.0,0.051,0.048,"L",1.0,246.6],[92.5,0.048,0.027,"L",2.9,248.1],[93.0,0.042,0.032,"L",4.9,249.4],[93.5,0.038,0.031,"L",7.0,250.5],[94.0,0.035,0.061,"L",9.3,251.4],[94.5,0.031,0.077,"L",11.8,252.1],[95.0,0.023,0.132,"L",14.6,252.8],[95.5,0.018,0.113,"L",17.7,253.5],[96.0,0.017,0.155,"L",21.0,254.1],[96.5,0.018,0.101,"L",24.3,254.8],[97.0,0.018,0.077,"L",27.7,255.5],[97.5,0.017,0.118,"L",31.3,256.2],[98.0,0.016,0.165,"L",34.8,256.9],[98.5,0.015,0.153,"L",38.4,257.6],[99.0,0.016,0.129,"L",42.1,258.3],[99.5,0.015,0.16,"L",45.6,259.0],[100.0,0.015,0.098,"L",49.1,259.6],[100.5,0.014,0.131,"L",52.8,260.3],[101.0,0.014,0.085,"L",56.3,260.9],[101.5,0.014,0.098,"L",59.8,261.6],[102.0,0.014,0.076,"L",63.2,262.2],[102.5,0.014,0.056,"L",66.7,262.9],[103.0,0.015,0.133,"L",70.1,263.5],[103.5,0.016,0.072,"L",73.5,264.1],[104.0,0.015,0.065,"L",76.9,264.8],[104.5,0.015,0.059,"L",80.5,265.4],[105.0,0.013,0.053,"L",83.9,266.1],[105.5,0.013,0.074,"L",87.4,266.7],[106.0,0.011,0.106,"L",90.9,267.4],[106.5,0.01,0.039,"L",94.2,268.0],[107.0,0.012,0.103,"L",97.5,268.6],[107.5,0.012,0.066,"L",100.9,269.2],[108.0,0.013,0.055,"L",104.4,269.9],[108.5,0.014,0.046,"L",107.8,270.5],[109.0,0.015,0.076,"L",111.2,271.2],[109.5,0.014,0.074,"L",114.5,271.8],[110.0,0.014,0.044,"L",117.9,272.4],[110.5,0.014,0.096,"L",121.3,273.0],[111.0,0.016,0.06,"L",124.8,273.7],[111.5,0.014,0.21,"L",128.1,274.3],[112.0,0.014,0.082,"L",131.5,274.9],[112.5,0.013,0.056,"L",135.0,275.6],[113.0,0.012,0.1,"L",138.3,276.2],[113.5,0.012,0.074,"L",141.8,276.8],[114.0,0.011,0.082,"L",145.2,277.5],[114.5,0.011,0.072,"L",148.6,278.1],[115.0,0.011,0.067,"L",152.0,278.7],[115.5,0.01,0.069,"L",155.4,279.4],[116.0,0.008,0.153,"L",158.7,280.1],[116.5,0.005,0.102,"L",161.7,280.9],[117.0,0.014,0.096,"L",164.5,281.8],[117.5,0.027,0.129,"L",166.9,283.0],[118.0,0.036,0.131,"L",168.9,284.3],[118.5,0.039,0.105,"L",170.6,285.7],[119.0,0.039,0.074,"L",172.0,287.3],[119.5,0.038,0.057,"L",173.2,289.1],[120.0,0.038,0.047,"L",174.1,290.9],[120.5,0.033,0.044,"L",174.7,292.9],[121.0,0.032,0.036,"L",175.1,294.9],[121.5,0.025,0.068,"L",175.2,297.0],[122.0,0.017,0.08,"L",175.1,299.1],[122.5,0.01,0.138,"L",174.7,301.5],[123.0,0.008,0.147,"L",174.2,304.4],[123.5,0.01,0.19,"L",173.6,307.4],[124.0,0.011,0.197,"L",173.0,310.6],[124.5,0.01,0.192,"L",172.3,313.9],[125.0,0.009,0.183,"L",171.6,317.4],[125.5,0.009,0.174,"L",171.0,320.9],[126.0,0.01,0.187,"L",170.3,324.3],[126.5,0.008,0.169,"L",169.7,327.8],[127.0,0.009,0.183,"L",169.1,331.2],[127.5,0.01,0.132,"L",168.4,334.8],[128.0,0.01,0.2,"L",167.8,338.3],[128.5,0.01,0.178,"L",167.1,341.7],[129.0,0.01,0.107,"L",166.5,345.1],[129.5,0.011,0.098,"L",165.9,348.6],[130.0,0.012,0.129,"L",165.2,352.0],[130.5,0.012,0.117,"L",164.6,355.5],[131.0,0.012,0.154,"L",164.0,358.9],[131.5,0.011,0.087,"L",163.3,362.4],[132.0,0.01,0.093,"L",162.7,365.8],[132.5,0.008,0.089,"L",162.1,369.1],[133.0,0.009,0.067,"L",161.5,372.5],[133.5,0.012,0.105,"L",160.8,375.9],[134.0,0.012,0.064,"L",160.2,379.3],[134.5,0.014,0.113,"L",159.6,382.8],[135.0,0.013,0.074,"L",158.9,386.2],[135.5,0.013,0.069,"L",158.3,389.5],[136.0,0.013,0.04,"L",157.7,393.1],[136.5,0.013,0.067,"L",157.0,396.5],[137.0,0.013,0.089,"L",156.4,399.9],[137.5,0.011,0.068,"L",155.8,403.3],[138.0,0.012,0.049,"L",155.1,406.7],[138.5,0.013,0.032,"L",154.5,410.2],[139.0,0.012,0.064,"L",153.9,413.7],[139.5,0.013,0.103,"L",153.2,417.1],[140.0,0.015,0.048,"L",152.6,420.5],[140.5,0.016,0.048,"L",152.0,423.9],[141.0,0.016,0.055,"L",151.4,427.2],[141.5,0.014,0.047,"L",150.7,430.7],[142.0,0.014,0.047,"L",150.1,434.1],[142.5,0.011,0.033,"L",149.4,437.5],[143.0,0.012,0.075,"L",148.8,440.9],[143.5,0.012,0.078,"L",148.2,444.4],[144.0,0.012,0.06,"L",147.5,447.9],[144.5,0.01,0.158,"L",146.9,451.2],[145.0,0.011,0.051,"L",146.3,454.5],[145.5,0.013,0.041,"L",145.7,457.9],[146.0,0.015,0.051,"L",145.1,461.4],[146.5,0.014,0.066,"L",144.4,464.8],[147.0,0.015,0.055,"L",143.8,468.2],[147.5,0.015,0.055,"L",143.2,471.5],[148.0,0.014,0.099,"L",142.6,475.0],[148.5,0.013,0.111,"L",141.9,478.4],[149.0,0.013,0.047,"L",141.3,481.8],[149.5,0.015,0.104,"L",140.7,485.1],[150.0,0.013,0.102,"L",140.1,488.6],[150.5,0.012,0.045,"L",139.4,492.0],[151.0,0.012,0.072,"L",138.8,495.4],[151.5,0.012,0.068,"L",138.2,498.9],[152.0,0.012,0.063,"L",137.6,502.3],[152.5,0.012,0.062,"L",137.1,505.7],[153.0,0.012,0.038,"L",136.5,509.1],[153.5,0.012,0.158,"L",136.0,512.5],[154.0,0.012,0.065,"L",135.5,515.9],[154.5,0.012,0.064,"L",135.0,519.3],[155.0,0.01,0.086,"L",134.6,522.7],[155.5,0.009,0.057,"L",134.1,526.3],[156.0,0.008,0.057,"L",133.7,529.7],[156.5,0.007,0.075,"L",133.3,533.1],[157.0,0.007,0.061,"L",132.9,536.5],[157.5,0.007,0.038,"L",132.5,539.8],[158.0,0.009,0.096,"L",132.1,543.2],[158.5,0.008,0.06,"L",131.7,546.5],[159.0,0.008,0.131,"L",131.3,549.9],[159.5,0.009,0.077,"L",130.9,553.2],[160.0,0.009,0.042,"L",130.4,556.5],[160.5,0.01,0.078,"L",130.0,559.8],[161.0,0.008,0.077,"L",129.6,563.3],[161.5,0.009,0.096,"L",129.1,566.6],[162.0,0.009,0.099,"L",128.6,570.0],[162.5,0.01,0.04,"L",128.1,573.4],[163.0,0.014,0.063,"L",127.6,576.7],[163.5,0.022,0.051,"L",127.2,579.8],[164.0,0.02,0.061,"L",127.0,582.8],[164.5,0.019,0.06,"L",127.0,585.7],[165.0,0.014,0.12,"L",127.0,588.8],[165.5,0.006,0.065,"L",127.1,591.9],[166.0,0.007,0.097,"L",126.9,595.3],[166.5,0.011,0.148,"L",126.6,598.8],[167.0,0.013,0.113,"L",126.1,602.3],[167.5,0.016,0.131,"L",125.5,605.8],[168.0,0.016,0.169,"L",124.9,609.4],[168.5,0.017,0.103,"L",124.2,612.9],[169.0,0.017,0.073,"L",123.5,616.5],[169.5,0.016,0.071,"L",122.9,619.9],[170.0,0.013,0.132,"L",122.2,623.5],[170.5,0.015,0.047,"L",121.6,627.1],[171.0,0.013,0.07,"L",120.9,630.6],[171.5,0.015,0.081,"L",120.3,634.1],[172.0,0.015,0.042,"L",119.7,637.6],[172.5,0.018,0.086,"L",119.1,641.1],[173.0,0.021,0.053,"L",118.8,644.4],[173.5,0.028,0.065,"L",118.7,647.4],[174.0,0.032,0.083,"L",119.1,650.3],[174.5,0.036,0.053,"L",119.7,652.8],[175.0,0.039,0.075,"L",120.6,655.0],[175.5,0.041,0.058,"L",121.9,657.0],[176.0,0.043,0.034,"L",123.5,658.7],[176.5,0.036,0.045,"L",125.3,660.2],[177.0,0.032,0.044,"L",127.2,661.2],[177.5,0.023,0.096,"L",129.4,662.1],[178.0,0.015,0.12,"L",132.0,662.7],[178.5,0.007,0.113,"L",134.7,663.2],[179.0,0.005,0.087,"L",137.8,663.7],[179.5,0.005,0.167,"L",141.1,664.1],[180.0,0.01,0.119,"L",144.6,664.6],[180.5,0.012,0.127,"L",148.2,665.1],[181.0,0.015,0.17,"L",151.9,665.8],[181.5,0.017,0.19,"L",155.5,666.4],[182.0,0.017,0.107,"L",159.0,667.0],[182.5,0.017,0.119,"L",162.6,667.7],[183.0,0.019,0.086,"L",166.3,668.3],[183.5,0.021,0.097,"L",169.9,669.0],[184.0,0.024,0.134,"L",173.4,669.5],[184.5,0.017,0.133,"L",176.9,669.8],[185.0,0.017,0.058,"L",180.4,669.8],[185.5,0.012,0.07,"L",183.9,669.7],[186.0,0.007,0.057,"L",187.3,669.7],[186.5,0.008,0.097,"L",190.7,669.8],[187.0,0.012,0.079,"L",194.1,670.1],[187.5,0.015,0.073,"L",197.6,670.6],[188.0,0.016,0.055,"L",201.1,671.2],[188.5,0.018,0.078,"L",204.5,671.9],[189.0,0.018,0.075,"L",208.1,672.6],[189.5,0.017,0.135,"L",211.7,673.2],[190.0,0.013,0.109,"L",215.0,673.9],[190.5,0.01,0.079,"L",218.5,674.5],[191.0,0.009,0.092,"L",221.9,675.1],[191.5,0.008,0.058,"L",225.4,675.8],[192.0,0.007,0.045,"L",229.0,676.4],[192.5,0.007,0.042,"L",232.5,677.0],[193.0,0.008,0.089,"L",235.9,677.7],[193.5,0.008,0.076,"L",239.4,678.3],[194.0,0.008,0.041,"L",242.8,679.0],[194.5,0.009,0.066,"L",246.2,679.6],[195.0,0.009,0.048,"L",249.7,680.3],[195.5,0.009,0.071,"L",253.1,680.9],[196.0,0.011,0.056,"L",256.5,681.6],[196.5,0.011,0.054,"L",260.0,682.2],[197.0,0.011,0.059,"L",263.3,682.9],[197.5,0.011,0.169,"L",266.6,683.5],[198.0,0.013,0.095,"L",270.2,684.1],[198.5,0.015,0.053,"L",273.6,684.6],[199.0,0.014,0.072,"L",277.0,685.0],[199.5,0.013,0.037,"L",280.4,685.4],[200.0,0.011,0.039,"L",283.8,685.6],[200.5,0.011,0.068,"L",287.3,685.9],[201.0,0.011,0.071,"L",290.7,686.2],[201.5,0.011,0.071,"L",294.1,686.4],[202.0,0.014,0.076,"L",297.7,686.8],[202.5,0.014,0.128,"L",301.2,687.2],[203.0,0.015,0.061,"L",304.6,687.6],[203.5,0.014,0.062,"L",308.0,688.0],[204.0,0.016,0.057,"L",311.4,688.5],[204.5,0.016,0.085,"L",314.9,689.1],[205.0,0.017,0.056,"L",318.4,689.7],[205.5,0.018,0.065,"L",321.7,690.4],[206.0,0.019,0.055,"L",325.2,691.0],[206.5,0.019,0.065,"L",328.5,691.6],[207.0,0.02,0.054,"L",332.0,692.3],[207.5,0.02,0.044,"L",335.4,692.9],[208.0,0.022,0.155,"L",338.7,693.5],[208.5,0.022,0.031,"L",342.1,694.1],[209.0,0.022,0.043,"L",345.6,694.8],[209.5,0.023,0.113,"L",348.9,695.3],[210.0,0.026,0.064,"L",352.3,695.8],[210.5,0.031,0.062,"L",355.5,696.1],[211.0,0.036,0.072,"L",358.5,696.1],[211.5,0.044,0.08,"L",361.3,695.8],[212.0,0.051,0.072,"L",363.7,695.1],[212.5,0.054,0.089,"L",365.8,694.2],[213.0,0.061,0.072,"L",367.6,692.9],[213.5,0.063,0.057,"L",369.1,691.5],[214.0,0.063,0.034,"L",370.3,689.9],[214.5,0.062,0.033,"L",371.3,688.1],[215.0,0.054,0.068,"L",372.0,686.1],[215.5,0.044,0.137,"L",372.6,683.8],[216.0,0.033,0.14,"L",373.1,681.0],[216.5,0.02,0.197,"L",373.5,678.1],[217.0,0.017,0.187,"L",374.0,674.9],[217.5,0.019,0.198,"L",374.5,671.5],[218.0,0.023,0.17,"L",375.1,668.0],[218.5,0.027,0.206,"L",375.7,664.5],[219.0,0.032,0.202,"L",376.4,660.8],[219.5,0.034,0.207,"L",377.1,657.1],[220.0,0.038,0.204,"R",377.7,653.6],[220.5,0.044,0.145,"R",378.3,650.2],[221.0,0.049,0.174,"R",379.0,646.7],[221.5,0.054,0.159,"R",379.6,643.1],[222.0,0.06,0.182,"R",380.3,639.7],[222.5,0.061,0.212,"R",380.9,636.2],[223.0,0.069,0.176,"R",381.5,632.7],[223.5,0.075,0.176,"R",382.1,629.4],[224.0,0.081,0.166,"R",382.7,625.9],[224.5,0.086,0.194,"R",383.4,622.4],[225.0,0.091,0.196,"R",384.0,619.0],[225.5,0.097,0.164,"R",384.6,615.6],[226.0,0.104,0.191,"R",385.2,612.1],[226.5,0.109,0.177,"X",385.8,608.9],[227.0,0.117,0.223,"X",386.4,605.4],[227.5,0.123,0.161,"X",387.1,601.9],[228.0,0.13,0.212,"X",387.7,598.5],[228.5,0.135,0.243,"X",388.3,595.1],[229.0,0.144,0.16,"X",389.0,591.5],[229.5,0.152,0.201,"X",389.6,588.2],[230.0,0.158,0.16,"X",390.2,584.8],[230.5,0.163,0.22,"X",390.8,581.4],[231.0,0.003,0.234,"L",391.4,578.0],[231.5,0.003,0.174,"L",392.0,574.5],[232.0,0.003,0.235,"L",392.7,571.1],[232.5,0.003,0.254,"L",393.3,567.8],[233.0,0.005,0.226,"L",393.9,564.3],[233.5,0.007,0.24,"L",394.5,560.8],[234.0,0.005,0.252,"L",395.2,557.3],[234.5,0.006,0.217,"L",395.8,553.9],[235.0,0.007,0.167,"L",396.4,550.5],[235.5,0.007,0.204,"L",397.1,547.1],[236.0,0.007,0.173,"L",397.7,543.7],[236.5,0.006,0.242,"L",398.3,540.2],[237.0,0.005,0.17,"L",399.0,536.8],[237.5,0.003,0.124,"L",399.6,533.3],[238.0,0.006,0.183,"L",400.2,530.0],[238.5,0.007,0.148,"L",400.9,526.5],[239.0,0.007,0.137,"L",401.5,523.1],[239.5,0.006,0.161,"L",402.1,519.7],[240.0,0.007,0.128,"L",402.8,516.3],[240.5,0.007,0.16,"L",403.4,512.9],[241.0,0.008,0.22,"L",404.0,509.5],[241.5,0.008,0.304,"L",404.7,506.1],[242.0,0.009,0.165,"L",405.3,502.7],[242.5,0.01,0.18,"L",405.9,499.2],[243.0,0.011,0.185,"L",406.6,495.7],[243.5,0.01,0.206,"L",407.2,492.3],[244.0,0.011,0.184,"L",407.8,488.9],[244.5,0.011,0.173,"L",408.5,485.6],[245.0,0.013,0.177,"L",409.1,482.2],[245.5,0.013,0.157,"L",409.8,478.7],[246.0,0.012,0.177,"L",410.4,475.2],[246.5,0.013,0.135,"L",411.0,471.8],[247.0,0.012,0.122,"L",411.7,468.4],[247.5,0.012,0.137,"L",412.3,465.1],[248.0,0.013,0.112,"L",412.9,461.7],[248.5,0.012,0.117,"L",413.5,458.3],[249.0,0.011,0.108,"L",414.2,454.8],[249.5,0.01,0.082,"L",414.8,451.4],[250.0,0.01,0.119,"L",415.4,448.1],[250.5,0.01,0.09,"L",416.1,444.6],[251.0,0.01,0.09,"L",416.7,441.2],[251.5,0.009,0.098,"L",417.3,437.7],[252.0,0.01,0.071,"L",418.0,434.4],[252.5,0.009,0.048,"L",418.6,431.0],[253.0,0.008,0.097,"L",419.2,427.5],[253.5,0.008,0.113,"L",419.8,424.2],[254.0,0.009,0.068,"L",420.5,420.8],[254.5,0.008,0.051,"L",421.1,417.4],[255.0,0.009,0.065,"L",421.7,413.9],[255.5,0.007,0.088,"L",422.4,410.5],[256.0,0.009,0.102,"L",423.0,407.1],[256.5,0.008,0.073,"L",423.6,403.7],[257.0,0.006,0.067,"L",424.2,400.4],[257.5,0.006,0.12,"L",424.8,397.0],[258.0,0.005,0.144,"L",425.5,393.5],[258.5,0.004,0.048,"L",426.1,390.1],[259.0,0.008,0.043,"L",426.7,386.7],[259.5,0.008,0.107,"L",427.3,383.4],[260.0,0.008,0.08,"L",428.0,379.8],[260.5,0.009,0.062,"L",428.7,376.3],[261.0,0.009,0.086,"L",429.3,373.0],[261.5,0.01,0.045,"L",429.9,369.6],[262.0,0.01,0.088,"L",430.5,366.1],[262.5,0.011,0.055,"L",431.2,362.6],[263.0,0.011,0.037,"L",431.8,359.2],[263.5,0.013,0.068,"L",432.4,355.9],[264.0,0.016,0.038,"L",433.1,352.4],[264.5,0.018,0.071,"R",433.7,349.0],[265.0,0.02,0.151,"R",434.3,345.5],[265.5,0.023,0.053,"R",435.0,342.1],[266.0,0.029,0.066,"R",435.6,338.8],[266.5,0.032,0.047,"R",436.2,335.4],[267.0,0.034,0.036,"R",436.8,332.0],[267.5,0.036,0.064,"R",437.4,328.6],[268.0,0.039,0.037,"R",438.1,325.2],[268.5,0.044,0.073,"R",438.7,321.8],[269.0,0.047,0.046,"R",439.4,318.3],[269.5,0.051,0.13,"R",440.0,314.9],[270.0,0.055,0.132,"R",440.6,311.6],[270.5,0.057,0.075,"X",441.3,308.1],[271.0,0.063,0.048,"X",441.9,304.6],[271.5,0.067,0.053,"X",442.6,301.1],[272.0,0.07,0.053,"X",443.2,297.7],[272.5,0.074,0.043,"X",443.8,294.3],[273.0,0.078,0.036,"X",444.5,291.0],[273.5,0.081,0.04,"X",445.1,287.7],[274.0,0.086,0.04,"X",445.7,284.2],[274.5,0.01,0.079,"L",446.4,280.8],[275.0,0.01,0.102,"L",447.0,277.4],[275.5,0.01,0.058,"L",447.6,273.9],[276.0,0.008,0.054,"L",448.2,270.6],[276.5,0.01,0.044,"L",448.9,267.3],[277.0,0.011,0.081,"L",449.5,264.0],[277.5,0.011,0.101,"L",450.0,261.0],[278.0,0.013,0.12,"L",450.5,258.2],[278.5,0.013,0.131,"L",451.0,255.6],[279.0,0.012,0.128,"L",451.4,253.3],[279.5,0.011,0.138,"L",451.8,251.1],[280.0,0.012,0.134,"L",452.2,249.1],[280.5,0.011,0.113,"L",452.5,247.3],[281.0,0.011,0.119,"L",452.8,245.9],[281.5,0.01,0.113,"L",453.0,244.5],[282.0,0.011,0.102,"L",453.2,243.4],[282.5,0.011,0.103,"L",453.4,242.6],[283.0,0.009,0.092,"L",453.5,241.9],[283.5,0.01,0.106,"L",453.6,241.5],[284.0,0.009,0.092,"L",453.6,241.3],[284.5,0.006,0.084,"L",453.7,241.2],[285.0,0.002,0.063,"L",453.7,241.2],[285.5,0.001,0.034,"L",453.7,241.2],[286.0,0.0,0.019,"L",453.7,241.2],[286.5,0.001,0.019,"L",453.7,241.2],[287.0,0.001,0.036,"L",453.7,241.2],[287.5,0.001,0.048,"L",453.7,241.2],[288.0,0.001,0.061,"L",453.7,241.2],[288.5,0.001,0.069,"L",453.7,241.2],[289.0,0.002,0.075,"L",453.7,241.2],[289.5,0.002,0.085,"L",453.7,241.2],[290.0,0.002,0.09,"L",453.7,241.2],[290.5,0.002,0.098,"L",453.7,241.2],[291.0,0.002,0.103,"L",453.7,241.2],[291.5,0.002,0.107,"L",453.7,241.2],[292.0,0.002,0.112,"L",453.7,241.2],[292.5,0.002,0.117,"L",453.7,241.2],[293.0,0.002,0.12,"L",453.7,241.2],[293.5,0.002,0.122,"L",453.7,241.2],[294.0,0.002,0.125,"L",453.7,241.2],[294.5,0.002,0.128,"L",453.7,241.2],[295.0,0.002,0.129,"L",453.7,241.2]]};
+(function(){
+  const svg = document.getElementById("chart-svg"), box = document.getElementById("chart"), tip = document.getElementById("tip");
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 680, H = 300, m = {l: 44, r: 12, t: 12, b: 70};
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const B = DATA.before, A = DATA.after;
+  const tmax = Math.max(B[B.length-1][0], A[A.length-1][0]) + 0.5;
+  const ymax = 1.25;
+  const X = t => m.l + t / tmax * pw, Y = v => m.t + ph - Math.min(v, ymax) / ymax * ph;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const el = (n, a, p = svg) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+  // grid + axes
+  for (let v = 0; v <= 1.2001; v += 0.2) {
+    el("line", {x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: "grid"});
+    el("text", {x: m.l - 6, y: Y(v) + 4, "text-anchor": "end", class: "ax"}).textContent = v.toFixed(1);
+  }
+  for (let t = 0; t <= tmax; t += 50) {
+    el("text", {x: X(t), y: m.t + ph + 16, "text-anchor": "middle", class: "ax"}).textContent = t + " s";
+  }
+  // status strips
+  const strip = (S, y) => {
+    for (let i = 0; i < S.length; i++) {
+      const c = S[i][3] === "L" ? "L" : (S[i][3] === "X" ? "X" : "D");
+      el("rect", {x: X(S[i][0]), y, width: Math.max(pw / S.length * 1.02, 1), height: 9, class: "st " + c});
+    }
+  };
+  strip(B, m.t + ph + 26); strip(A, m.t + ph + 40);
+  el("text", {x: m.l - 6, y: m.t + ph + 34, "text-anchor": "end", class: "ax"}).textContent = "前";
+  el("text", {x: m.l - 6, y: m.t + ph + 48, "text-anchor": "end", class: "ax"}).textContent = "後";
+  // lines
+  const path = S => S.map((r, i) => (i ? "L" : "M") + X(r[0]).toFixed(1) + " " + Y(r[1]).toFixed(1)).join("");
+  el("path", {d: path(B), class: "series b"});
+  el("path", {d: path(A), class: "series a"});
+  // direct labels
+  const peak = B.reduce((p, r) => r[1] > p[1] ? r : p, B[0]);
+  el("text", {x: X(peak[0]) + 6, y: Y(peak[1]) + 4, class: "lab b"}).textContent = "直す前（曲がり角ごと）";
+  el("text", {x: X(4), y: Y(0.05) - 4, class: "lab a"}).textContent = "直した後";
+  // hover
+  const cross = el("line", {y1: m.t, y2: m.t + ph + 49, class: "cross", visibility: "hidden"});
+  const dB = el("circle", {r: 4, class: "dot b", visibility: "hidden"}), dA = el("circle", {r: 4, class: "dot a", visibility: "hidden"});
+  const name = {L: "LIDAR_AIDED", R: "DEAD_RECKONING", G: "DEGRADED", X: "LOST", I: "INITIALIZING"};
+  const near = (S, t) => { let lo = 0, hi = S.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (S[mid][0] <= t) lo = mid; else hi = mid; } return S[lo]; };
+  const move = ev => {
+    const r = svg.getBoundingClientRect();
+    const x = (ev.clientX - r.left) / r.width * W;
+    const t = Math.max(0, Math.min(tmax, (x - m.l) / pw * tmax));
+    const b = near(B, t), a = near(A, t);
+    cross.setAttribute("x1", X(t)); cross.setAttribute("x2", X(t)); cross.setAttribute("visibility", "visible");
+    for (const [d, s] of [[dB, b], [dA, a]]) { d.setAttribute("cx", X(s[0])); d.setAttribute("cy", Y(s[1])); d.setAttribute("visibility", "visible"); }
+    tip.hidden = false;
+    tip.innerHTML = `<b>${a[0].toFixed(1)} s</b><div><i class="ln-key b"></i>直す前 ${b[1].toFixed(2)} m <span>${name[b[3]]}</span></div><div><i class="ln-key a"></i>直した後 ${a[1].toFixed(2)} m <span>${name[a[3]]}</span></div>`;
+    const px = (X(t) / W) * r.width;
+    tip.style.left = Math.min(px + 12, r.width - tip.offsetWidth - 4) + "px";
+    tip.style.top = "8px";
+  };
+  const leave = () => { tip.hidden = true; for (const e of [cross, dB, dA]) e.setAttribute("visibility", "hidden"); };
+  box.addEventListener("pointermove", move); box.addEventListener("pointerleave", leave);
+  // table (10 s)
+  const tbl = document.getElementById("tbl");
+  let h = "<thead><tr><th>秒</th><th>横（前）m</th><th>横（後）m</th><th>縦（後）m</th><th>状態（後）</th></tr></thead><tbody>";
+  for (let t0 = 0; t0 < tmax; t0 += 10) {
+    const sb = B.filter(r => r[0] >= t0 && r[0] < t0 + 10), sa = A.filter(r => r[0] >= t0 && r[0] < t0 + 10);
+    if (!sa.length) continue;
+    const mx = (S, k) => S.length ? Math.max(...S.map(r => r[k])).toFixed(2) : "—";
+    const st = [...new Set(sa.map(r => name[r[3]]))].join("・");
+    h += `<tr><td class="n">${t0}</td><td class="n">${mx(sb, 1)}</td><td class="n">${mx(sa, 1)}</td><td class="n">${mx(sa, 2)}</td><td>${st}</td></tr>`;
+  }
+  tbl.innerHTML = h + "</tbody>";
+  // route
+  const rs = document.getElementById("route");
+  const xs = A.map(r => r[4]), ys = A.map(r => r[5]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const RW = 680, pad = 24, s = Math.min((RW - 2 * pad) / (x1 - x0), 340 / (y1 - y0)), RH = (y1 - y0) * s + 2 * pad;
+  rs.setAttribute("viewBox", `0 0 ${RW} ${RH}`);
+  const ox = (RW - (x1 - x0) * s) / 2;
+  const P = r => [ox + (r[4] - x0) * s, pad + (y1 - r[5]) * s];
+  el("path", {d: A.map((r, i) => (i ? "L" : "M") + P(r).map(v => v.toFixed(1)).join(" ")).join(""), class: "route"}, rs);
+  let seg = [];
+  const flush = () => { if (seg.length > 1) el("path", {d: seg.map((p, i) => (i ? "L" : "M") + p.map(v => v.toFixed(1)).join(" ")).join(""), class: "route bad"}, rs); seg = []; };
+  A.forEach(r => { if (r[3] !== "L") seg.push(P(r)); else flush(); }); flush();
+  const p0 = P(A[0]); el("circle", {cx: p0[0], cy: p0[1], r: 6, class: "start"}, rs);
+  el("text", {x: p0[0] + 10, y: p0[1] + 4, class: "lab"}, rs).textContent = "始点";
+  // scale bar 100 m
+  el("line", {x1: pad, x2: pad + 100 * s, y1: RH - 10, y2: RH - 10, class: "scale"}, rs);
+  el("text", {x: pad + 100 * s + 6, y: RH - 6, class: "ax"}, rs).textContent = "100 m";
+  const bad = A.filter(r => r[3] !== "L");
+  if (bad.length) { const pb = P(bad[Math.floor(bad.length / 2)]); el("text", {x: pb[0] + 10, y: pb[1], class: "lab w"}, rs).textContent = "照合が使えなかった直線"; }
+})();
+</script>
+</body>
+</html>
