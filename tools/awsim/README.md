@@ -84,8 +84,7 @@ tiled_pcd_map_tiler -i $D/nishishinjuku_autoware_map/pointcloud_map.pcd -o $D/ns
 python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --no-yaw-sweep --time-offset --turning
 
 # 変換（出力: v_a0/（rosbag2 の bag: v_a0.mcap と metadata.yaml）、v_a0_groundtruth.csv、v_a0_params.yaml、v_a0_maps.yaml）
-python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0 --lidar-extrinsic <上の値> \
-    --lidar-stamp-offset <上の値> --tiles $D/nsj_tiles
+python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0 --lidar-extrinsic <上の値> --lidar-stamp-offset <上の値> --tiles $D/nsj_tiles
 ```
 
 `awsim_to_bag.py` の主なオプション（全部は `--help`）:
