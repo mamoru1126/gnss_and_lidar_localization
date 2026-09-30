@@ -1022,7 +1022,7 @@ class Localizer {
 | `~/debug/map_points` | `sensor_msgs/PointCloud2` | 照合に使っている地図（ターゲット）。frame_id = `map_local`、ターゲットが変わったときだけ（transient local） |
 | `~/debug/scan_points` | `sensor_msgs/PointCloud2` | 照合に使ったスキャン（前処理の後、`lidar.debug_points_voxel` で間引き）を照合の結果の姿勢で置いたもの。frame_id = `map_local`、スタンプはスキャンの時刻。購読者がいるときだけ |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 1 Hz。`gll_localizer`（`~/output/status` と同じ内容）、`gll_localizer: counters`（入力・採用・棄却の数。LiDAR を含む）、`gll_localizer: map`（アクティブグループ、読み込んだタイル、照合の処理時間と品質。アンカーずれが `anchor_mismatch_warn` を超えたら WARN） |
-| TF | | **`map` → `base_link`**（odom フレームは使わない。v0.8）。可視化用に `map` → `map_local` の静的変換も出す（`map_local_origin` を指定しなければ、地図があれば最初のグループのアンカーを 100 m 単位に丸めた点）。フレーム名はパラメータ（`map_frame`、`base_frame`）で変えられる |
+| TF | | **`map` → `base_link`**（odom フレームは使わない。v0.8）。可視化用に `map` → `map_local` の静的変換も出す（`map_local_origin` を指定しなければ、地図があれば最初のグループのアンカーを 100 m 単位に丸めた点）。フレーム名はパラメータ（`map_frame`、`base_frame`）で変えられる。z には GNSS・LiDAR から求めた base_link の楕円体高を入れる（推定は平面だが、表示で点群地図と高さがそろうように。まだ分からなければ 0。`output.publish_height` で止められる）。姿勢は yaw だけ（roll・pitch は 0） |
 
 ### 7.6 ROS 1 への移植（後回し）
 
@@ -1112,6 +1112,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | 出力整形 | `max_correction_rate_xy` | 0.1 m/s | 最高速 1.7 m/s に対して控えめに設定。経路追従の挙動を見て調整する |
 | | `max_correction_rate_yaw` | 2 deg/s | |
 | | `offset_error_threshold` | 1.0 m / 5 deg | |
+| | `publish_height` | true | 出力（pose・TF）の z に base_link の楕円体高を入れる（表示用） |
 | 地図 | `tile_size` | 20 m | ツール側 |
 | | `load_radius` / `unload_radius` | 60 m / 90 m | |
 | | `lookahead_time` | 3 s | |
