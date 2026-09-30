@@ -10,9 +10,9 @@
 - 最初に --wait 秒止まったまま待つ（推定ノードの静止初期化のため）。経路の終わりで止まって、ノードも終わる。
 - 経路は「x y」の行（地図座標）。車の今の位置から 5 m 以内に経路の点が無いと始めない。
   経路の作り方は README.md（tools/tile_demo/lanelet_route.py で、車の位置から始まる経路を作る）。
-- 出すもの: /control/command/control_cmd（AckermannControlCommand）、/control/command/gear_cmd（DRIVE）、/vehicle/engage。
-  AWSIM v1.x（autoware_auto_msgs）の型。AWSIM Labs などで型が autoware_control_msgs などに変わった場合は、import を直す。
-必要なパッケージ: rclpy、geometry_msgs、autoware_auto_control_msgs、autoware_auto_vehicle_msgs（docker/awsim/Dockerfile のコンテナに入っている）。
+- 出すもの: /control/command/control_cmd（autoware_control_msgs/Control）、/control/command/gear_cmd（DRIVE）。
+  QoS は AWSIM v1.3.1 の購読に合わせて RELIABLE・TRANSIENT_LOCAL・深さ 1。AWSIM は加速度と操舵角を使う。
+必要なパッケージ: rclpy、geometry_msgs、autoware_control_msgs、autoware_vehicle_msgs（docker/awsim/Dockerfile のコンテナに入っている）。
 """
 import argparse
 import math
@@ -58,12 +58,13 @@ def main():
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy
     from geometry_msgs.msg import PoseStamped
+    from rclpy.qos import DurabilityPolicy
     try:
-        from autoware_auto_control_msgs.msg import AckermannControlCommand
-        from autoware_auto_vehicle_msgs.msg import Engage, GearCommand
+        from autoware_control_msgs.msg import Control
+        from autoware_vehicle_msgs.msg import GearCommand
     except ImportError:
-        sys.exit("autoware_auto_msgs が無い: docker/awsim/Dockerfile のコンテナで動かす"
-                 "（apt の ros-humble-autoware-auto-msgs は中身が無いので、コンテナではソースからビルドしている）")
+        sys.exit("autoware_msgs（autoware_control_msgs・autoware_vehicle_msgs）が無い: "
+                 "docker/awsim/Dockerfile のコンテナ（tools/awsim/container.sh）で動かす")
 
     if args.print_pose:
         got = []
@@ -103,9 +104,11 @@ def main():
             self.finished = False
             self.create_subscription(PoseStamped, args.gt_topic, self.on_pose,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
-            self.pub_ctrl = self.create_publisher(AckermannControlCommand, "/control/command/control_cmd", 10)
-            self.pub_gear = self.create_publisher(GearCommand, "/control/command/gear_cmd", 10)
-            self.pub_engage = self.create_publisher(Engage, "/vehicle/engage", 10)
+            # AWSIM v1.3.1 の購読は RELIABLE・TRANSIENT_LOCAL・深さ 1。出す側も TRANSIENT_LOCAL でないとつながらない
+            cmd_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                                 durability=DurabilityPolicy.TRANSIENT_LOCAL)
+            self.pub_ctrl = self.create_publisher(Control, "/control/command/control_cmd", cmd_qos)
+            self.pub_gear = self.create_publisher(GearCommand, "/control/command/gear_cmd", cmd_qos)
             self.timer = self.create_timer(1.0 / 30.0, self.tick)
 
         def on_pose(self, m):
@@ -122,22 +125,19 @@ def main():
 
         def send(self, steer, v_ref, acc):
             now = self.get_clock().now().to_msg()
-            c = AckermannControlCommand()
+            c = Control()
             c.stamp = now
             c.lateral.stamp = now
             c.lateral.steering_tire_angle = float(steer)
             c.longitudinal.stamp = now
-            c.longitudinal.speed = float(v_ref)
+            c.longitudinal.velocity = float(v_ref)
             c.longitudinal.acceleration = float(acc)
+            c.longitudinal.is_defined_acceleration = True
             self.pub_ctrl.publish(c)
             g = GearCommand()
             g.stamp = now
             g.command = GearCommand.DRIVE
             self.pub_gear.publish(g)
-            e = Engage()
-            e.stamp = now
-            e.engage = True
-            self.pub_engage.publish(e)
 
         def tick(self):
             if self.pose is None:

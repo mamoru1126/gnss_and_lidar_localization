@@ -1,7 +1,7 @@
 # 検証計画: AWSIM を使った自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.14。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md) / スクリプトの使い方: [tools/awsim/README.md](../tools/awsim/README.md)
-- 状態: ドラフト（v0.5。データを全部リポジトリの data/awsim/ に置き、準備・起動・記録をスクリプトにして、環境変数の設定を要らなくした。v0.4: 経路を、進行方向と車線のつながりを守る plan_route.py で作ることにした。v0.3: 記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
+- 状態: ドラフト（v0.6。AWSIM v1.3.1 の制御と車両のメッセージが autoware_msgs（autoware_control_msgs・autoware_vehicle_msgs）で、制御の購読が TRANSIENT_LOCAL だったのに合わせた（最初の記録で車が動かなかった）。v0.5: データを全部リポジトリの data/awsim/ に置き、準備・起動・記録をスクリプトにして、環境変数の設定を要らなくした。v0.4: 経路を、進行方向と車線のつながりを守る plan_route.py で作ることにした。v0.3: 記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
 
 本書は、自動運転シミュレータ **AWSIM**（TIER IV。Unity で動く。v1.3.1）の西新宿の地図で車を走らせて記録したデータで、本システムを検証する計画である。確かめるのは、**LiDAR による自己位置推定**（Phase 2）と、**GNSS 区間と地図区間の切り替わり**である。
 
@@ -22,7 +22,7 @@ AWSIM を使う理由:
 AWSIM には v1 系（TIER IV。ドキュメントは tier4.github.io/AWSIM）と、Autoware Foundation に移ってからの v2 系（v2.0.1。ドキュメントは autowarefoundation.github.io/AWSIM）がある。**v1.3.1 を使う**（Quick start demo の `AWSIM_v1.3.1.zip`）。v2 系のソース（v2.0.1）を見ると、次の点で本書の手順に合わない。
 
 - **真値の姿勢のトピックが出ない**: v1.3.1 は車両に `PoseSensor`（`/awsim/ground_truth/vehicle/pose`、100 Hz）と `OdometrySensor`（`/awsim/ground_truth/localization/kinematic_state`）が付いている。v2.0.1 は真値を出す部品（`OdometryRos2Publisher`）はあるが、デモのシーンと車両に置かれていない。GNSS（10 Hz）は位置だけで向きが無い。
-- **制御の型が違う**: v2 系は `autoware_control_msgs/Control` と `autoware_vehicle_msgs`（新しい Autoware のメッセージ）。`awsim_drive.py` は v1 系の `autoware_auto_*` を使っている。
+- ~~制御の型が違う~~: v1.3.1 もすでに `autoware_control_msgs/Control` と `autoware_vehicle_msgs`（新しい Autoware のメッセージ）を使っていた（tier4.github.io のトピックの一覧は古い `autoware_auto_*` のまま。実機の記録で分かった。v0.6）。
 - **求める環境が重い**: NVIDIA ドライバ 570 以上、メモリ 32 GB 以上、Vulkan。
 
 v2 系を使う必要が出たら、真値のセンサをシーンに置いたビルド（Unity で開いて作る）と、`awsim_drive.py` の型の切り替えが要る。
@@ -35,7 +35,7 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 | 車両 | Lexus RX 450h（ホイールベース 2.79 m） | 車輪型、最高 6 km/h | `awsim_drive.py` で、決めた経路を 6 km/h で走らせる（3.2 節） |
 | 真値 | `/awsim/ground_truth/vehicle/pose`（`PoseStamped`、100 Hz、base_link の姿勢、地図座標） | — | そのまま真値にする。UTM に直して CSV に書く |
 | IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
-| ODOM | `/vehicle/status/velocity_status`（`autoware_auto_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。ヨーレートも twist に入れる |
+| ODOM | `/vehicle/status/velocity_status`（`autoware_vehicle_msgs/VelocityReport`、30 Hz。前進速度・横速度・ヨーレート） | `nav_msgs/Odometry`（twist） | `Odometry` に直す。ヨーレートも twist に入れる |
 | GNSS | `/sensing/gnss/pose`（`Pose`、1 Hz） | u-blox F9P の RTK-FIX（`NavSatFix`、10 Hz） | **AWSIM の出力は使わず**、真値から `NavSatFix`（10 Hz、σ 2 cm、アンテナの位置 = base_link の上 1.5 m）を作る。途切れは時間か範囲で入れる（status = −1） |
 | LiDAR | `/sensing/lidar/top/pointcloud_raw`（`PointCloud2`、10 Hz、frame **`velodyne_top`**。VLP-16 相当） | Livox Mid-360 | 中身はそのまま出す。base_link → `velodyne_top` の位置は**地図と照らして確かめる**（3.4 節）。点ごとの時刻の列があれば `lidar.time_field: auto` で使われ、無ければデスキューしない |
 | 地図 | 西新宿の `pointcloud_map.pcd` と `lanelet2_map.osm`（MGRS 54SUE の区画の中の座標） | UTM の地図グループとアンカー | `tiled_pcd_map_tiler` でタイル化。地図座標 = UTM − (300000, 3900000)（54 帯）なので、アンカーは回転なし・縮尺なしで決まる（3.3 節） |
@@ -71,7 +71,7 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
 ### 3.1 準備（AWSIM の PC）
 
 1. NVIDIA ドライバを入れる（AWSIM の Quick start demo のとおり。550 推奨）。ホストに ROS 2 は要らない（AWSIM は ROS 2 を中に持っている）。
-2. `tools/awsim/setup.sh` を実行する。AWSIM v1.3.1 と西新宿の地図（AWSIM v1.1.0 のリリースの `nishishinjuku_autoware_map.zip`）を `data/awsim/` に落として展開し、記録と走行に使う ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_auto_msgs`、MCAP の記録、CycloneDDS、numpy・scipy 入り。ホストのネットワークを使う）を作る。
+2. `tools/awsim/setup.sh` を実行する。AWSIM v1.3.1 と西新宿の地図（AWSIM v1.1.0 のリリースの `nishishinjuku_autoware_map.zip`）を `data/awsim/` に落として展開し、記録と走行に使う ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_msgs` 1.1.0 の制御と車両のメッセージ、MCAP の記録、CycloneDDS、numpy・scipy 入り。ホストのネットワークを使う）を作る。
 
 ### 3.2 経路を作って走らせ、記録する（AWSIM の PC）
 

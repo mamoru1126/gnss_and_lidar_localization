@@ -12,24 +12,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-numpy python3-scipy \
       python3-colcon-common-extensions git \
     && rm -rf /var/lib/apt/lists/*
-# AWSIM v1.x が使う autoware_auto_msgs（tier4/autoware_auto_msgs）。apt の ros-humble-autoware-auto-msgs は中身の無い
-# パッケージなので、ソースから制御と車両のメッセージだけをビルドする（コミットを固定）
-ARG AUTOWARE_AUTO_MSGS_COMMIT=624aae9feb142eb2a4e16069ed06bf4050ccc3ea
-RUN mkdir -p /opt/autoware_auto_msgs/src && cd /opt/autoware_auto_msgs/src \
-    && git init -q aam && cd aam \
-    && git fetch -q --depth 1 https://github.com/tier4/autoware_auto_msgs ${AUTOWARE_AUTO_MSGS_COMMIT} \
-    && git checkout -q FETCH_HEAD && cd /opt/autoware_auto_msgs \
+# AWSIM v1.3.1 が使うメッセージ（autowarefoundation/autoware_msgs の autoware_control_msgs・autoware_vehicle_msgs。
+# AWSIM に同梱のものは ControlHorizon を含むので 1.1.0 以降）。制御と車両のメッセージだけをソースからビルドする
+ARG AUTOWARE_MSGS_TAG=1.1.0
+RUN mkdir -p /opt/autoware_msgs/src && cd /opt/autoware_msgs/src \
+    && git clone -q --depth 1 -b ${AUTOWARE_MSGS_TAG} https://github.com/autowarefoundation/autoware_msgs \
+    && cd /opt/autoware_msgs \
     && source /opt/ros/humble/setup.bash \
-    && colcon build --merge-install --install-base /opt/autoware_auto_msgs/install \
-         --packages-up-to autoware_auto_control_msgs autoware_auto_vehicle_msgs \
+    && colcon build --merge-install --install-base /opt/autoware_msgs/install \
+         --packages-up-to autoware_control_msgs autoware_vehicle_msgs \
          --cmake-args -DBUILD_TESTING=OFF \
-    && rm -rf /opt/autoware_auto_msgs/build /opt/autoware_auto_msgs/log
+    && rm -rf /opt/autoware_msgs/build /opt/autoware_msgs/log
 # AWSIM の Quick start demo と同じ通信の設定（ホストの AWSIM と同じ PC の中だけで通信する）
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_LOCALHOST_ONLY=1
-# ROS 2 と autoware_auto_msgs を読み込んでから、渡されたコマンド（既定は bash）を動かす。
+# ROS 2 と autoware_msgs を読み込んでから、渡されたコマンド（既定は bash）を動かす。
 # ホストの利用者の UID で動かしても（compose の user）、読み込まれるように .bashrc ではなくここで読む
-RUN printf '#!/bin/bash\nsource /opt/ros/humble/setup.bash\nsource /opt/autoware_auto_msgs/install/setup.bash\nexec "$@"\n' \
+RUN printf '#!/bin/bash\nsource /opt/ros/humble/setup.bash\nsource /opt/autoware_msgs/install/setup.bash\nexec "$@"\n' \
       > /awsim_entrypoint.sh && chmod +x /awsim_entrypoint.sh
 ENTRYPOINT ["/awsim_entrypoint.sh"]
 CMD ["bash"]

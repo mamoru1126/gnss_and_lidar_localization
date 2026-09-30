@@ -36,13 +36,13 @@ MB.MSGDEFS.update({
     "sensor_msgs/msg/Imu": "std_msgs/Header header\ngeometry_msgs/Quaternion orientation\nfloat64[9] orientation_covariance\n"
                            "geometry_msgs/Vector3 angular_velocity\nfloat64[9] angular_velocity_covariance\n"
                            "geometry_msgs/Vector3 linear_acceleration\nfloat64[9] linear_acceleration_covariance",
-    "autoware_auto_vehicle_msgs/msg/VelocityReport": "std_msgs/Header header\nfloat32 longitudinal_velocity\n"
+    "autoware_vehicle_msgs/msg/VelocityReport": "std_msgs/Header header\nfloat32 longitudinal_velocity\n"
                                                      "float32 lateral_velocity\nfloat32 heading_rate",
 })
 MB.DEPS.update({
     "sensor_msgs/msg/Imu": ["std_msgs/msg/Header", "builtin_interfaces/msg/Time", "geometry_msgs/msg/Quaternion",
                             "geometry_msgs/msg/Vector3"],
-    "autoware_auto_vehicle_msgs/msg/VelocityReport": ["std_msgs/msg/Header", "builtin_interfaces/msg/Time"],
+    "autoware_vehicle_msgs/msg/VelocityReport": ["std_msgs/msg/Header", "builtin_interfaces/msg/Time"],
     "geometry_msgs/msg/PoseStamped": ["std_msgs/msg/Header", "builtin_interfaces/msg/Time", "geometry_msgs/msg/Pose",
                                       "geometry_msgs/msg/Point", "geometry_msgs/msg/Quaternion"],
 })
@@ -122,7 +122,7 @@ def main():
     qos = MB.qos_yaml(False, 10)
     ch_gt = w.channel(w.schema("geometry_msgs/msg/PoseStamped"), "/awsim/ground_truth/vehicle/pose", qos)
     ch_imu = w.channel(w.schema("sensor_msgs/msg/Imu"), "/sensing/imu/tamagawa/imu_raw", qos)
-    ch_vel = w.channel(w.schema("autoware_auto_vehicle_msgs/msg/VelocityReport"), "/vehicle/status/velocity_status", qos)
+    ch_vel = w.channel(w.schema("autoware_vehicle_msgs/msg/VelocityReport"), "/vehicle/status/velocity_status", qos)
     ch_pc = w.channel(w.schema("sensor_msgs/msg/PointCloud2"), "/sensing/lidar/top/pointcloud_raw", qos)
     rng = np.random.default_rng(2)
     world = world_points()
