@@ -123,6 +123,8 @@ gll_localizer:
       source_num_neighbors: 10
       min_source_points: 100
       max_correspondence_distance: 1.0
+      registration: gicp                  # 追跡の照合: gicp（地図の点・KdTree）か vgicp（ボクセルごとのガウス分布。速い。CPU で動く）
+      vgicp_voxel_size: 1.0               # vgicp のボクセル [m]
       max_iterations: 20
       num_threads: 4
       min_inlier_ratio: 0.6

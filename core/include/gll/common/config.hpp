@@ -113,6 +113,9 @@ struct LidarConfig {
   int source_num_neighbors = 10;     ///< スキャンの点ごとの共分散に使う近傍点数
   int min_source_points = 100;       ///< 間引いた後の点数がこれ未満なら照合しない
   double max_correspondence_distance = 1.0;  ///< [m]
+  /// 追跡の照合の方式: "gicp"（ターゲットは点と KdTree）か "vgicp"（ターゲットはボクセルごとのガウス分布。CPU で動く）
+  std::string registration = "gicp";
+  double vgicp_voxel_size = 1.0;     ///< VGICP のボクセル [m]
   int max_iterations = 20;
   double translation_eps = 1e-3;     ///< 収束判定 [m]
   double rotation_eps = 1e-3;        ///< 収束判定 [rad]

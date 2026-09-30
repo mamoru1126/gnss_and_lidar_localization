@@ -123,6 +123,9 @@ gll::LocalizerConfig LocalizerNode::loadConfig() {
   c.lidar.source_num_neighbors = i("lidar.source_num_neighbors", c.lidar.source_num_neighbors);
   c.lidar.min_source_points = i("lidar.min_source_points", c.lidar.min_source_points);
   c.lidar.max_correspondence_distance = d("lidar.max_correspondence_distance", c.lidar.max_correspondence_distance);
+  c.lidar.registration = declare_parameter<std::string>("lidar.registration", c.lidar.registration);
+  registration_ = c.lidar.registration;
+  c.lidar.vgicp_voxel_size = d("lidar.vgicp_voxel_size", c.lidar.vgicp_voxel_size);
   c.lidar.max_iterations = i("lidar.max_iterations", c.lidar.max_iterations);
   c.lidar.num_threads = i("lidar.num_threads", 4);
   c.lidar.min_inlier_ratio = d("lidar.min_inlier_ratio", c.lidar.min_inlier_ratio);
@@ -345,6 +348,17 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
 }
 
 LocalizerNode::~LocalizerNode() {
+  // 照合のまとめ（方式・時間・採用数）を 1 行で残す（検証のログの比較用）
+  if (lidar_enabled_) {
+    const auto d = localizer_->diagnostics();
+    const double mean = d.lidar_matched ? d.match_ms_sum / static_cast<double>(d.lidar_matched) : 0.0;
+    std::size_t rejected = 0;
+    for (const auto& [k, n] : d.lidar_reject_reasons) rejected += n;
+    RCLCPP_INFO(get_logger(),
+                "LiDAR matching summary (%s): %zu scans matched, %zu accepted, %zu rejected by quality, "
+                "time mean %.1f ms / max %.1f ms",
+                registration_.c_str(), d.lidar_matched, d.lidar_accepted, rejected, mean, d.match_ms_max);
+  }
   // 終了時の位置を保存する（次の起動時の初期姿勢に使う）
   if (last_out_ && !saved_pose_path_.empty() && last_out_->status != gll::LocalizationStatus::INITIALIZING &&
       last_out_->status != gll::LocalizationStatus::LOST)

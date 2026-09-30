@@ -1,4 +1,5 @@
-// small_gicp による位置合わせ（設計書 6.2 節）。ターゲットは GICP（KdTree）、粗い探索は VGICP を使う。
+// small_gicp による位置合わせ（設計書 6.2 節）。追跡は GICP（KdTree）か VGICP（lidar.registration）、粗い探索は VGICP を使う。
+// どれも CPU（OpenMP）で動く。
 #pragma once
 
 #include "gll/matching/scan_matcher.hpp"
@@ -22,10 +23,10 @@ class GicpMatcher : public IScanMatcher {
   RegistrationResult alignCoarse(const SourceCloud& source, const MatchTarget& target,
                                  const Eigen::Isometry3d& init, int num_threads = 0) const;
 
-  /// スキャンの点のうち、ターゲットの点から distance 以内にあるものの割合（水平でない面（壁・柱など）の点で数える。
-  /// そうした点が少なければ全点）。num_threads <= 0 なら設定の値を使う。
+  /// スキャンの点のうち、ターゲットの点から distance 以内にあるものの割合（structure_only なら水平でない面（壁・柱など）
+  /// の点で数える。そうした点が少なければ全点）。num_threads <= 0 なら設定の値を使う。
   double overlap(const SourceCloud& source, const MatchTarget& target, const Eigen::Isometry3d& T,
-                 double distance, int num_threads = 0) const;
+                 double distance, int num_threads = 0, bool structure_only = true) const;
 
  private:
   LidarConfig cfg_;

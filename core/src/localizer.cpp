@@ -530,6 +530,8 @@ void Localizer::processScan(const LidarScan& scan) {
   std::lock_guard<std::mutex> lk(mtx_);
   ++diag_.lidar_matched;
   diag_.last_match_ms = ms;
+  diag_.match_ms_sum += ms;
+  diag_.match_ms_max = std::max(diag_.match_ms_max, ms);
   diag_.last_inlier_ratio = r.inlier_ratio;
   diag_.last_overlap = r.overlap;
   LidarMatchInfo info;

@@ -821,11 +821,17 @@ sequenceDiagram
 2. タイルファイルは独自のバイナリ形式（5.2 節）とする。コアから PCL への依存を無くすため。
 3. アクティブグループのロード済みタイルの集合が変わったら、地図ロードワーカーが**結合した点群と KdTree を再構築**し、ダブルバッファで差し替える（5.3 節）。6 km/h ではタイル集合が変わるのは数秒〜数十秒に 1 回で、再構築は十分に間に合う。
 
+**追跡の照合の方式**（`lidar.registration`。どちらも CPU で動く）:
+- `gicp`（既定）: ターゲットは結合した地図の点と KdTree。スキャンの点ごとに最近傍の地図の点（と共分散）に合わせる。
+- `vgicp`: ターゲットは地図の点を `vgicp_voxel_size` のボクセルに分けた、ボクセルごとのガウス分布（平均と共分散）。近傍の探索が要らず速い。ボクセル地図はターゲットを使う最初の照合で作る。対応の距離の上限は `max(max_correspondence_distance, 2 × vgicp_voxel_size)`。VGICP の「対応がある点」の数は GICP と意味が違うので、品質指標の `inlier_ratio` は、照合の後に地図の点との距離（`max_correspondence_distance` 以内）で数え直して、同じしきい値で判定する。観測共分散は VGICP のヘッセ行列から同じ式で求める（`cov_scale` は方式ごとに合わせ直しが要るかもしれない）。
+- 終了時に、照合した数・採用した数・品質で落とした数・照合の時間（平均・最大）を 1 行のログに出す（方式の比較用）。
+
 **主なパラメータ**（既定値。実データで調整する）:
 
 | パラメータ | 既定値 |
 |---|---|
 | `max_correspondence_distance` | 1.0 m |
+| `registration` / `vgicp_voxel_size` | gicp / 1.0 m |
 | 収束判定（回転 / 並進） | 1e-3 rad / 1e-3 m |
 | 最大反復回数 | 20 回 |
 | スレッド数 | 4（ROS のパラメータの既定。コアの既定は 2） |
@@ -1091,6 +1097,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | | `time_field` / `stamp_offset` | auto / 0 s | 点ごとの時刻（6.1 節） |
 | | `debug_points_voxel` | 0.2 m | `~/debug/scan_points`（表示用）の間引き（0 なら間引かない） |
 | | `max_correspondence_distance` | 1.0 m | |
+| | `registration` / `vgicp_voxel_size` | gicp / 1.0 m | 追跡の照合の方式（gicp / vgicp）とボクセル |
 | | `max_jump_xy` / `max_jump_yaw` | 1.0 m / 5 deg | |
 | | `max_iterations` / `num_threads` | 20 / 4 | GICP の反復回数の上限、並列数（OpenMP） |
 | | `deskew` / `crop_box_enabled` | true / false | デスキュー、車体の点を除く箱（6.1 節） |

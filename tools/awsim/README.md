@@ -98,6 +98,7 @@ python3 tools/awsim/awsim_to_bag.py $D/nsj_run1 $D/out/v_a0 --lidar-extrinsic <�
 | `--drop-lidar START:DUR ...` | 点群を抜く |
 | `--odom-scale`、`--odom-noise` | ODOM の縮尺の誤差と雑音 |
 | `--lidar-stamp-offset` | パラメータ `lidar.stamp_offset`（点群のスタンプのずれ） |
+| `--set KEY=VALUE ...` | 推定ノードのパラメータを上書きする（例: `--set lidar.registration=vgicp`） |
 | `--full-map-voxel` | 全体の地図（`/map/points`、表示用）を間引く大きさ（1.0 m。0 なら入れない） |
 | `--no-fix-lag` | IMU・車速のスタンプのずれ（真値の yaw レートと比べて求める）を直さない |
 | `--gnss-rate`、`--gnss-sigma`、`--gnss-lever` | 作る GNSS の周期（10 Hz）、水平の σ（0.02 m）、アンテナの位置（0,0,1.5） |

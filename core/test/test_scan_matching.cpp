@@ -11,6 +11,7 @@
 #include <Eigen/Eigenvalues>
 
 #include <chrono>
+#include <stdexcept>
 #include <cstdio>
 
 using namespace gll;
@@ -156,6 +157,38 @@ TEST(GicpMatcher, AlignsFromPerturbedInitialGuess) {
   EXPECT_GT(r.overlap, 0.9);
   // 情報行列は正定値
   EXPECT_GT(Eigen::SelfAdjointEigenSolver<Mat6>(r.H).eigenvalues().minCoeff(), 0.0);
+}
+
+TEST(GicpMatcher, VgicpAlignsFromPerturbedInitialGuess) {
+  // lidar.registration: vgicp（ターゲットはボクセルごとのガウス分布）でも、GICP と同じ精度で合う
+  const Fixture& f = campus();
+  LidarConfig c = lidarConfig();
+  c.registration = "vgicp";
+  c.vgicp_voxel_size = 1.0;
+  const GicpMatcher m(c);
+  const auto target = buildTarget(m, f.world, "campus");
+  const Eigen::Isometry3d truth = makePose(Vec3(3.0, -2.0, 0.0), 0.0, 0.0, 0.6);
+  const auto pts = ScanPreprocessor(c).process(staticScan(f.world, truth), ScanMotion());
+  const auto src = m.prepareSource(pts, 0.5);
+  const Eigen::Isometry3d init = makePose(Vec3(3.6, -2.4, 0.2), 0.01, -0.01, 0.6 + deg2rad(4.0));
+  (void)m.align(*src, *target, init);  // 1 回目はボクセル地図を作る時間を含む
+  const auto t0 = std::chrono::steady_clock::now();
+  const RegistrationResult r = m.align(*src, *target, init);
+  const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+  std::printf("[vgicp] %zu source points, %d iterations, %.1f ms, inlier %.2f, overlap %.2f\n", r.num_source,
+              r.iterations, ms, r.inlier_ratio, r.overlap);
+  EXPECT_TRUE(r.converged);
+  EXPECT_LT(transErr(r.T_map_base, truth), 0.05);
+  EXPECT_LT(yawErrDeg(r.T_map_base, truth), 0.2);
+  EXPECT_GT(r.inlier_ratio, 0.9);  // 地図の点との距離で数え直した値（GICP と同じ意味）
+  EXPECT_GT(r.overlap, 0.9);
+  EXPECT_GT(Eigen::SelfAdjointEigenSolver<Mat6>(r.H).eigenvalues().minCoeff(), 0.0);
+}
+
+TEST(GicpMatcher, RejectsUnknownRegistration) {
+  LidarConfig c = lidarConfig();
+  c.registration = "ndt";
+  EXPECT_THROW(GicpMatcher{c}, std::invalid_argument);
 }
 
 TEST(GicpMatcher, CorridorIsDegenerateAlongTheWalls) {
