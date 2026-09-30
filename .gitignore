@@ -1,7 +1,6 @@
 # colcon / CMake
 build/
 install/
-log/
 docker/data/
 data/
 
