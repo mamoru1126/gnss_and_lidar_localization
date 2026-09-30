@@ -16,7 +16,7 @@
 | ホストで使うスクリプト | 内容 |
 |---|---|
 | `setup.sh` | 最初に 1 回。AWSIM v1.3.1 と西新宿の地図を `data/awsim/` に落として展開し、Humble のコンテナを作る |
-| `run_awsim.sh` | AWSIM を起動する。通信の環境変数と、CycloneDDS のための `sysctl`・ループバックのマルチキャストをまとめて設定する |
+| `run_awsim.sh` | AWSIM を起動する。通信の環境変数と、CycloneDDS のための `sysctl`・ループバックのマルチキャストをまとめて設定する。既定ではほかの車（NPC）を出さない（`--traffic N` で出す）。`--start X,Y,Z,YAW` で車の最初の位置を変えられる |
 | `container.sh` | Humble のコンテナに入る（ホストの利用者の UID で） |
 | `record.sh <名前>` | コンテナの中で使う。4 つのトピックを `data/awsim/<名前>/` に MCAP で記録する |
 
@@ -60,7 +60,8 @@ python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 - 経路の決め方: まず `--length` で作り、`route.svg`（ブラウザで開く。灰 = 道路、赤 = 経路、緑 = 始点、青 = 終点）を見る。気に入らなければ `--seed` を変えるか、図の目盛りで通りたい交差点の座標を読んで `--via` に並べる。`--via` の点は近く（10 m 以内）の車線に寄せ、進行方向を守った最短の道でつなぐ。地図の端で行き止まりになる道の点を途中に置くと、そう表示して止まる。
 - `tools/tile_demo/lanelet_route.py` はタイルのデモ用で、進行方向を見ないので、走らせる経路には使わない。
 - `awsim_drive.py` は `/control/command/control_cmd`（`autoware_control_msgs/Control`）・`gear_cmd` を、AWSIM と同じ QoS（RELIABLE・TRANSIENT_LOCAL）で出す。車が動かないときは、`requesting incompatible QoS` の警告が出ていないか、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
-- 障害物・信号・ほかの車は見ない。ぶつかったら記録をやり直す。
+- 障害物・信号・ほかの車は見ない。なので `run_awsim.sh` は既定でほかの車を出さない（AWSIM の設定ファイル `data/awsim/awsim_config.json` の `MaxVehicleCount: 0`）。`--traffic 10` のように出すと、ぶつかることがある。
+- 速さがありえない値（15 km/h か目標の 2 倍を超える。ぶつかった・地面から落ちた）になったら、ブレーキを出して終わる（終了コード 2）。AWSIM を起動し直す。
 - `--max-distance 300` で、300 m 走ったら止める。
 - 速さは既定 6 km/h（本システムの想定の最高速度）。`--kmh 25` のように上げられる（`--check` にも同じ値を付けて確かめる）。曲がる所の手前で、横加速度が 1.5 m/s² を超えないように減速し（交差点の右左折はおよそ 10〜15 km/h）、経路の終わりでちょうど止まる。速さは AWSIM の `/vehicle/status/velocity_status` で測り、比例と積分で追う（坂や抵抗で目標に届かない分を積分で補う）。1 s ごとに今の速さと目標、残りの距離を出す。止まった後も 2 s ブレーキを出してから終わる。6 km/h より速い記録は本システムの想定の外なので、結果を見るときは分けて扱う。
 - `ros2 topic list` に AWSIM のトピックが出ないときは、AWSIM を `tools/awsim/run_awsim.sh` で起動したかを確かめる（別の方法で起動すると、通信の設定がそろわない）。

@@ -81,7 +81,8 @@ def main():
         def on_pose(m):
             p, q = m.pose.position, m.pose.orientation
             yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
-            got.append(f"{p.x:.2f},{p.y:.2f},{math.degrees(yaw):.1f}")
+            got.append((f"{p.x:.2f},{p.y:.2f},{math.degrees(yaw):.1f}",
+                        f"{p.x:.3f},{p.y:.3f},{p.z:.3f},{math.degrees(yaw):.1f}"))
 
         rclpy.init()
         node = rclpy.create_node("awsim_print_pose")
@@ -95,7 +96,8 @@ def main():
         rclpy.shutdown()
         if not got:
             sys.exit(f"{args.gt_topic} が 10 s 来ない（AWSIM が動いているか、ros2 topic list で確かめる）")
-        print(got[0])
+        print(got[0][0])
+        print(f"（AWSIM をこの位置から始めるなら: tools/awsim/run_awsim.sh --start {got[0][1]}）", file=sys.stderr)
         return
 
     route = load_route(args.route)
@@ -117,6 +119,7 @@ def main():
             self.create_subscription(VelocityReport, args.velocity_topic, self.on_velocity,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
             self.brake_until = None
+            self.failed = False
             # AWSIM v1.3.1 の購読は RELIABLE・TRANSIENT_LOCAL・深さ 1。出す側も TRANSIENT_LOCAL でないとつながらない
             cmd_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                                  durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -186,6 +189,14 @@ def main():
                 if now > self.brake_until and abs(v) < 0.05:
                     self.finished = True
                 return
+            # 速さがありえない値（ぶつかった、地面から落ちたなど）なら、止めて終わる
+            if abs(v) > max(2.0 * self.pp.v_ref, 15.0):
+                self.get_logger().error(f"abnormal speed {v * 3.6:.0f} km/h: the car probably hit something or fell. "
+                                        "stopping (restart AWSIM; tools/awsim/run_awsim.sh starts it without other cars)")
+                self.send(0.0, 0.0, -2.0)
+                self.failed = True
+                self.finished = True
+                return
             steer, v_ref, acc, done = self.pp.step(*self.pose, v)
             if args.max_distance > 0 and self.dist >= args.max_distance:
                 v_ref, acc, done = 0.0, -2.0, True
@@ -206,9 +217,11 @@ def main():
     except KeyboardInterrupt:
         node.send(0.0, 0.0, -1.0)
     finally:
+        failed = node.failed
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+    sys.exit(2 if failed else 0)
 
 
 if __name__ == "__main__":
