@@ -1,0 +1,162 @@
+# data/awsim/nsj_run1 から tools/awsim/awsim_to_bag.py が作った（config/localizer.yaml に値を入れたもの）
+gll_localizer:
+  ros__parameters:
+    map_frame: map
+    base_frame: base_link
+    publish_tf: true
+    output_rate: 50.0
+    debug_csv_path: data/awsim/out/v_a0_output.csv
+    estimator:
+      type: invariant_ekf
+      sigma_v: 0.05
+      sigma_v_lat: 0.02
+      sigma_omega: 0.01
+      sigma_bias_rw: 0.0001
+      sigma_scale_rw: 0.0001
+      estimate_odom_scale: true
+      history_length: 2.0
+      gate_alpha: 0.001
+    imu:
+      rotation_rpy_deg:
+      - 0.0
+      - 0.0
+      - 0.0
+      acc_scale: 1.0
+    gnss:
+      utm_zone: 54
+      utm_north: true
+      rtk_fix_status: 2
+      max_stddev: 0.05
+      min_stddev: 0.02
+      fix_settle_time: 1.0
+      settle_reset_gap: 3.0
+      accept_unknown_covariance: false
+      default_stddev: 0.03
+      lever_arm:
+      - 0.0
+      - 0.0
+      - 1.5
+      attitude_stddev_deg: 0.5
+      use_velocity: false
+      cog_min_speed: 0.5
+      cog_max_yaw_rate_deg: 5.0
+      stamp_offset: 0.0
+    attitude:
+      kp: 1.0
+      ki: 0.0
+      static_init_time: 3.0
+      accel_tolerance: 1.0
+    motion:
+      odom_hold_max: 0.1
+      imu_timeout: 0.1
+    stop:
+      v_threshold: 0.01
+      w_threshold: 0.02
+      min_duration: 1.0
+      zaru_stddev: 0.002
+    init:
+      heading_min_distance: 1.0
+      init_yaw_stddev_deg: 15.0
+      ready_yaw_stddev_deg: 2.0
+      ready_pos_stddev: 0.1
+      saved_pose_path: ''
+      use_saved_pose: false
+      saved_pose_stddev_xy: 0.5
+      saved_pose_stddev_yaw_deg: 10.0
+      save_interval: 1.0
+    output:
+      max_rate_xy: 0.1
+      max_rate_yaw_deg: 2.0
+      offset_error_xy: 1.0
+      offset_error_yaw_deg: 5.0
+    monitor:
+      aid_timeout: 1.0
+      dr_max_stddev: 0.3
+      lost_stddev: 1.0
+      dr_error_distance: 30.0
+    arbiter:
+      lidar_cov_inflation_under_fix: 4.0
+      consistency_xy: 0.15
+      consistency_yaw_deg: 1.0
+      anchor_mismatch_warn_xy: 0.1
+      anchor_mismatch_warn_yaw_deg: 0.5
+    recovery:
+      reanchor_confirm_gnss: 3
+      reanchor_confirm_lidar: 5
+      reanchor_consistency_xy: 0.1
+      reanchor_consistency_yaw_deg: 1.0
+      candidate_max_age: 5.0
+    map:
+      config_path: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a0_maps.yaml
+      load_radius: 60.0
+      unload_radius: 90.0
+      lookahead_time: 3.0
+      update_distance: 1.0
+      update_interval: 1.0
+      group_switch_margin: 10.0
+      min_target_points: 500
+      publish_points_max: 200000
+    lidar:
+      extrinsic_xyz:
+      - 0.9
+      - 0.0
+      - 2.04
+      extrinsic_rpy_deg:
+      - 0.9
+      - 0.0
+      - 88.2
+      time_field: auto
+      stamp_offset: 0.0
+      min_range: 1.0
+      max_range: 50.0
+      crop_box_enabled: false
+      crop_box_min:
+      - -1.0
+      - -1.0
+      - -1.0
+      crop_box_max:
+      - 1.0
+      - 1.0
+      - 2.0
+      deskew: true
+      source_voxel_size: 0.5
+      source_num_neighbors: 10
+      min_source_points: 100
+      max_correspondence_distance: 1.0
+      max_iterations: 20
+      num_threads: 4
+      min_inlier_ratio: 0.6
+      overlap_distance: 0.3
+      min_overlap: 0.5
+      max_jump_xy: 1.0
+      max_jump_yaw_deg: 5.0
+      cov_scale: 0.15
+      min_stddev_xy: 0.02
+      min_stddev_yaw_deg: 0.2
+      min_interval: 0.0
+      base_link_height: 0.0
+    relocalize:
+      init_min_radius: 0.5
+      init_max_radius: 5.0
+      init_min_yaw_deg: 10.0
+      init_max_yaw_deg: 180.0
+      init_map_distance: 10.0
+      init_max_attempts: 5
+      init_timeout: 15.0
+      position_step: 1.0
+      yaw_step_deg: 20.0
+      coarse_voxel_size: 2.0
+      coarse_source_voxel: 1.0
+      coarse_max_iterations: 10
+      refine_candidates: 5
+      distinct_xy: 1.0
+      distinct_yaw_deg: 10.0
+      uniqueness_ratio: 1.5
+      min_overlap: 0.6
+      after_rejects: 20
+      min_radius: 1.0
+      radius_per_dr_distance: 0.05
+      max_radius: 3.0
+      max_yaw_deg: 30.0
+      max_attempts: 3
+      lost_retry_interval: 5.0
