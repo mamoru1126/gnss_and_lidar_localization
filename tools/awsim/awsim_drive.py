@@ -11,7 +11,7 @@
   経路の作り方は README.md（tools/tile_demo/lanelet_route.py で、車の位置から始まる経路を作る）。
 - 出すもの: /control/command/control_cmd（AckermannControlCommand）、/control/command/gear_cmd（DRIVE）、/vehicle/engage。
   AWSIM v1.x（autoware_auto_msgs）の型。AWSIM Labs などで型が autoware_control_msgs などに変わった場合は、import を直す。
-必要なパッケージ: rclpy、geometry_msgs、autoware_auto_control_msgs、autoware_auto_vehicle_msgs（ros-humble-autoware-auto-msgs）。
+必要なパッケージ: rclpy、geometry_msgs、autoware_auto_control_msgs、autoware_auto_vehicle_msgs（docker/awsim/Dockerfile のコンテナに入っている）。
 """
 import argparse
 import math
@@ -57,7 +57,8 @@ def main():
         from autoware_auto_control_msgs.msg import AckermannControlCommand
         from autoware_auto_vehicle_msgs.msg import Engage, GearCommand
     except ImportError:
-        sys.exit("autoware_auto_msgs が無い: sudo apt install ros-humble-autoware-auto-msgs")
+        sys.exit("autoware_auto_msgs が無い: docker/awsim/Dockerfile のコンテナで動かすか、"
+                 "sudo apt install ros-humble-autoware-auto-control-msgs ros-humble-autoware-auto-vehicle-msgs")
 
     route = load_route(args.route)
 
@@ -71,6 +72,7 @@ def main():
             self.t_start = None
             self.dist = 0.0
             self.started = False
+            self.finished = False
             self.create_subscription(PoseStamped, args.gt_topic, self.on_pose,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
             self.pub_ctrl = self.create_publisher(AckermannControlCommand, "/control/command/control_cmd", 10)
@@ -134,14 +136,20 @@ def main():
             if done and self.v < 0.05:
                 self.get_logger().info(f"finished: {self.dist:.0f} m")
                 self.send(0.0, 0.0, -1.0)
-                rclpy.shutdown()
+                self.finished = True
 
     rclpy.init()
     node = Driver()
     try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, Exception):  # rclpy.shutdown() の後の spin の終わりも含む
-        pass
+        # 経路の終わりで止まったら抜ける（コールバックの中で rclpy.shutdown() を呼ぶと、プロセスが終わらなかった）
+        while rclpy.ok() and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.1)
+    except KeyboardInterrupt:
+        node.send(0.0, 0.0, -1.0)
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

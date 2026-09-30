@@ -104,6 +104,29 @@ jobs:
       - name: Test
         run: tools/awsim/test/run_tests.sh
 
+  # AWSIM と一緒に使う ROS 2 Humble のコンテナ（docker/awsim/Dockerfile）で、記録と走行の道具を確かめる
+  awsim_humble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the Humble image
+        run: docker build -f docker/awsim/Dockerfile -t gll:awsim-humble .
+      - name: Record and drive with a stand-in for the AWSIM vehicle
+        timeout-minutes: 10
+        run: |
+          # AWSIM の Quick start demo と同じく、ループバックでマルチキャストを使えるようにする（CycloneDDS の検出のため）
+          sudo ip link set lo multicast on
+          # 止まったときも出力が残るように、ホストのファイルにも書く（次のステップが注釈に出す）
+          set -o pipefail
+          timeout 480 docker run --rm --net=host --ipc=host -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" \
+            gll:awsim-humble bash tools/awsim/test/run_humble_check.sh 2>&1 | tee /tmp/humble_check.log
+      - name: Show the output of the check when it failed
+        if: failure()
+        run: |
+          msg="$(tail -n 80 /tmp/humble_check.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+          echo "::error title=awsim_humble output (last lines)::$msg"
+
   # tools/grandtour（GrandTour のダウンロード・事前確認）を、合成ミッションで確かめる
   tools_grandtour:
     runs-on: ubuntu-24.04
