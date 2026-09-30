@@ -15,7 +15,8 @@ exec > >(tee "$log") 2>&1
 on_exit() {
   rc=$?
   if [ "$rc" -ne 0 ]; then
-    msg="$(tail -n 80 "$log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+    # 注釈は 4 KB で切られるので、失敗の理由（NG・FAIL・エラー）の行と、最後の 20 行だけを出す
+    msg="$({ grep -E 'NG:|FAIL|Error|error|Traceback|!!!!' "$log" | tail -n 15; echo '----'; tail -n 20 "$log"; } | cut -c1-200 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
     echo "::error title=run_localizer_check.sh failed (exit $rc)::$msg"
   fi
   pkill -INT -f localizer_node 2>/dev/null || true
