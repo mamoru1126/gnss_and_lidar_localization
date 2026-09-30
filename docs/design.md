@@ -1058,7 +1058,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | apt で入れる依存 | Eigen3、GeographicLib、yaml-cpp、GoogleTest、`ros-jazzy-*` の必要パッケージ（`tf2_ros`、各メッセージなど） |
 | ソースからビルドする依存 | small_gicp v1.0.1（タグを固定して `git clone` し、静的ライブラリとして CMake でインストール。`SMALL_GICP_VERSION` で変えられる） |
 | ステージ | `dev`（ビルド・テスト・デバッグ用。Python の `rosbags` など検証用ツールも入れる）と `runtime`（実行に必要なものだけ） |
-| 構成ファイル | `docker/Dockerfile`、`docker/compose.yaml`（ワークスペースとデータディレクトリ `$GLL_DATA` をマウント。RViz 用の X11 転送は任意） |
+| 構成ファイル | `docker/Dockerfile`、`docker/compose.yaml`（リポジトリをワークスペースにマウント。データはリポジトリの `data/`（`$GLL_DATA`）。RViz 用の X11 転送は任意） |
 | VS Code | `.devcontainer/devcontainer.json`（任意。`dev` ステージを使う） |
 | CI | GitHub Actions で同じ Dockerfile の `dev` ステージをビルドし、その中で colcon ビルドと単体テストを実行する |
 

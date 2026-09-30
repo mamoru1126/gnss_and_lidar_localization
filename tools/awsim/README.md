@@ -11,22 +11,32 @@
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
 
-必要なもの: dev コンテナの中なら追加は要らない（numpy・PyYAML・pyproj）。記録と走行は、ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_auto_msgs`・MCAP の記録・CycloneDDS・numpy・scipy 入り）で行う。ホストに ROS 2 を入れる必要は無い（AWSIM 本体は ROS 2 を中に持っている）。
+必要なもの: dev コンテナの中なら追加は要らない（numpy・PyYAML・pyproj）。記録と走行は、ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_auto_msgs`・MCAP の記録・CycloneDDS・numpy・scipy 入り）で行う。ホストに ROS 2 を入れる必要は無い（AWSIM 本体は ROS 2 を中に持っている）。ホストで使うのは Docker と curl・unzip だけ。
+
+| ホストで使うスクリプト | 内容 |
+|---|---|
+| `setup.sh` | 最初に 1 回。AWSIM v1.3.1 と西新宿の地図を `data/awsim/` に落として展開し、Humble のコンテナを作る |
+| `run_awsim.sh` | AWSIM を起動する。通信の環境変数と、CycloneDDS のための `sysctl`・ループバックのマルチキャストをまとめて設定する |
+| `container.sh` | Humble のコンテナに入る（ホストの利用者の UID で） |
+| `record.sh <名前>` | コンテナの中で使う。4 つのトピックを `data/awsim/<名前>/` に MCAP で記録する |
 
 ## 1. 経路を作って走らせ、記録する（AWSIM の PC）
 
-ホスト（Ubuntu 22.04）の準備は、AWSIM の Quick start demo のとおり（NVIDIA ドライバ、`sysctl` と `ip link set lo multicast on`、AWSIM を起動する端末で `ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`）。Humble のコンテナにも同じ 2 つの変数が入っている。
+データ（AWSIM 本体、地図、記録した bag、経路、変換の出力）は、全部リポジトリの `data/awsim/`（`.gitignore` 済み）に置く。環境変数を設定する必要は無い（コンテナの中では `GLL_DATA` がリポジトリの `data/` を指す）。コマンドはリポジトリの一番上で実行する。
 
 ```bash
-# コンテナを作る（最初の 1 回）。GLL_DATA がコンテナの /data になる（dev コンテナと同じ）
-export GLL_DATA=/path/to/data
-docker compose -f docker/compose.yaml build awsim
+# 最初に 1 回（ホストで）: AWSIM v1.3.1 と西新宿の地図を data/awsim/ に落とし、Humble のコンテナを作る
+tools/awsim/setup.sh
 
-# AWSIM を起動してから、コンテナに入る（記録用と走行用に 2 つの端末で。どちらも同じコマンド）
-docker compose -f docker/compose.yaml run --rm awsim
+# AWSIM を起動する（ホストで）。ROS_LOCALHOST_ONLY などの環境変数と、CycloneDDS のための sysctl・
+# ループバックのマルチキャスト（足りなければ sudo で設定する）を、このスクリプトがまとめて行う
+tools/awsim/run_awsim.sh
+
+# Humble のコンテナに入る（ホストで。記録用と走行用に 2 つの端末で。どちらも同じコマンド）
+tools/awsim/container.sh
 ```
 
-コンテナの中（`/ws/src/gnss_and_lidar_localization`。リポジトリがそのまま見える）で:
+コンテナの中で:
 
 ```bash
 # 真値が出ているか
@@ -34,18 +44,17 @@ ros2 topic list | grep ground_truth
 # 車の今の姿勢（地図座標 X,Y と向き [deg]）
 START=$(python3 tools/awsim/awsim_drive.py --print-pose)
 
-# 車の位置から、交通ルール（一方通行・車線のつながり）どおりに 1.5 km 走る経路を作る。M は西新宿の地図のフォルダ
-python3 tools/awsim/plan_route.py $M/lanelet2_map.osm --start $START --length 1500 --seed 0 \
-    -o /data/awsim/route.txt --svg /data/awsim/route.svg
+# 車の位置から、交通ルール（一方通行・車線のつながり）どおりに 1.5 km 走る経路を作る（地図は data/awsim/ のもの）
+python3 tools/awsim/plan_route.py --start $START --length 1500 --seed 0 -o data/awsim/route.txt --svg data/awsim/route.svg
 # 通りたい所があるなら、--length の代わりに --via X1,Y1 X2,Y2 ...（座標は route.svg の目盛りで読む）
 
-# 走れる経路かを確かめる（U ターンなど、曲がれない所があれば出る。終了コード 1）
-python3 tools/awsim/awsim_drive.py /data/awsim/route.txt --check
+# 走れる経路かを確かめる（曲がれない所があれば出る。終了コード 1）
+python3 tools/awsim/awsim_drive.py data/awsim/route.txt --check
 
-# 記録を始めてから、走らせる（5 s 止まってから走り出し、経路の終わりで止まってノードも終わる）
-ros2 bag record -s mcap -o /data/awsim/nsj_run1 /awsim/ground_truth/vehicle/pose /sensing/imu/tamagawa/imu_raw \
-    /vehicle/status/velocity_status /sensing/lidar/top/pointcloud_raw
-python3 tools/awsim/awsim_drive.py /data/awsim/route.txt --wait 5      # 別の端末
+# 記録を始めてから（1 つ目の端末。data/awsim/nsj_run1/ にできる。Ctrl-C で止める）、
+tools/awsim/record.sh nsj_run1
+# 走らせる（2 つ目の端末。5 s 止まってから走り出し、経路の終わりで止まって終わる）
+python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 ```
 
 - 経路の決め方: まず `--length` で作り、`route.svg`（ブラウザで開く。灰 = 道路、赤 = 経路、緑 = 始点、青 = 終点）を見る。気に入らなければ `--seed` を変えるか、図の目盛りで通りたい交差点の座標を読んで `--via` に並べる。`--via` の点は近く（10 m 以内）の車線に寄せ、進行方向を守った最短の道でつなぐ。地図の端で行き止まりになる道の点を途中に置くと、そう表示して止まる。
@@ -53,14 +62,17 @@ python3 tools/awsim/awsim_drive.py /data/awsim/route.txt --wait 5      # 別の�
 - `awsim_drive.py` は `/control/command/control_cmd`・`gear_cmd`・`/vehicle/engage` を出す。車が動かないときは、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
 - 障害物・信号・ほかの車は見ない。ぶつかったら記録をやり直す。
 - `--max-distance 300` で、300 m 走ったら止める。
-- `ros2 topic list` に AWSIM のトピックが出ないときは、ホストの `ip link set lo multicast on`（再起動で戻る）と、AWSIM を起動した端末の 2 つの変数を確かめる。
+- `ros2 topic list` に AWSIM のトピックが出ないときは、AWSIM を `tools/awsim/run_awsim.sh` で起動したかを確かめる（別の方法で起動すると、通信の設定がそろわない）。
+- 記録した bag や経路は、ホストの自分のファイルになる（コンテナをホストの利用者の UID で動かしている）。
 - 記録は圧縮しない（`--compression-mode` を付けない）。zstd で圧縮した bag を読むには `pip install zstandard` が要る。
 
 ## 2. 地図・取り付け位置・変換（dev コンテナ）
 
+`D` は `data/awsim` の短縮（リポジトリの一番上で実行する）。
+
 ```bash
-D=$GLL_DATA/awsim
-tiled_pcd_map_tiler -i $M/pointcloud_map.pcd -o $D/nsj_tiles --tile-size 20 --voxel-size 0.2
+D=data/awsim
+tiled_pcd_map_tiler -i $D/nishishinjuku_autoware_map/pointcloud_map.pcd -o $D/nsj_tiles --tile-size 20 --voxel-size 0.2
 
 # LiDAR の取り付け位置（base_link → velodyne_top）。yaw を 1 周調べてから細かく探す。最後の行の値を次の --lidar-extrinsic に使う
 python3 tools/awsim/check_lidar_extrinsic.py $D/nsj_run1 $D/nsj_tiles --extrinsic 0.9,0,2.0,0,0,0

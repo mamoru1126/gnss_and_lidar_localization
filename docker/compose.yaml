@@ -1,11 +1,13 @@
 # 開発用コンテナ（設計書 7.8 節）
 #
-#   export GLL_DATA=/path/to/data     # rosbag や地図を置くディレクトリ（リポジトリの外）
 #   docker compose -f docker/compose.yaml build
 #   docker compose -f docker/compose.yaml run --rm dev
 #
 # コンテナ内:
 #   cd /ws && colcon build --symlink-install && colcon test && colcon test-result --verbose
+#
+# rosbag や地図は、リポジトリの data/（.gitignore 済み）に置く。どのコンテナでも環境変数 GLL_DATA がここを指す
+# （/ws/src/gnss_and_lidar_localization/data。Dev Container と同じ）ので、環境変数を設定しなくてよい。
 #
 # AWSIM（v1.3.1）の記録と走行には、ROS 2 Humble のコンテナ awsim を使う（docker/awsim/Dockerfile）:
 #   docker compose -f docker/compose.yaml build awsim
@@ -21,9 +23,8 @@ services:
     working_dir: /ws
     volumes:
       - ..:/ws/src/gnss_and_lidar_localization
-      - ${GLL_DATA:-./data}:/data
     environment:
-      - GLL_DATA=/data
+      - GLL_DATA=/ws/src/gnss_and_lidar_localization/data
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       # RViz を使う場合（Linux ホスト）: xhost +local: を実行してから
       - DISPLAY=${DISPLAY:-}
@@ -38,12 +39,13 @@ services:
       context: ..
       dockerfile: docker/awsim/Dockerfile
     image: gll:awsim-humble
+    # 記録した bag などが、ホストの自分のファイルになるように（tools/awsim/container.sh が UID・GID を渡す。無ければ 1000）
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     working_dir: /ws/src/gnss_and_lidar_localization
     volumes:
       - ..:/ws/src/gnss_and_lidar_localization
-      - ${GLL_DATA:-./data}:/data
     environment:
-      - GLL_DATA=/data
+      - GLL_DATA=/ws/src/gnss_and_lidar_localization/data
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
     network_mode: host
     ipc: host

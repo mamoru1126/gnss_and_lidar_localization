@@ -2,10 +2,10 @@
 """AWSIM の車を走らせる経路を、lanelet2 の地図（.osm）から作る。進行方向と車線のつながりを守る。
 
   # 車の今の姿勢から、交通ルールどおりに 1 km ほど走る経路（行き先は乱数。--seed で変わる）
-  python3 plan_route.py lanelet2_map.osm --start X,Y,YAW_DEG --length 1000 [--seed 0] -o route.txt --svg route.svg
+  python3 plan_route.py [lanelet2_map.osm] --start X,Y,YAW_DEG --length 1000 [--seed 0] -o route.txt --svg route.svg
 
   # 通りたい点を順に回る経路（最短経路。点は近くの車線に寄せる）
-  python3 plan_route.py lanelet2_map.osm --start X,Y,YAW_DEG --via X1,Y1 X2,Y2 ... -o route.txt --svg route.svg
+  python3 plan_route.py [lanelet2_map.osm] --start X,Y,YAW_DEG --via X1,Y1 X2,Y2 ... -o route.txt --svg route.svg
 
 --start は車の今の姿勢（地図座標と、東から反時計回りの向き [deg]）。awsim_drive.py --print-pose で出せる。
 経路は車の位置から始まる。lanelet の中心線をつなぎ、次の lanelet（successor）へは進行方向に沿ってだけ進む。
@@ -16,6 +16,7 @@
 import argparse
 import heapq
 import math
+import os
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -265,7 +266,10 @@ def write_svg(path, lls, route, start):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("osm", type=Path)
+    default_osm = Path(os.environ.get("GLL_DATA", Path(__file__).resolve().parents[2] / "data")) \
+        / "awsim" / "nishishinjuku_autoware_map" / "lanelet2_map.osm"
+    ap.add_argument("osm", type=Path, nargs="?", default=default_osm,
+                    help=f"lanelet2 の地図（既定: {default_osm}。tools/awsim/setup.sh が置く）")
     ap.add_argument("--start", required=True, help="車の今の姿勢 'X,Y,YAW_DEG'（地図座標、東から反時計回り）")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--length", type=float, help="この長さ [m] ほど走る（行き先は乱数）")

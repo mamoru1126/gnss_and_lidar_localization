@@ -1,7 +1,7 @@
 # 検証計画: AWSIM を使った自己位置推定の検証
 
 - 関連文書: [要件定義](./requirements.md) / [設計書](./design.md)（v0.14。9 章「検証計画」） / [アルゴリズム説明書](./algorithm.md) / [tiled_pcd_map](../tiled_pcd_map/README.md) / スクリプトの使い方: [tools/awsim/README.md](../tools/awsim/README.md)
-- 状態: ドラフト（v0.4。経路を、進行方向と車線のつながりを守る plan_route.py で作ることにした。v0.3: 記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
+- 状態: ドラフト（v0.5。データを全部リポジトリの data/awsim/ に置き、準備・起動・記録をスクリプトにして、環境変数の設定を要らなくした。v0.4: 経路を、進行方向と車線のつながりを守る plan_route.py で作ることにした。v0.3: 記録と走行を Humble のコンテナで行うことにした。v0.2: v1.3.1 のソースで LiDAR の frame が `velodyne_top` であることを確かめ、取り付け位置の探索に yaw の 1 周の探索を足した。v2 系を使わない理由を 1.1 節に書いた。v0.1: 変換・走行・確認・評価のスクリプトを作り、合成の bag で動作を確かめた。AWSIM での記録はまだ）
 
 本書は、自動運転シミュレータ **AWSIM**（TIER IV。Unity で動く。v1.3.1）の西新宿の地図で車を走らせて記録したデータで、本システムを検証する計画である。確かめるのは、**LiDAR による自己位置推定**（Phase 2）と、**GNSS 区間と地図区間の切り替わり**である。
 
@@ -31,7 +31,7 @@ v2 系を使う必要が出たら、真値のセンサをシーンに置いた�
 
 | 項目 | AWSIM（v1.3.1） | 本システムの想定 | 扱い |
 |---|---|---|---|
-| 動かす環境 | Ubuntu 22.04、GPU（RTX 2080 Ti 以上、ドライバ 550 推奨）。ROS 2 は AWSIM の中にある | ROS 2 Jazzy（Docker） | **記録と走行は Humble のコンテナ（`docker/awsim/Dockerfile`）で、変換と推定は dev コンテナ（Jazzy）で**行う。bag（MCAP）を `GLL_DATA` のフォルダで渡す（3 章） |
+| 動かす環境 | Ubuntu 22.04、GPU（RTX 2080 Ti 以上、ドライバ 550 推奨）。ROS 2 は AWSIM の中にある | ROS 2 Jazzy（Docker） | **記録と走行は Humble のコンテナ（`docker/awsim/Dockerfile`）で、変換と推定は dev コンテナ（Jazzy）で**行う。bag（MCAP）はリポジトリの `data/awsim/` で渡す（3 章） |
 | 車両 | Lexus RX 450h（ホイールベース 2.79 m） | 車輪型、最高 6 km/h | `awsim_drive.py` で、決めた経路を 6 km/h で走らせる（3.2 節） |
 | 真値 | `/awsim/ground_truth/vehicle/pose`（`PoseStamped`、100 Hz、base_link の姿勢、地図座標） | — | そのまま真値にする。UTM に直して CSV に書く |
 | IMU | `/sensing/imu/tamagawa/imu_raw`（`Imu`、30 Hz） | 6 軸 IMU、100 Hz 以上 | 取り付けの向きを真値との当てはめで求め、base_link の向きに回して出す。**30 Hz と遅い**ので、予測の刻みが粗くなる（6.2 節） |
@@ -66,31 +66,31 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
 
 コマンドの詳細は [tools/awsim/README.md](../tools/awsim/README.md) にある。
 
+データ（AWSIM 本体、地図、記録した bag、経路、タイル、変換の出力）は、全部リポジトリの `data/awsim/`（`.gitignore` 済み）に置く。どのコンテナでも `GLL_DATA` がリポジトリの `data/`（`/ws/src/gnss_and_lidar_localization/data`）を指すので、環境変数を設定する必要は無い。変換の出力のパラメータに書かれる地図の絶対パスも、dev コンテナと Dev Container で同じになる。コマンドはリポジトリの一番上で実行する。
+
 ### 3.1 準備（AWSIM の PC）
 
-1. AWSIM の Quick start demo のとおりに、NVIDIA ドライバ、CycloneDDS のための `sysctl` と `ip link set lo multicast on`、`ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` を設定し、`AWSIM_v1.3.1.zip` を展開する。ホストに ROS 2 は要らない（AWSIM は ROS 2 を中に持っている）。
-2. 記録と走行に使う ROS 2 Humble のコンテナを作る: `docker compose -f docker/compose.yaml build awsim`（`docker/awsim/Dockerfile`。`autoware_auto_msgs`、MCAP の記録、CycloneDDS、numpy・scipy 入り。ホストのネットワークを使う）。
-3. 西新宿の地図（`nishishinjuku_autoware_map.zip`。AWSIM v1.1.0 のリリースにある）を展開する。
+1. NVIDIA ドライバを入れる（AWSIM の Quick start demo のとおり。550 推奨）。ホストに ROS 2 は要らない（AWSIM は ROS 2 を中に持っている）。
+2. `tools/awsim/setup.sh` を実行する。AWSIM v1.3.1 と西新宿の地図（AWSIM v1.1.0 のリリースの `nishishinjuku_autoware_map.zip`）を `data/awsim/` に落として展開し、記録と走行に使う ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_auto_msgs`、MCAP の記録、CycloneDDS、numpy・scipy 入り。ホストのネットワークを使う）を作る。
 
 ### 3.2 経路を作って走らせ、記録する（AWSIM の PC）
 
-1. AWSIM を起動し、車の位置を見る: `ros2 topic echo --once /awsim/ground_truth/vehicle/pose`。
-2. **車の位置から始まる経路**を `tools/awsim/plan_route.py` で作る。車の今の姿勢（`awsim_drive.py --print-pose`）から、lanelet2 の地図の進行方向と車線のつながり（successor、破線の所だけの車線変更）を守って、長さを決めて乱数で（`--length`）、または通る点を並べて（`--via`）作る。地図の端で行き止まりになる道には入らない。`--svg` の図で経路を確かめる。
-3. `python3 tools/awsim/awsim_drive.py route.txt --check` で、ROS なしで経路を走れるかを確かめる（曲がれない急な所があれば出る）。`tools/tile_demo/lanelet_route.py`・`route_nishishinjuku.txt` はタイルのデモ用で、進行方向を見ず U ターンもあるので、走らせる経路には使わない。
-4. 記録を始めてから走らせる。最初は **5 s 止まっている**（推定ノードの静止初期化のため）。
+1. AWSIM を `tools/awsim/run_awsim.sh` で起動する。Quick start demo の通信の設定（`ROS_LOCALHOST_ONLY=1`・`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`、CycloneDDS のための `sysctl` とループバックのマルチキャスト）を、このスクリプトがまとめて行う。
+2. `tools/awsim/container.sh` で Humble のコンテナに入る（記録用と走行用に 2 つの端末で）。
+3. **車の位置から始まる経路**を `tools/awsim/plan_route.py` で作る。車の今の姿勢（`awsim_drive.py --print-pose`）から、lanelet2 の地図の進行方向と車線のつながり（successor、破線の所だけの車線変更）を守って、長さを決めて乱数で（`--length`）、または通る点を並べて（`--via`）作る。地図の端で行き止まりになる道には入らない。`--svg` の図で経路を確かめる。
+4. `python3 tools/awsim/awsim_drive.py data/awsim/route.txt --check` で、ROS なしで経路を走れるかを確かめる（曲がれない急な所があれば出る）。`tools/tile_demo/lanelet_route.py`・`route_nishishinjuku.txt` はタイルのデモ用で、進行方向を見ず U ターンもあるので、走らせる経路には使わない。
+5. 記録を始めてから走らせる。最初は **5 s 止まっている**（推定ノードの静止初期化のため）。
    ```bash
-   ros2 bag record -s mcap -o nsj_run1 /awsim/ground_truth/vehicle/pose /sensing/imu/tamagawa/imu_raw \
-       /vehicle/status/velocity_status /sensing/lidar/top/pointcloud_raw
-   python3 tools/awsim/awsim_drive.py route.txt --wait 5          # 別の端末。経路の終わりで止まって終わる
+   tools/awsim/record.sh nsj_run1                                   # 1 つ目の端末。data/awsim/nsj_run1/。Ctrl-C で止める
+   python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5 # 2 つ目の端末。経路の終わりで止まって終わる
    ```
-5. 記録を止め、bag のフォルダを dev コンテナから見える場所（例: `$GLL_DATA/awsim/`）に置く。
 
 `awsim_drive.py` は真値を見て経路をなぞる（pure pursuit）。障害物・信号・ほかの車は見ないので、NPC の車が出るシーンでは、ぶつかったら記録をやり直す。
 
 ### 3.3 地図（dev コンテナ）
 
 ```bash
-tiled_pcd_map_tiler -i $M/pointcloud_map.pcd -o $GLL_DATA/awsim/nsj_tiles --tile-size 20 --voxel-size 0.2
+tiled_pcd_map_tiler -i data/awsim/nishishinjuku_autoware_map/pointcloud_map.pcd -o data/awsim/nsj_tiles --tile-size 20 --voxel-size 0.2
 ```
 
 `maps.yaml` は変換（3.5 節）の `--tiles` で作る。地図座標がそのまま「UTM − MGRS の区画の原点」なので、アンカーは次で決まる（`use_scale_factor: false`。AWSIM の地図は縮尺係数を含まない座標なので、縮尺の補正をしない）。
@@ -111,8 +111,8 @@ base_link → `velodyne_top` の位置と向きは、AWSIM の車両の設定に
 ### 3.5 変換
 
 ```bash
-python3 tools/awsim/awsim_to_bag.py $GLL_DATA/awsim/nsj_run1 $GLL_DATA/awsim/out/v_a0.mcap \
-    --lidar-extrinsic <3.4 節の値> --tiles $GLL_DATA/awsim/nsj_tiles
+python3 tools/awsim/awsim_to_bag.py data/awsim/nsj_run1 data/awsim/out/v_a0.mcap \
+    --lidar-extrinsic <3.4 節の値> --tiles data/awsim/nsj_tiles
 ```
 
 出力は bag（`/sensing/imu`、`/sensing/odom`、`/sensing/gnss/fix`、`/sensing/lidar/points`、`/tf_static`、`/groundtruth/pose`、`/initialpose`）、真値の CSV、パラメータ、`maps.yaml`。IMU の取り付けの向き（当てはめの残差）、最初の停止時間（→ `static_init_time`）も表示されるので記録する。シナリオ（4 章）ごとに、オプションを変えて bag を作り分ける。元の bag は変更しない。
@@ -120,10 +120,10 @@ python3 tools/awsim/awsim_to_bag.py $GLL_DATA/awsim/nsj_run1 $GLL_DATA/awsim/out
 ### 3.6 推定ノードで再生して評価する
 
 ```bash
-ros2 launch gll_ros2 localizer.launch.py params_file:=$GLL_DATA/awsim/out/v_a0_params.yaml use_sim_time:=true &
-ros2 bag play $GLL_DATA/awsim/out/v_a0.mcap --clock 100
+ros2 launch gll_ros2 localizer.launch.py params_file:=data/awsim/out/v_a0_params.yaml use_sim_time:=true &
+ros2 bag play data/awsim/out/v_a0.mcap --clock 100
 # 終わったらノードを止める（Ctrl-C）。出力は v_a0_output.csv
-python3 tools/awsim/evaluate.py $GLL_DATA/awsim/out/v_a0_output.csv $GLL_DATA/awsim/out/v_a0_groundtruth.csv --out v_a0.md
+python3 tools/awsim/evaluate.py data/awsim/out/v_a0_output.csv data/awsim/out/v_a0_groundtruth.csv --out data/awsim/out/v_a0.md
 ```
 
 RViz で見る場合は、`/groundtruth/pose` と推定ノードの出力、`~/debug/map_points`・`~/debug/lidar_pose` を並べる。

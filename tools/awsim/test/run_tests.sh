@@ -21,6 +21,7 @@ on_exit() {
 trap on_exit EXIT
 
 python3 -m unittest discover -s "$here" -p "test_*.py" -v
+for f in "$tools"/*.sh; do bash -n "$f"; done   # ホストで使うスクリプトの文法
 
 python3 "$here/make_fake_awsim_bag.py" "$work/fake"
 
