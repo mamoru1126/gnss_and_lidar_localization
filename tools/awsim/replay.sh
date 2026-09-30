@@ -53,7 +53,9 @@ if [ -n "$rec" ]; then
     /gll_localizer/debug/raw_pose /gll_localizer/debug/lidar_pose /gll_localizer/debug/map_points
     /gll_localizer/debug/scan_points)
   [ "$raw" = 1 ] && topics+=(/sensing/lidar/points)
-  ros2 bag record -s mcap --use-sim-time -o "$rec" --topics "${topics[@]}" > "${rec%/}.record.log" 2>&1 &
+  # --use-sim-time は付けない（/clock が止まった後に SIGINT で止まらないことがある）。受信時刻で録る。
+  # メッセージの header.stamp は bag の時刻なので、Foxglove では「header の時刻」で並べて見られる
+  ros2 bag record -s mcap -o "$rec" --topics "${topics[@]}" > "${rec%/}.record.log" 2>&1 &
   pids+=($!)
 fi
 
@@ -71,5 +73,10 @@ echo "---- node log (last lines)"
 tail -n 20 "$log"
 if [ -n "$rec" ]; then
   echo "---- recorded: $rec"
+  if [ ! -f "$rec/metadata.yaml" ]; then
+    # 録画がきれいに止まらなかったとき: 索引と metadata.yaml を作り直す
+    echo "metadata.yaml が無いので作り直す（ros2 bag reindex）"
+    ros2 bag reindex "$rec" -s mcap || echo "reindex に失敗した（.mcap はそのまま Foxglove で開ける）"
+  fi
   ros2 bag info "$rec" 2>/dev/null | sed -n '1,40p' || true
 fi

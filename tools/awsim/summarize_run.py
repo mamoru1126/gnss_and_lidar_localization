@@ -18,7 +18,8 @@ import numpy as np
 
 
 def read(p):
-    return p.read_text(errors="replace") if p.exists() else ""
+    """ファイルの中身（色の制御文字は取る）。"""
+    return re.sub(r"\x1b\[[0-9;]*m", "", p.read_text(errors="replace")) if p.exists() else ""
 
 
 def pick(text, keys):

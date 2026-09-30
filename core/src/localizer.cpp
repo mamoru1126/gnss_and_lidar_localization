@@ -354,7 +354,7 @@ bool Localizer::applyLidar(PoseMeasurement m) {
   }
   if (act.kind == RecoveryAction::Kind::RELOCALIZE && act.relocalize) {
     pending_relocalize_ = act.relocalize;
-    logger_->warn("LiDAR rejected repeatedly: relocalizing around the estimate");
+    logger_->warn("LiDAR rejected repeatedly (last d2=" + fmt(r.d2, 1) + "): relocalizing around the estimate");
   }
   return false;
 }
@@ -549,7 +549,8 @@ void Localizer::processScan(const LidarScan& scan) {
                                                         monitor_.drDistance());
     if (act.kind == RecoveryAction::Kind::RELOCALIZE && act.relocalize) {
       pending_relocalize_ = act.relocalize;
-      logger_->warn("LiDAR matching failed repeatedly: relocalizing around the estimate");
+      logger_->warn(std::string("LiDAR matching failed repeatedly (last: ") + toString(built.reason) + ", inlier " +
+                    fmt(r.inlier_ratio, 2) + ", overlap " + fmt(r.overlap, 2) + "): relocalizing around the estimate");
     }
   } else {
     info.cov_body = built.pose->cov_body;

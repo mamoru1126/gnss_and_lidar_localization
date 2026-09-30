@@ -103,6 +103,7 @@ rec=()
 [ "$record" = 1 ] && rec=(--record "${out}_rec")
 "$here/replay.sh" "$out" --rate "$rate" "${rec[@]}" 2>&1 | tee "$logdir/replay.log"
 cp "${out}_node.log" "$logdir/node.log" 2>/dev/null || true
+cp "${out}_rec.record.log" "$logdir/record.log" 2>/dev/null || true
 [ -s "${out}_output.csv" ] || fail "推定の出力（${out}_output.csv）が無い"
 
 step "評価（evaluate.py）"
@@ -114,5 +115,5 @@ cp "${out}_params.yaml" "$logdir/params.yaml"
 cp "${out}_maps.yaml" "$logdir/maps.yaml" 2>/dev/null || true
 gzip -c "${out}_output.csv" > "$logdir/output.csv.gz"
 gzip -c "${out}_groundtruth.csv" > "$logdir/groundtruth.csv.gz"
-[ "$record" = 1 ] && echo "録った bag: ${out}_rec（Foxglove で開き、frame map_local で見る）"
+[ "$record" = 1 ] && echo "録った bag: ${out}_rec（リポジトリの data/awsim/out/${name}_rec。Foxglove で開き、frame map_local で見る）"
 finish 0
