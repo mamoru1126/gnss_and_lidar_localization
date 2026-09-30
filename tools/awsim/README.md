@@ -11,7 +11,7 @@
 | `evaluate.py` | dev コンテナ | 推定ノードの出力の CSV を真値と比べ、指標の表を作る |
 | `mcap_io.py`、`rigid.py`、`drive_core.py` | — | MCAP / CDR の読み出し、回転の計算、経路追従（ほかのスクリプトから使う） |
 
-必要なもの: dev コンテナの中なら追加は要らない（numpy・PyYAML・pyproj）。記録と走行は、ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_auto_msgs`・MCAP の記録・CycloneDDS・numpy・scipy 入り）で行う。ホストに ROS 2 を入れる必要は無い（AWSIM 本体は ROS 2 を中に持っている）。ホストで使うのは Docker と curl・unzip だけ。
+必要なもの: dev コンテナの中なら追加は要らない（numpy・PyYAML・pyproj）。記録と走行は、ROS 2 Humble のコンテナ（`docker/awsim/Dockerfile`。`autoware_msgs` の制御と車両のメッセージ・MCAP の記録・CycloneDDS・numpy・scipy 入り）で行う。ホストに ROS 2 を入れる必要は無い（AWSIM 本体は ROS 2 を中に持っている）。ホストで使うのは Docker と curl・unzip だけ。
 
 | ホストで使うスクリプト | 内容 |
 |---|---|
@@ -59,7 +59,7 @@ python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 
 - 経路の決め方: まず `--length` で作り、`route.svg`（ブラウザで開く。灰 = 道路、赤 = 経路、緑 = 始点、青 = 終点）を見る。気に入らなければ `--seed` を変えるか、図の目盛りで通りたい交差点の座標を読んで `--via` に並べる。`--via` の点は近く（10 m 以内）の車線に寄せ、進行方向を守った最短の道でつなぐ。地図の端で行き止まりになる道の点を途中に置くと、そう表示して止まる。
 - `tools/tile_demo/lanelet_route.py` はタイルのデモ用で、進行方向を見ないので、走らせる経路には使わない。
-- `awsim_drive.py` は `/control/command/control_cmd`・`gear_cmd`・`/vehicle/engage` を出す。車が動かないときは、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
+- `awsim_drive.py` は `/control/command/control_cmd`（`autoware_control_msgs/Control`）・`gear_cmd` を、AWSIM と同じ QoS（RELIABLE・TRANSIENT_LOCAL）で出す。車が動かないときは、`requesting incompatible QoS` の警告が出ていないか、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
 - 障害物・信号・ほかの車は見ない。ぶつかったら記録をやり直す。
 - `--max-distance 300` で、300 m 走ったら止める。
 - `ros2 topic list` に AWSIM のトピックが出ないときは、AWSIM を `tools/awsim/run_awsim.sh` で起動したかを確かめる（別の方法で起動すると、通信の設定がそろわない）。

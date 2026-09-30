@@ -7,7 +7,7 @@
 入力（AWSIM の既定のトピック。--*-topic で変えられる）:
   /awsim/ground_truth/vehicle/pose        geometry_msgs/PoseStamped（真値。地図座標 = MGRS の区画の中の座標）
   /sensing/imu/tamagawa/imu_raw           sensor_msgs/Imu
-  /vehicle/status/velocity_status         autoware_auto_vehicle_msgs/VelocityReport
+  /vehicle/status/velocity_status         autoware_vehicle_msgs/VelocityReport
   /sensing/lidar/top/pointcloud_raw       sensor_msgs/PointCloud2
 出力:
   <out>.mcap                  /sensing/imu（base_link）、/sensing/odom、/sensing/gnss/fix、/sensing/lidar/points、

@@ -158,7 +158,7 @@ def imu(data):
 
 
 def velocity_report(data):
-    """autoware_auto_vehicle_msgs/VelocityReport（autoware_vehicle_msgs も同じ並び）
+    """autoware_vehicle_msgs/VelocityReport（AWSIM v1.3.1。古い autoware_auto_vehicle_msgs も同じ並び）
     → (t, frame, longitudinal_velocity, lateral_velocity, heading_rate)"""
     c = Cdr(data)
     t, frame = c.header()

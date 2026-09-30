@@ -3,7 +3,8 @@
 
   python3 fake_awsim_vehicle.py --x 0 --y 0 --yaw 0 --timeout 120 --goal X,Y
 
-- 受け取る: /control/command/control_cmd（AckermannControlCommand）、/control/command/gear_cmd（DRIVE でないと動かない）
+- 受け取る: /control/command/control_cmd（autoware_control_msgs/Control）、/control/command/gear_cmd（DRIVE でないと動かない）。
+  QoS は AWSIM v1.3.1 と同じ RELIABLE・TRANSIENT_LOCAL・深さ 1
 - 出す: /awsim/ground_truth/vehicle/pose（PoseStamped、100 Hz、BEST_EFFORT。AWSIM v1.3.1 と同じ）
 - 車が --goal から 1 m 以内で止まったら終了コード 0、--timeout 秒たっても着かなければ 1。
 """
@@ -25,10 +26,10 @@ def main():
 
     import rclpy
     from rclpy.node import Node
-    from rclpy.qos import QoSProfile, ReliabilityPolicy
+    from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
     from geometry_msgs.msg import PoseStamped
-    from autoware_auto_control_msgs.msg import AckermannControlCommand
-    from autoware_auto_vehicle_msgs.msg import GearCommand
+    from autoware_control_msgs.msg import Control
+    from autoware_vehicle_msgs.msg import GearCommand
 
     class Vehicle(Node):
         def __init__(self):
@@ -39,8 +40,9 @@ def main():
             self.moved = 0.0
             self.result = None
             self.t0 = self.get_clock().now().nanoseconds * 1e-9
-            self.create_subscription(AckermannControlCommand, "/control/command/control_cmd", self.on_cmd, 10)
-            self.create_subscription(GearCommand, "/control/command/gear_cmd", self.on_gear, 10)
+            qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+            self.create_subscription(Control, "/control/command/control_cmd", self.on_cmd, qos)
+            self.create_subscription(GearCommand, "/control/command/gear_cmd", self.on_gear, qos)
             self.pub = self.create_publisher(PoseStamped, "/awsim/ground_truth/vehicle/pose",
                                              QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
             self.create_timer(0.01, self.tick)

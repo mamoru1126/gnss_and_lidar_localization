@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # AWSIM 用の Humble のコンテナ（docker/awsim/Dockerfile）で、記録と走行の道具が動くかを確かめる（CI の awsim_humble ジョブ）。
-#   1. awsim_drive.py が使う型（autoware_auto_msgs）が読み込めること
+#   1. awsim_drive.py と記録が使う型（autoware_msgs）が読み込めること
 #   2. ros2 bag record -s mcap で記録でき、ros2 bag info で読めること
 #   3. awsim_drive.py が、AWSIM の車の代わり（fake_awsim_vehicle.py）を経路の終わりまで走らせること
 set -eo pipefail
 set -m
 source /opt/ros/humble/setup.bash
-source /opt/autoware_auto_msgs/install/setup.bash
+source /opt/autoware_msgs/install/setup.bash
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tools="$(dirname "$here")"
@@ -25,8 +25,8 @@ on_exit() {
 trap on_exit EXIT
 echo "RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY"
 
-python3 -c "from autoware_auto_control_msgs.msg import AckermannControlCommand; \
-from autoware_auto_vehicle_msgs.msg import Engage, GearCommand, VelocityReport; print('autoware_auto_msgs ok')"
+python3 -c "from autoware_control_msgs.msg import Control; \
+from autoware_vehicle_msgs.msg import GearCommand, VelocityReport; print('autoware_msgs ok')"
 
 # 30 m 進んで、半径 10 m で左に曲がる経路
 printf '0 0\n10 0\n20 0\n30 0\n32.59 0.34\n35 1.34\n37.07 2.93\n38.66 5\n39.66 7.41\n40 10\n40 20\n' > "$work/route.txt"
