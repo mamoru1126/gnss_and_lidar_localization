@@ -17,6 +17,7 @@
 必要なパッケージ: rclpy、geometry_msgs、autoware_control_msgs、autoware_vehicle_msgs（docker/awsim/Dockerfile のコンテナに入っている）。
 """
 import argparse
+import collections
 import math
 import sys
 from pathlib import Path
@@ -114,8 +115,10 @@ def main():
             self.finished = False
             self.create_subscription(PoseStamped, args.gt_topic, self.on_pose,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
-            # 速さは AWSIM の VelocityReport を使う（位置の差から求めると、メッセージが固まって届いたときに大きく外れる）
-            self.v_report = None  # (受け取った時刻, 速さ)
+            # 速さは真値の位置の変化から求める（時刻はメッセージの header.stamp、0.2 s の幅で）。
+            # AWSIM の VelocityReport は、ぶつかった後などに ±数百 km/h の値を出すことがあったので、表示用にだけ使う
+            self.hist = collections.deque(maxlen=200)  # (t, x, y)
+            self.v_report = None
             self.create_subscription(VelocityReport, args.velocity_topic, self.on_velocity,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
             self.brake_until = None
@@ -133,21 +136,29 @@ def main():
         def on_pose(self, m):
             p, q = m.pose.position, m.pose.orientation
             yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
-            # 位置の差の時刻は、受け取った時刻ではなくメッセージの時刻（header.stamp）で測る
             t = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
             if self.last is not None and t > self.last[0]:
-                d = math.hypot(p.x - self.last[1], p.y - self.last[2])
-                self.v_pose = d / (t - self.last[0])
                 if self.started:
-                    self.dist += d
+                    self.dist += math.hypot(p.x - self.last[1], p.y - self.last[2])
+            if self.last is None or t > self.last[0]:
+                self.hist.append((t, p.x, p.y))
             self.last = (t, p.x, p.y)
             self.pose = (p.x, p.y, yaw)
 
         def speed(self):
-            now = self.get_clock().now().nanoseconds * 1e-9
-            if self.v_report is not None and now - self.v_report[0] < 0.5:
-                return self.v_report[1]
-            return getattr(self, "v_pose", 0.0)
+            """真値の位置の、この 0.2 s の変化から求めた前向きの速さ [m/s]（後ろ向きなら負）。"""
+            if len(self.hist) < 2:
+                return 0.0
+            t1, x1, y1 = self.hist[-1]
+            t0, x0, y0 = self.hist[0]
+            for h in reversed(self.hist):
+                if t1 - h[0] >= 0.2:
+                    t0, x0, y0 = h
+                    break
+            if t1 - t0 < 1e-3:
+                return 0.0
+            yaw = self.pose[2]
+            return ((x1 - x0) * math.cos(yaw) + (y1 - y0) * math.sin(yaw)) / (t1 - t0)
 
         def send(self, steer, v_ref, acc):
             now = self.get_clock().now().to_msg()
@@ -205,7 +216,8 @@ def main():
                 self.get_logger().info(f"finished: {self.dist:.0f} m. braking 2 s before exit")
                 self.brake_until = now + 2.0
             if int(now) != int(now - 1.0 / 30.0):  # 1 s ごとに状態を出す
-                self.get_logger().info(f"v {v * 3.6:5.1f} km/h (target {v_ref * 3.6:5.1f}), "
+                rep = f", report {self.v_report[1] * 3.6:5.1f}" if self.v_report else ""
+                self.get_logger().info(f"v {v * 3.6:5.1f} km/h (target {v_ref * 3.6:5.1f}{rep}), "
                                        f"{self.pp.remaining():5.0f} m to go")
 
     rclpy.init()
