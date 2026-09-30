@@ -31,6 +31,16 @@ class TestDrive(unittest.TestCase):
         full = PurePursuit(load_route(REPO / "tools" / "tile_demo" / "route_nishishinjuku.txt"))
         self.assertGreater(len(full.tight_turns()), 0)  # U ターンを見つける
 
+    def test_fast(self):
+        # 25 km/h でも、曲がる所で減速して車線（幅 3.5 m）の中に収まり、経路の終わりで止まる
+        route = load_route(REPO / "tools" / "tile_demo" / "route_nishishinjuku.txt")[:120]
+        d = route[1] - route[0]
+        traj, dev, pp = simulate(route, route[0, 0], route[0, 1], math.atan2(d[1], d[0]), t_max=600, speed=25 / 3.6)
+        self.assertLess(dev, 1.0)
+        self.assertLess(np.hypot(*(traj[-1] - route[-1])), 1.0)
+        self.assertLess(pp.v_prof.min(), 25 / 3.6 - 1)  # どこかで減速している
+        self.assertLess(len(traj) * 0.05, 471 / (25 / 3.6) * 1.6)
+
     def test_clean_route(self):
         r = clean_route(np.array([[0, 0], [5, 0], [10, 0], [9, 0.1], [10, 0], [10, 0], [15, 0]], dtype=float))
         self.assertTrue(np.allclose(r[[0, -1]], [[0, 0], [15, 0]]))

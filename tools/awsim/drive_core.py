@@ -44,14 +44,37 @@ def resample(route, step=0.5):
 class PurePursuit:
     """経路の点を順に進む追従。今いる場所に最も近い点から始め、後戻りはしない。"""
 
-    def __init__(self, route, wheelbase=2.79, speed=1.67, lookahead_min=3.0, lookahead_gain=1.0,
-                 max_steer=math.radians(35), accel_gain=0.8, max_accel=1.0, max_decel=2.0, stop_dist=5.0):
+    def __init__(self, route, wheelbase=2.79, speed=1.67, lookahead_min=3.0, lookahead_gain=0.6,
+                 max_steer=math.radians(35), accel_gain=0.8, max_accel=1.0, max_decel=2.0, stop_dist=5.0,
+                 max_lat_accel=1.5, brake_decel=1.0):
         self.path, self.s = resample(np.asarray(route, dtype=float))
         self.wb, self.v_ref = wheelbase, speed
         self.l_min, self.l_gain = lookahead_min, lookahead_gain
         self.max_steer, self.k_acc = max_steer, accel_gain
         self.max_acc, self.max_dec, self.stop_dist = max_accel, max_decel, stop_dist
+        self.v_prof = self.speed_profile(max_lat_accel, brake_decel)
         self.idx = None
+
+    def curvature(self, window=4.0):
+        """経路の各点の曲率 [1/m]（前後 window/2 の向きの変化から）。"""
+        n = len(self.path)
+        if n < 3:
+            return np.zeros(n)
+        h = np.unwrap(np.arctan2(*np.diff(self.path, axis=0).T[::-1]))
+        h = np.r_[h, h[-1]]
+        k = max(int(window / 2 / 0.5), 1)
+        i0, i1 = np.clip(np.arange(n) - k, 0, n - 1), np.clip(np.arange(n) + k, 0, n - 1)
+        ds = np.maximum(self.s[i1] - self.s[i0], 0.5)
+        return np.abs(h[i1] - h[i0]) / ds
+
+    def speed_profile(self, max_lat_accel, brake_decel):
+        """各点の目標速度: 曲がる所では横加速度が max_lat_accel を超えないように落とし、その手前から
+        brake_decel で減速しておく。経路の終わりで 0。"""
+        v = np.minimum(self.v_ref, np.sqrt(max_lat_accel / np.maximum(self.curvature(), 1e-6)))
+        v[-1] = 0.0
+        for i in range(len(v) - 2, -1, -1):
+            v[i] = min(v[i], math.sqrt(v[i + 1] ** 2 + 2 * brake_decel * (self.s[i + 1] - self.s[i])))
+        return v
 
     def start(self, x, y, max_dist=5.0):
         """今の位置に最も近い経路の点を探す。max_dist より遠ければ ValueError。"""
@@ -87,18 +110,30 @@ class PurePursuit:
         self.idx += k
         rem = self.remaining()
         done = rem < 0.5
-        v_ref = 0.0 if done else min(self.v_ref, math.sqrt(max(2 * 0.5 * max(rem - 1.0, 0.0), 0.0)) + 0.3)
+        # 目標速度: 曲がる所と終わりの手前で落とした速度（speed_profile）。止まり切らないよう、0.3 m/s は残す
+        v_ref = 0.0 if done else max(float(self.v_prof[self.idx]), min(0.3, self.v_ref))
         if rem < self.stop_dist:
             v_ref = min(v_ref, self.v_ref * rem / self.stop_dist)
         ld = self.l_min + self.l_gain * max(v, 0.0)
-        j = int(np.searchsorted(self.s, self.s[self.idx] + ld))
-        tx, ty = self.path[min(j, len(self.path) - 1)]
+        s_t = self.s[self.idx] + ld
+        if s_t <= self.s[-1]:
+            tx, ty = self.path[min(int(np.searchsorted(self.s, s_t)), len(self.path) - 1)]
+        else:  # 経路の終わりより先は、最後の向きのまま延ばした点を狙う（止まり際に曲がり込まないように）
+            d = self.path[-1] - self.path[-2]
+            tx, ty = self.path[-1] + d / max(np.linalg.norm(d), 1e-6) * (s_t - self.s[-1])
         dx, dy = tx - x, ty - y
         ay = -math.sin(yaw) * dx + math.cos(yaw) * dy  # 機体座標系の横
         dist = max(math.hypot(dx, dy), 1e-3)
         steer = math.atan2(2.0 * self.wb * ay, dist * dist)
         steer = max(-self.max_steer, min(self.max_steer, steer))
-        acc = max(-self.max_dec, min(self.max_acc, self.k_acc * (v_ref - v)))
+        acc = self.k_acc * (v_ref - v)
+        # 終わりの手前: 残りの距離でちょうど止まる減速（速度の追従の遅れで行き過ぎないように）
+        need = v * v / (2.0 * max(rem - 0.3, 0.1))  # 残りで止まるのに要る減速度
+        if not done and v > 0.1 and need > 0.8:
+            acc = min(acc, -need)
+        elif done:
+            acc = min(acc, -self.max_dec)
+        acc = max(-self.max_dec, min(self.max_acc, acc))
         return steer, v_ref, acc, done
 
 

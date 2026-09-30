@@ -62,6 +62,7 @@ python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5
 - `awsim_drive.py` は `/control/command/control_cmd`（`autoware_control_msgs/Control`）・`gear_cmd` を、AWSIM と同じ QoS（RELIABLE・TRANSIENT_LOCAL）で出す。車が動かないときは、`requesting incompatible QoS` の警告が出ていないか、AWSIM の画面で車の操作が自動（ROS からの指令）になっているか、ほかのノード（Autoware）が同じトピックを出していないかを確かめる。
 - 障害物・信号・ほかの車は見ない。ぶつかったら記録をやり直す。
 - `--max-distance 300` で、300 m 走ったら止める。
+- 速さは既定 6 km/h（本システムの想定の最高速度）。`--kmh 25` のように上げられる（`--check` にも同じ値を付けて確かめる）。曲がる所の手前で、横加速度が 1.5 m/s² を超えないように減速し（交差点の右左折はおよそ 10〜15 km/h）、経路の終わりでちょうど止まる。6 km/h より速い記録は本システムの想定の外なので、結果を見るときは分けて扱う。
 - `ros2 topic list` に AWSIM のトピックが出ないときは、AWSIM を `tools/awsim/run_awsim.sh` で起動したかを確かめる（別の方法で起動すると、通信の設定がそろわない）。
 - 記録した bag や経路は、ホストの自分のファイルになる（コンテナをホストの利用者の UID で動かしている）。
 - 記録は圧縮しない（`--compression-mode` を付けない）。zstd で圧縮した bag を読むには `pip install zstandard` が要る。
