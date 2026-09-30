@@ -1,0 +1,82 @@
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 2.5.6 (/opt/ros/jazzy/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+-- Found rclcpp: 28.1.22 (/opt/ros/jazzy/share/rclcpp/cmake)
+-- Found rosidl_generator_c: 4.6.9 (/opt/ros/jazzy/share/rosidl_generator_c/cmake)
+-- Found rosidl_generator_cpp: 4.6.9 (/opt/ros/jazzy/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 7.3.3 (/opt/ros/jazzy/share/rmw_implementation_cmake/cmake)
+-- Found rmw_fastrtps_cpp: 8.4.4 (/opt/ros/jazzy/share/rmw_fastrtps_cpp/cmake)
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.13")  
+-- Found FastRTPS: /opt/ros/jazzy/include (Required is at least version "2.13") 
+-- Using RMW implementation 'rmw_fastrtps_cpp' as default
+-- Found sensor_msgs: 5.3.8 (/opt/ros/jazzy/share/sensor_msgs/cmake)
+-- Found nav_msgs: 5.3.8 (/opt/ros/jazzy/share/nav_msgs/cmake)
+-- Found diagnostic_msgs: 5.3.8 (/opt/ros/jazzy/share/diagnostic_msgs/cmake)
+-- Found tf2_ros: 0.36.22 (/opt/ros/jazzy/share/tf2_ros/cmake)
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found OpenMP_CXX: -fopenmp (found version "4.5") 
+-- Found OpenMP: TRUE (found version "4.5") found components: CXX 
+-- Found OpenMP_CXX: -fopenmp (found version "4.5") 
+-- Found ament_cmake_gtest: 2.5.6 (/opt/ros/jazzy/share/ament_cmake_gtest/cmake)
+-- Found gtest sources under '/opt/ros/jazzy/src/gtest_vendor': C++ tests using 'Google Test' will be built
+-- The C compiler identification is GNU 13.3.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Configuring done (1.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /ws/src/gnss_and_lidar_localization/build/gll_ros2
+[  7%] [32mBuilding CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o[0m
+[ 14%] [32mBuilding CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o[0m
+[ 21%] [32mBuilding CXX object CMakeFiles/gll_ros2_conversions.dir/src/diagnostics.cpp.o[0m
+[ 28%] [32mBuilding CXX object CMakeFiles/gll_ros2_conversions.dir/src/conversions.cpp.o[0m
+[ 35%] [32m[1mLinking CXX static library libgtest_main.a[0m
+[ 35%] Built target gtest_main
+[ 42%] [32m[1mLinking CXX static library libgll_ros2_conversions.a[0m
+[ 42%] Built target gll_ros2_conversions
+[ 50%] [32mBuilding CXX object CMakeFiles/localizer_node.dir/src/main.cpp.o[0m
+[ 57%] [32mBuilding CXX object CMakeFiles/localizer_node.dir/src/localizer_node.cpp.o[0m
+[ 64%] [32m[1mLinking CXX static library libgtest.a[0m
+[ 64%] Built target gtest
+[ 71%] [32mBuilding CXX object CMakeFiles/test_diagnostics.dir/test/test_diagnostics.cpp.o[0m
+[ 78%] [32mBuilding CXX object CMakeFiles/test_conversions.dir/test/test_conversions.cpp.o[0m
+[ 85%] [32m[1mLinking CXX executable test_conversions[0m
+[ 85%] Built target test_conversions
+[ 92%] [32m[1mLinking CXX executable test_diagnostics[0m
+[ 92%] Built target test_diagnostics
+[100%] [32m[1mLinking CXX executable localizer_node[0m
+[100%] Built target localizer_node
+-- Install configuration: ""
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/lib/gll_ros2/localizer_node
+-- Set non-toolchain portion of runtime path of "/ws/src/gnss_and_lidar_localization/install/gll_ros2/lib/gll_ros2/localizer_node" to ""
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/lib/libgll_ros2_conversions.a
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/launch
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/launch/localizer.launch.py
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/config
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/config/localizer.yaml
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/ament_index/resource_index/package_run_dependencies/gll_ros2
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/ament_index/resource_index/parent_prefix_path/gll_ros2
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/environment/ament_prefix_path.sh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/environment/ament_prefix_path.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/environment/path.sh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/environment/path.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/local_setup.bash
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/local_setup.sh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/local_setup.zsh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/local_setup.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/package.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/ament_index/resource_index/packages/gll_ros2
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/cmake/gll_ros2Config.cmake
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/cmake/gll_ros2Config-version.cmake
+-- Installing: /ws/src/gnss_and_lidar_localization/install/gll_ros2/share/gll_ros2/package.xml

@@ -1,0 +1,37 @@
+-- The C compiler identification is GNU 13.3.0
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 2.5.6 (/opt/ros/jazzy/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /ws/src/gnss_and_lidar_localization/build/shinjuku_map
+-- Install configuration: ""
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/map
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/map/map_projector_info.yaml
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/map/lanelet2_map.osm
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/map/pointcloud_map.pcd
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/ament_index/resource_index/package_run_dependencies/shinjuku_map
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/ament_index/resource_index/parent_prefix_path/shinjuku_map
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/environment/ament_prefix_path.sh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/environment/ament_prefix_path.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/environment/path.sh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/environment/path.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/local_setup.bash
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/local_setup.sh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/local_setup.zsh
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/local_setup.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/package.dsv
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/ament_index/resource_index/packages/shinjuku_map
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/cmake/shinjuku_mapConfig.cmake
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/cmake/shinjuku_mapConfig-version.cmake
+-- Installing: /ws/src/gnss_and_lidar_localization/install/shinjuku_map/share/shinjuku_map/package.xml
