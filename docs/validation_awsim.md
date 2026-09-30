@@ -85,7 +85,7 @@ AWSIM と dev コンテナは同じ PC でよい（dev コンテナは Docker �
    python3 tools/awsim/awsim_drive.py data/awsim/route.txt --wait 5 # 2 つ目の端末。経路の終わりで止まって終わる
    ```
 
-`awsim_drive.py` は真値を見て経路をなぞる（pure pursuit）。障害物・信号・ほかの車は見ないので、NPC の車が出るシーンでは、ぶつかったら記録をやり直す。
+`awsim_drive.py` は真値を見て経路をなぞる（pure pursuit）。速さは既定 6 km/h で、`--kmh` で上げられる（曲がる所では横加速度 1.5 m/s² 以下に減速する）。6 km/h を超える記録は要件の外なので、評価では 6 km/h の記録と分けて扱う。障害物・信号・ほかの車は見ないので、NPC の車が出るシーンでは、ぶつかったら記録をやり直す。
 
 ### 3.3 地図（dev コンテナ）
 

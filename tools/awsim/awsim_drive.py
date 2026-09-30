@@ -2,11 +2,13 @@
 """AWSIM の車を、決めた経路に沿って一定の速さで走らせる ROS 2 ノード（Humble。AWSIM を動かす PC で使う）。
 
   source /opt/ros/humble/setup.bash
-  python3 awsim_drive.py route.txt [--speed 1.67] [--wait 5] [--max-distance 0]
+  python3 awsim_drive.py route.txt [--kmh 25 | --speed 1.67] [--wait 5] [--max-distance 0]
   python3 awsim_drive.py route.txt --check      # ROS なしで、経路を走れるかだけ確かめる
   python3 awsim_drive.py --print-pose           # 車の今の姿勢（plan_route.py の --start に渡す）
 
 - 真値（/awsim/ground_truth/vehicle/pose）を見て、pure pursuit で経路をなぞる。障害物・信号・ほかの車は見ない。
+- 速度は既定 6 km/h（本システムの想定の最高速度）。--kmh で上げられる。曲がる所の手前で、横加速度が 1.5 m/s² を
+  超えないように減速し、経路の終わりでちょうど止まる。
 - 最初に --wait 秒止まったまま待つ（推定ノードの静止初期化のため）。経路の終わりで止まって、ノードも終わる。
 - 経路は「x y」の行（地図座標）。車の今の位置から 5 m 以内に経路の点が無いと始めない。
   経路の作り方は README.md（tools/tile_demo/lanelet_route.py で、車の位置から始まる経路を作る）。
@@ -27,6 +29,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("route", type=Path, nargs="?")
     ap.add_argument("--speed", type=float, default=1.67, help="目標速度 [m/s]（既定 6 km/h）")
+    ap.add_argument("--kmh", type=float, default=None,
+                    help="目標速度 [km/h]（--speed の代わり。例 25）。曲がる所では横加速度 1.5 m/s² 以下に落とす")
     ap.add_argument("--wait", type=float, default=5.0, help="走り出す前に止まっている時間 [s]")
     ap.add_argument("--wheelbase", type=float, default=2.79, help="ホイールベース [m]（AWSIM の Lexus RX 450h）")
     ap.add_argument("--max-distance", type=float, default=0.0, help="この距離 [m] を走ったら止まる（0 なら経路の終わりまで）")
@@ -36,6 +40,8 @@ def main():
     ap.add_argument("--check", action="store_true",
                     help="ROS を使わず、経路を自転車モデルで走らせて、長さ・時間・急な曲がり・横ずれを出すだけ")
     args = ap.parse_args()
+    if args.kmh is not None:
+        args.speed = args.kmh / 3.6
 
     if not args.print_pose and args.route is None:
         ap.error("経路のファイルを指定する（--print-pose のときだけ要らない）")
@@ -47,7 +53,8 @@ def main():
         traj, dev, pp = simulate(route, route[0, 0], route[0, 1], math.atan2(d[1], d[0]), t_max=36000,
                                  wheelbase=args.wheelbase, speed=args.speed)
         length = float(np.sum(np.linalg.norm(np.diff(route, axis=0), axis=1)))
-        print(f"route: {len(route)} points, {length:.0f} m, about {length / args.speed / 60:.1f} min at {args.speed} m/s")
+        print(f"route: {len(route)} points, {length:.0f} m, about {length / args.speed / 60:.1f} min at "
+              f"{args.speed * 3.6:.0f} km/h（曲がる所の減速を除く）")
         print(f"simulated: max deviation from the route {dev:.2f} m, stopped {pp.remaining():.1f} m before the end")
         tight = pp.tight_turns()
         if tight:
