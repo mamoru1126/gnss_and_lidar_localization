@@ -27,5 +27,13 @@ RUN mkdir -p /opt/autoware_auto_msgs/src && cd /opt/autoware_auto_msgs/src \
 # AWSIM の Quick start demo と同じ通信の設定（ホストの AWSIM と同じ PC の中だけで通信する）
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_LOCALHOST_ONLY=1
+# ROS 2 と autoware_auto_msgs を読み込んでから、渡されたコマンド（既定は bash）を動かす。
+# ホストの利用者の UID で動かしても（compose の user）、読み込まれるように .bashrc ではなくここで読む
+RUN printf '#!/bin/bash\nsource /opt/ros/humble/setup.bash\nsource /opt/autoware_auto_msgs/install/setup.bash\nexec "$@"\n' \
+      > /awsim_entrypoint.sh && chmod +x /awsim_entrypoint.sh
+ENTRYPOINT ["/awsim_entrypoint.sh"]
+CMD ["bash"]
+# 利用者が root でなくても ROS 2 のログを書けるように
+ENV HOME=/tmp/home ROS_LOG_DIR=/tmp/home/.ros/log
+RUN mkdir -p /tmp/home && chmod 777 /tmp/home
 WORKDIR /ws/src/gnss_and_lidar_localization
-RUN echo "source /opt/ros/humble/setup.bash && source /opt/autoware_auto_msgs/install/setup.bash" >> /root/.bashrc

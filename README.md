@@ -43,7 +43,6 @@ docs/                  設計ドキュメント
 ## ビルドとテスト（Docker）
 
 ```bash
-export GLL_DATA=/path/to/data          # rosbag や地図を置くディレクトリ（リポジトリの外）
 docker compose -f docker/compose.yaml build
 docker compose -f docker/compose.yaml run --rm dev
 
@@ -52,6 +51,8 @@ cd /ws
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 colcon test && colcon test-result --verbose
 ```
+
+rosbag や地図はリポジトリの `data/`（`.gitignore` 済み）に置く。どのコンテナでも環境変数 `GLL_DATA` がここ（`/ws/src/gnss_and_lidar_localization/data`）を指すので、設定は要らない。
 
 ### VS Code の Dev Container
 

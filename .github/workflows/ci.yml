@@ -119,7 +119,7 @@ jobs:
           sudo ip link set lo multicast on
           # 止まったときも出力が残るように、ホストのファイルにも書く（次のステップが注釈に出す）
           set -o pipefail
-          timeout 480 docker run --rm --net=host --ipc=host -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" \
+          timeout 480 docker run --rm --net=host --ipc=host --user "$(id -u):$(id -g)" -v "${{ github.workspace }}:/ws/src/gnss_and_lidar_localization" \
             gll:awsim-humble bash tools/awsim/test/run_humble_check.sh 2>&1 | tee /tmp/humble_check.log
       - name: Show the output of the check when it failed
         if: failure()

@@ -39,7 +39,7 @@ Zarr v2 のグループとして書き直す（`repaired malformed root metadata
 ## 1. 軽いトピックを落として、ミッションの組を決める
 
 ```bash
-export GLL_DATA=/path/to/data     # リポジトリの外
+# GLL_DATA はコンテナの中ではリポジトリの data/ を指す（設定は要らない）
 python3 tools/grandtour/download.py --dest $GLL_DATA/grandtour --missions candidates --preset light
 python3 tools/grandtour/inspect_grandtour.py --data-dir $GLL_DATA/grandtour --out $GLL_DATA/grandtour/report_light
 ```
