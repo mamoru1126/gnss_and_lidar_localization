@@ -83,7 +83,10 @@ int main(int argc, char** argv) {
                 r.output_points, opt.voxel_size, r.has_covariance ? "with covariances" : "no covariances",
                 out_dir.c_str(), sec);
     std::printf(
-        "\nmaps.yaml に次のように登録してください（アンカーは地図の 1 点の緯度経度と、地図の x 軸の方位）:\n"
+        "\n次に、地図の設定ファイル maps.yaml にこのタイルを登録する。maps.yaml は自分で作るファイルで、置き場所は自由\n"
+        "（gll_localizer ではパラメータ map.config_path か、launch の map_config:= で指定する）。\n"
+        "AWSIM の地図なら tools/awsim/awsim_to_bag.py --tiles <このフォルダ> が作るので、手で書かなくてよい。\n"
+        "書き方（アンカーは、地図の 1 点の緯度経度と、地図の x 軸の方位）:\n"
         "map_groups:\n"
         "  - id: <group_id>\n"
         "    tile_index: %s/tile_index.yaml\n"
