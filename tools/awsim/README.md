@@ -112,7 +112,7 @@ tools/awsim/run_scenario.sh v_a1 --push     # v_a0（GNSS + LiDAR）/ v_a1（LiD
 ```
 
 1. LiDAR の取り付け位置と点群のスタンプのずれを求める（初回だけ。`data/awsim/out/<録った bag>_lidar_calib.env` に覚える。`--calib` で求め直す）
-2. 変換（シナリオのオプション。`--` の後ろに書いたものも足す）
+2. 変換（シナリオのオプション。`--set` と、`--` の後ろに書いたものも足す）
 3. 推定ノードで再生し、推定の様子を `data/awsim/out/<名前>_rec` に録る（`--no-record` で録らない）
 4. 評価
 
@@ -129,11 +129,24 @@ tools/awsim/run_scenario.sh v_a1 --push     # v_a0（GNSS + LiDAR）/ v_a1（LiD
 `--push` を付けると、このフォルダをコミットして push する（コンテナの中で push できないときは、ホストで打つコマンドを出す）。
 録った bag は大きいのでリポジトリには入れない。
 
-2 つ以上の結果を重ねて比べるとき（例: 照合の方式を変えた 2 回）:
+### パラメータを変えて比べる（例: 追跡の照合を GICP と VGICP で比べる）
+
+推定ノードのパラメータは `--set KEY=VALUE` で上書きできる（何度でも）。結果が上書きされないよう、`--name` で名前を変える。
+同じビルドで両方を回す（推定ノードを変えたら、`cd /ws && colcon build` をしてから）。
 
 ```bash
+tools/awsim/run_scenario.sh v_a1 --push                                                  # GICP（既定）→ log/v_a1
+tools/awsim/run_scenario.sh v_a1 --name v_a1_vgicp --set lidar.registration=vgicp --push  # VGICP → log/v_a1_vgicp
+# ボクセルの大きさも変えるとき
+tools/awsim/run_scenario.sh v_a1 --name v_a1_vgicp05 --set lidar.registration=vgicp --set lidar.vgicp_voxel_size=0.5 --push
+
+# 2 つ（3 つまで）を重ねたグラフ
 python3 tools/awsim/plot_run.py tools/awsim/log/v_a1 tools/awsim/log/v_a1_vgicp --out compare.html
 ```
+
+`summary.md` の「推定ノードのログ」の「照合:」の行に、方式・照合した数・採用した数・品質で落とした数・照合の時間（平均・最大）が出る。
+`--set` の値は `summary.md` の「変換」にも出るので、意図した値で動いたかを確かめる。
+シナリオ名のほかに知らない引数（`--no-gnss` など `awsim_to_bag.py` のオプション）を渡すとエラーにする。`awsim_to_bag.py` のオプションは `--` の後ろに書く。
 
 以下は、各段を手で動かすとき。
 

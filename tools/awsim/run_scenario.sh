@@ -4,13 +4,17 @@
 # ターミナルの出力と結果は tools/awsim/log/<名前>/ にまとめて残る（summary.md が要約）。--push でコミットして push する。
 #
 #   tools/awsim/run_scenario.sh <シナリオ> [--run nsj_run1] [--name 名前] [--rate 1] [--seed 0]
-#                                 [--calib] [--no-record] [--push] [-- awsim_to_bag.py に足すオプション ...]
+#                                 [--set KEY=VALUE ...] [--calib] [--no-record] [--push] [-- awsim_to_bag.py に足すオプション ...]
+#
+# 例: 追跡の照合を VGICP にして、別の名前で残す
+#   tools/awsim/run_scenario.sh v_a1 --name v_a1_vgicp --set lidar.registration=vgicp --push
 #
 # シナリオ（docs/validation_awsim.md 4 章）:
 #   v_a0  GNSS + LiDAR（動作確認）
 #   v_a1  LiDAR だけ（--no-gnss --initial-pose 0,0）
 #   v_a2  LiDAR だけ・初期姿勢をずらして地図の上で初期化（--no-gnss --initial-pose 2,20 --seed N）
 #   その他の名前: 変換のオプションは -- の後ろに全部書く
+# --set: 推定ノードのパラメータを上書きする（何度でも。例: --set lidar.registration=vgicp --set lidar.vgicp_voxel_size=0.5）
 # --calib: LiDAR の取り付け位置とスタンプのずれを求め直す（既定は、前に求めた値があればそれを使う）
 # --no-record: 推定の様子を録らない（録った bag は data/awsim/out/<名前>_rec。大きいのでリポジトリには入れない）
 set -uo pipefail
@@ -19,7 +23,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 D="${GLL_DATA:-$repo/data}/awsim"
 
-scenario="" run="nsj_run1" name="" rate=1 seed=0 calib=0 record=1 push=0 extra=()
+scenario="" run="nsj_run1" name="" rate=1 seed=0 calib=0 record=1 push=0 extra=() sets=()
+usage() { sed -n '2,22p' "$0"; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) run="$2"; shift 2 ;;
@@ -29,12 +34,16 @@ while [ $# -gt 0 ]; do
     --calib) calib=1; shift ;;
     --no-record) record=0; shift ;;
     --push) push=1; shift ;;
+    --set) [ $# -ge 2 ] && [[ "$2" == *=* ]] || { echo "--set には KEY=VALUE を渡す"; exit 1; }
+           sets+=("$2"); shift 2 ;;
     --) shift; extra=("$@"); break ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
-    *) scenario="$1"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "知らないオプション: $1（awsim_to_bag.py のオプションは -- の後ろに書く）"; usage; exit 1 ;;
+    *) [ -z "$scenario" ] || { echo "シナリオが 2 つある: $scenario と $1"; usage; exit 1; }
+       scenario="$1"; shift ;;
   esac
 done
-[ -n "$scenario" ] || { sed -n '2,17p' "$0"; exit 1; }
+[ -n "$scenario" ] || { usage; exit 1; }
 name="${name:-$scenario}"
 case "$scenario" in
   v_a0) opts=() ;;
@@ -43,6 +52,7 @@ case "$scenario" in
   *) opts=() ;;
 esac
 opts+=("${extra[@]}")
+[ ${#sets[@]} -gt 0 ] && opts+=(--set "${sets[@]}")
 
 src="$D/$run"
 tiles="$D/nsj_tiles"
@@ -63,11 +73,13 @@ finish() {
   python3 "$here/summarize_run.py" "$logdir" --scenario "$scenario" --run "$run" --rc "$rc" -- "${opts[@]}" || true
   if [ "$push" = 1 ]; then
     step "コミットして push"
-    if (cd "$repo" && git add "tools/awsim/log/$name" && git commit -q -m "awsim log: $name" && git push -q); then
+    # push の成否は、手元と追跡先のコミットが同じになったかで確かめる（認証で失敗しても 0 を返すことがあるため）
+    if (cd "$repo" && git add "tools/awsim/log/$name" && git commit -q -m "awsim log: $name" && git push -q) &&
+       [ "$(cd "$repo" && git rev-parse HEAD)" = "$(cd "$repo" && git rev-parse '@{u}' 2>/dev/null)" ]; then
       echo "push した: tools/awsim/log/$name"
     else
-      echo "push できなかった。ホストで次を実行する:"
-      echo "  git add tools/awsim/log/$name && git commit -m 'awsim log: $name' && git push"
+      echo "push できなかった（コミットはしてある）。ホストで次を実行する:"
+      echo "  git push"
     fi
   else
     echo "結果: tools/awsim/log/$name/（summary.md、グラフは report.html）。送るときは --push を付けるか:"
