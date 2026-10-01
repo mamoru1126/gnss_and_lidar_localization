@@ -1,0 +1,55 @@
+推定ノード: /ws/install/gll_ros2/lib/gll_ros2/localizer_node
+推定ノードのログ: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_node.log
+[0m[INFO] [1790823164.740746174] [rosbag2_player]: Set rate to 1[0m
+[0m[INFO] [1790823164.750838593] [rosbag2_player]: Playback until timestamp: -1[0m
+---- node log (last lines)
+[localizer_node-1] [0m[INFO] [1790823419.743891913] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823419.946689012] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823421.024072762] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823421.125606871] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823433.046884876] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823443.448485191] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
+[localizer_node-1] [33m[WARN] [1790823444.256341147] [gll_localizer]: re-anchored to GNSS (d2=18.4)[0m
+[localizer_node-1] [33m[WARN] [1790823445.356462491] [gll_localizer]: re-anchored to GNSS (d2=26.9)[0m
+[localizer_node-1] [0m[INFO] [1790823454.024007874] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823454.249319505] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823455.243962647] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823455.649375532] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823456.646900019] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823457.049346720] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790823458.023905882] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [localizer_node-1]: sending signal 'SIGINT' to process[localizer_node-1]
+[localizer_node-1] [0m[INFO] [1790823466.176285649] [rclcpp]: signal_handler(SIGINT/SIGTERM)[0m
+[localizer_node-1] [0m[INFO] [1790823466.177979249] [gll_localizer]: LiDAR matching summary (gicp): 2305 scans matched, 1060 accepted, 245 rejected by quality, time mean 21.3 ms / max 44.4 ms[0m
+[ERROR] [localizer_node-1]: process has died [pid 119736, exit code -2, cmd '/ws/install/gll_ros2/lib/gll_ros2/localizer_node --ros-args -r __node:=gll_localizer --params-file /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_params.yaml --params-file /tmp/launch_params_armh4c5x -r ~/input/imu:=/sensing/imu -r ~/input/odom:=/sensing/odom -r ~/input/gnss/fix:=/sensing/gnss/fix -r ~/input/gnss/velocity:=/sensing/gnss/velocity -r ~/input/initial_pose:=/initialpose -r ~/input/points:=/sensing/lidar/points'].
+---- recorded: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_rec（録画のログ: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_rec.record.log）
+[0m[INFO] [1790823467.188115835] [rosbag2_recorder]: Topics discovery stopped.[0m
+[0m[INFO] [1790823467.188481730] [rosbag2_recorder]: Pausing recording.[0m
+[0m[INFO] [1790823467.188642527] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while[0m
+[0m[INFO] [1790823467.198248489] [rosbag2_recorder]: Recording stopped[0m
+[0m[INFO] [1790823467.206058580] [rosbag2_recorder]: Event publisher thread: Exited[0m
+
+Files:             v_a1_vgicp_rec_0.mcap
+Bag size:          1.0 GiB
+Storage id:        mcap
+ROS Distro:        jazzy
+Duration:          306.320288957s
+Start:             Oct  1 2026 02:52:39.843957505 (1790823159.843957505)
+End:               Oct  1 2026 02:57:46.164246462 (1790823466.164246462)
+Messages:          78687
+Topic information: Topic: /diagnostics | Type: diagnostic_msgs/msg/DiagnosticArray | Count: 306 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/lidar_pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 2305 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/map_points | Type: sensor_msgs/msg/PointCloud2 | Count: 427 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/raw_pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 12262 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/scan_points | Type: sensor_msgs/msg/PointCloud2 | Count: 2305 | Serialization Format: cdr
+                   Topic: /gll_localizer/output/odometry | Type: nav_msgs/msg/Odometry | Count: 12262 | Serialization Format: cdr
+                   Topic: /gll_localizer/output/pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 12262 | Serialization Format: cdr
+                   Topic: /gll_localizer/output/status | Type: diagnostic_msgs/msg/DiagnosticStatus | Count: 15317 | Serialization Format: cdr
+                   Topic: /groundtruth/pose | Type: geometry_msgs/msg/PoseStamped | Count: 5984 | Serialization Format: cdr
+                   Topic: /map/points | Type: sensor_msgs/msg/PointCloud2 | Count: 1 | Serialization Format: cdr
+                   Topic: /sensing/gnss/fix | Type: sensor_msgs/msg/NavSatFix | Count: 2992 | Serialization Format: cdr
+                   Topic: /tf | Type: tf2_msgs/msg/TFMessage | Count: 12262 | Serialization Format: cdr
+                   Topic: /tf_static | Type: tf2_msgs/msg/TFMessage | Count: 2 | Serialization Format: cdr
+Service:           0
+Service information: 
