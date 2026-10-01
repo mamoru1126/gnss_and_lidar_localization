@@ -69,6 +69,7 @@ gll_localizer:
       max_rate_yaw_deg: 2.0
       offset_error_xy: 1.0
       offset_error_yaw_deg: 5.0
+      publish_height: true
     monitor:
       aid_timeout: 1.0
       dr_max_stddev: 0.3
@@ -124,6 +125,8 @@ gll_localizer:
       source_num_neighbors: 10
       min_source_points: 100
       max_correspondence_distance: 1.0
+      registration: gicp
+      vgicp_voxel_size: 1.0
       max_iterations: 20
       num_threads: 4
       min_inlier_ratio: 0.6
