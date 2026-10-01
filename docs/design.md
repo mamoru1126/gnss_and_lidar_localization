@@ -825,6 +825,7 @@ sequenceDiagram
 - `gicp`（既定）: ターゲットは結合した地図の点と KdTree。スキャンの点ごとに最近傍の地図の点（と共分散）に合わせる。
 - `vgicp`: ターゲットは地図の点を `vgicp_voxel_size` のボクセルに分けた、ボクセルごとのガウス分布（平均と共分散）。近傍の探索が要らず速い。ボクセル地図はターゲットを使う最初の照合で作る。対応の距離の上限は `max(max_correspondence_distance, 2 × vgicp_voxel_size)`。VGICP の「対応がある点」の数は GICP と意味が違うので、品質指標の `inlier_ratio` は、照合の後に地図の点との距離（`max_correspondence_distance` 以内）で数え直して、同じしきい値で判定する。観測共分散は VGICP のヘッセ行列から同じ式で求める（`cov_scale` は方式ごとに合わせ直しが要るかもしれない）。
 - 終了時に、照合した数・採用した数・品質で落とした数・照合の時間（平均・最大）を 1 行のログに出す（方式の比較用）。
+- 切り替えはパラメータファイル（`ros2/gll_ros2/config/localizer.yaml` の `lidar.registration`）で行う。AWSIM の検証では `tools/awsim/run_scenario.sh v_a1 --name v_a1_vgicp --set lidar.registration=vgicp`。
 
 **主なパラメータ**（既定値。実データで調整する）:
 
