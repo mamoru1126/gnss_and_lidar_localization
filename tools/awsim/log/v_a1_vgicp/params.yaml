@@ -125,7 +125,7 @@ gll_localizer:
       source_num_neighbors: 10
       min_source_points: 100
       max_correspondence_distance: 1.0
-      registration: gicp
+      registration: vgicp
       vgicp_voxel_size: 1.0
       max_iterations: 20
       num_threads: 4

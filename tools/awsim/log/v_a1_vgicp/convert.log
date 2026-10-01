@@ -5,9 +5,9 @@ IMU（tamagawa/imu_link）→ base_link の向き: rpy [-179.92   -1.91 -179.67]
 IMU の yaw レートと真値の比 +1.000（+1 に近いはず）
 時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU -18 ms、車速 -68 ms（yaw レートで見ると +176 ms）（直して出す）
 車速の横向きの速さ: yaw レートに比例する分 +1.140 m ×（yaw レート）を取り除く（真値との差の RMS 0.093 → 0.011 m/s）。yaw レートは IMU の値にする
-GNSS: 2992 件（RTK-FIX 2992、外した 0）、10 Hz、σ 0.02 m
 全体の地図 /map/points: 460663 点（1.0 m で間引き、frame map_local）
-/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp/（rosbag2 の bag: v_a1_vgicp.mcap、metadata.yaml）: 29919 メッセージ
+/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp/（rosbag2 の bag: v_a1_vgicp.mcap、metadata.yaml）: 26928 メッセージ
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_groundtruth.csv
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_maps.yaml
+パラメータ lidar.registration = 'vgicp'
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_params.yaml

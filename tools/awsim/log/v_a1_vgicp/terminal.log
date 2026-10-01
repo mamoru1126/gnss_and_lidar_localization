@@ -1,5 +1,5 @@
-シナリオ lidar.registration=vgicp（名前 v_a1_vgicp）、録った bag /ws/src/gnss_and_lidar_localization/data/awsim/nsj_run1、変換のオプション: （なし）
-commit 30e59b6、2026-10-01 02:52:30
+シナリオ v_a1（名前 v_a1_vgicp）、録った bag /ws/src/gnss_and_lidar_localization/data/awsim/nsj_run1、変換のオプション: --no-gnss --initial-pose 0,0 --set lidar.registration=vgicp
+commit 49d4fac +変更あり、2026-10-01 03:19:47
 LiDAR: --lidar-extrinsic 0.900,0.000,2.040,0.900,0.100,88.200 --lidar-stamp-offset 0.000（/ws/src/gnss_and_lidar_localization/data/awsim/out/nsj_run1_lidar_calib.env）
 
 ======== 変換（awsim_to_bag.py）
@@ -10,66 +10,66 @@ IMU（tamagawa/imu_link）→ base_link の向き: rpy [-179.92   -1.91 -179.67]
 IMU の yaw レートと真値の比 +1.000（+1 に近いはず）
 時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU -18 ms、車速 -68 ms（yaw レートで見ると +176 ms）（直して出す）
 車速の横向きの速さ: yaw レートに比例する分 +1.140 m ×（yaw レート）を取り除く（真値との差の RMS 0.093 → 0.011 m/s）。yaw レートは IMU の値にする
-GNSS: 2992 件（RTK-FIX 2992、外した 0）、10 Hz、σ 0.02 m
 全体の地図 /map/points: 460663 点（1.0 m で間引き、frame map_local）
-/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp/（rosbag2 の bag: v_a1_vgicp.mcap、metadata.yaml）: 29919 メッセージ
+/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp/（rosbag2 の bag: v_a1_vgicp.mcap、metadata.yaml）: 26928 メッセージ
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_groundtruth.csv
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_maps.yaml
+パラメータ lidar.registration = 'vgicp'
   /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_params.yaml
 
 ======== 推定ノードで再生（replay.sh）
 推定ノード: /ws/install/gll_ros2/lib/gll_ros2/localizer_node
 推定ノードのログ: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_node.log
-[0m[INFO] [1790823164.740746174] [rosbag2_player]: Set rate to 1[0m
-[0m[INFO] [1790823164.750838593] [rosbag2_player]: Playback until timestamp: -1[0m
+[0m[INFO] [1790824802.000337188] [rosbag2_player]: Set rate to 1[0m
+[0m[INFO] [1790824802.011954606] [rosbag2_player]: Playback until timestamp: -1[0m
 ---- node log (last lines)
-[localizer_node-1] [0m[INFO] [1790823419.743891913] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823419.946689012] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823421.024072762] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823421.125606871] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823433.046884876] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823443.448485191] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
-[localizer_node-1] [33m[WARN] [1790823444.256341147] [gll_localizer]: re-anchored to GNSS (d2=18.4)[0m
-[localizer_node-1] [33m[WARN] [1790823445.356462491] [gll_localizer]: re-anchored to GNSS (d2=26.9)[0m
-[localizer_node-1] [0m[INFO] [1790823454.024007874] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823454.249319505] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823455.243962647] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823455.649375532] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823456.646900019] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823457.049346720] [gll_localizer]: status: GNSS_AIDED -> GNSS_LIDAR_AIDED[0m
-[localizer_node-1] [0m[INFO] [1790823458.023905882] [gll_localizer]: status: GNSS_LIDAR_AIDED -> GNSS_AIDED[0m
+[localizer_node-1] [33m[WARN] [1790825032.153262654] [gll_localizer]: relocalization failed (low inlier ratio): 63 hypotheses, overlap 0.32 (second 0.26), 82 ms[0m
+[localizer_node-1] [0m[INFO] [1790825032.168534525] [gll_localizer]: status: DEAD_RECKONING -> LOST[0m
+[localizer_node-1] [0m[INFO] [1790825036.911341762] [gll_localizer]: status: LOST -> LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790825036.911430765] [gll_localizer]: dead reckoning ended (position observation accepted)[0m
+[localizer_node-1] [0m[INFO] [1790825070.307415544] [gll_localizer]: status: LIDAR_AIDED -> DEAD_RECKONING[0m
+[localizer_node-1] [33m[WARN] [1790825071.378900719] [gll_localizer]: LiDAR matching failed repeatedly (last: LOW_OVERLAP, inlier 0.65, overlap 0.39): relocalizing around the estimate[0m
+[localizer_node-1] [33m[WARN] [1790825071.563696376] [gll_localizer]: relocalization failed (low overlap): 15 hypotheses, overlap 0.39 (second 0.11), 91 ms[0m
+[localizer_node-1] [33m[WARN] [1790825073.590724566] [gll_localizer]: LiDAR matching failed repeatedly (last: LOW_OVERLAP, inlier 0.66, overlap 0.40): relocalizing around the estimate[0m
+[localizer_node-1] [31m[ERROR] [1790825073.627295737] [gll_localizer]: dead reckoning for 30.0 m without GNSS / LiDAR position (limit 30.0 m)[0m
+[localizer_node-1] [33m[WARN] [1790825073.744705599] [gll_localizer]: relocalization failed (low overlap): 27 hypotheses, overlap 0.41 (second 0.28), 61 ms[0m
+[localizer_node-1] [33m[WARN] [1790825075.987380362] [gll_localizer]: LiDAR matching failed repeatedly (last: LOW_OVERLAP, inlier 0.67, overlap 0.44): relocalizing around the estimate[0m
+[localizer_node-1] [33m[WARN] [1790825076.197950496] [gll_localizer]: relocalization failed (low overlap): 63 hypotheses, overlap 0.44 (second 0.00), 103 ms[0m
+[localizer_node-1] [0m[INFO] [1790825076.208022834] [gll_localizer]: status: DEAD_RECKONING -> LOST[0m
+[localizer_node-1] [0m[INFO] [1790825080.111162407] [gll_localizer]: status: LOST -> LIDAR_AIDED[0m
+[localizer_node-1] [0m[INFO] [1790825080.111223513] [gll_localizer]: dead reckoning ended (position observation accepted)[0m
 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
 [INFO] [localizer_node-1]: sending signal 'SIGINT' to process[localizer_node-1]
-[localizer_node-1] [0m[INFO] [1790823466.176285649] [rclcpp]: signal_handler(SIGINT/SIGTERM)[0m
-[localizer_node-1] [0m[INFO] [1790823466.177979249] [gll_localizer]: LiDAR matching summary (gicp): 2305 scans matched, 1060 accepted, 245 rejected by quality, time mean 21.3 ms / max 44.4 ms[0m
-[ERROR] [localizer_node-1]: process has died [pid 119736, exit code -2, cmd '/ws/install/gll_ros2/lib/gll_ros2/localizer_node --ros-args -r __node:=gll_localizer --params-file /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_params.yaml --params-file /tmp/launch_params_armh4c5x -r ~/input/imu:=/sensing/imu -r ~/input/odom:=/sensing/odom -r ~/input/gnss/fix:=/sensing/gnss/fix -r ~/input/gnss/velocity:=/sensing/gnss/velocity -r ~/input/initial_pose:=/initialpose -r ~/input/points:=/sensing/lidar/points'].
+[localizer_node-1] [0m[INFO] [1790825103.423350104] [rclcpp]: signal_handler(SIGINT/SIGTERM)[0m
+[localizer_node-1] [0m[INFO] [1790825103.425263315] [gll_localizer]: LiDAR matching summary (vgicp): 2483 scans matched, 2248 accepted, 235 rejected by quality, time mean 18.6 ms / max 68.5 ms[0m
+[ERROR] [localizer_node-1]: process has died [pid 127799, exit code -2, cmd '/ws/install/gll_ros2/lib/gll_ros2/localizer_node --ros-args -r __node:=gll_localizer --params-file /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_params.yaml --params-file /tmp/launch_params_a5cfd31v -r ~/input/imu:=/sensing/imu -r ~/input/odom:=/sensing/odom -r ~/input/gnss/fix:=/sensing/gnss/fix -r ~/input/gnss/velocity:=/sensing/gnss/velocity -r ~/input/initial_pose:=/initialpose -r ~/input/points:=/sensing/lidar/points'].
 ---- recorded: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_rec（録画のログ: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_rec.record.log）
-[0m[INFO] [1790823467.188115835] [rosbag2_recorder]: Topics discovery stopped.[0m
-[0m[INFO] [1790823467.188481730] [rosbag2_recorder]: Pausing recording.[0m
-[0m[INFO] [1790823467.188642527] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while[0m
-[0m[INFO] [1790823467.198248489] [rosbag2_recorder]: Recording stopped[0m
-[0m[INFO] [1790823467.206058580] [rosbag2_recorder]: Event publisher thread: Exited[0m
+[0m[INFO] [1790825104.433463653] [rosbag2_recorder]: Topics discovery stopped.[0m
+[0m[INFO] [1790825104.433848854] [rosbag2_recorder]: Pausing recording.[0m
+[0m[INFO] [1790825104.434003775] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while[0m
+[0m[INFO] [1790825104.443196393] [rosbag2_recorder]: Recording stopped[0m
+[0m[INFO] [1790825104.453014644] [rosbag2_recorder]: Event publisher thread: Exited[0m
 
 Files:             v_a1_vgicp_rec_0.mcap
 Bag size:          1.0 GiB
 Storage id:        mcap
 ROS Distro:        jazzy
-Duration:          306.320288957s
-Start:             Oct  1 2026 02:52:39.843957505 (1790823159.843957505)
-End:               Oct  1 2026 02:57:46.164246462 (1790823466.164246462)
-Messages:          78687
+Duration:          306.300400678s
+Start:             Oct  1 2026 03:19:57.107412948 (1790824797.107412948)
+End:               Oct  1 2026 03:25:03.407813626 (1790825103.407813626)
+Messages:          86517
 Topic information: Topic: /diagnostics | Type: diagnostic_msgs/msg/DiagnosticArray | Count: 306 | Serialization Format: cdr
-                   Topic: /gll_localizer/debug/lidar_pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 2305 | Serialization Format: cdr
-                   Topic: /gll_localizer/debug/map_points | Type: sensor_msgs/msg/PointCloud2 | Count: 427 | Serialization Format: cdr
-                   Topic: /gll_localizer/debug/raw_pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 12262 | Serialization Format: cdr
-                   Topic: /gll_localizer/debug/scan_points | Type: sensor_msgs/msg/PointCloud2 | Count: 2305 | Serialization Format: cdr
-                   Topic: /gll_localizer/output/odometry | Type: nav_msgs/msg/Odometry | Count: 12262 | Serialization Format: cdr
-                   Topic: /gll_localizer/output/pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 12262 | Serialization Format: cdr
-                   Topic: /gll_localizer/output/status | Type: diagnostic_msgs/msg/DiagnosticStatus | Count: 15317 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/lidar_pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 2490 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/map_points | Type: sensor_msgs/msg/PointCloud2 | Count: 423 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/raw_pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 14876 | Serialization Format: cdr
+                   Topic: /gll_localizer/debug/scan_points | Type: sensor_msgs/msg/PointCloud2 | Count: 2490 | Serialization Format: cdr
+                   Topic: /gll_localizer/output/odometry | Type: nav_msgs/msg/Odometry | Count: 14876 | Serialization Format: cdr
+                   Topic: /gll_localizer/output/pose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 14876 | Serialization Format: cdr
+                   Topic: /gll_localizer/output/status | Type: diagnostic_msgs/msg/DiagnosticStatus | Count: 15316 | Serialization Format: cdr
                    Topic: /groundtruth/pose | Type: geometry_msgs/msg/PoseStamped | Count: 5984 | Serialization Format: cdr
+                   Topic: /initialpose | Type: geometry_msgs/msg/PoseWithCovarianceStamped | Count: 1 | Serialization Format: cdr
                    Topic: /map/points | Type: sensor_msgs/msg/PointCloud2 | Count: 1 | Serialization Format: cdr
-                   Topic: /sensing/gnss/fix | Type: sensor_msgs/msg/NavSatFix | Count: 2992 | Serialization Format: cdr
-                   Topic: /tf | Type: tf2_msgs/msg/TFMessage | Count: 12262 | Serialization Format: cdr
+                   Topic: /tf | Type: tf2_msgs/msg/TFMessage | Count: 14876 | Serialization Format: cdr
                    Topic: /tf_static | Type: tf2_msgs/msg/TFMessage | Count: 2 | Serialization Format: cdr
 Service:           0
 Service information: 
@@ -79,34 +79,35 @@ Service information:
 
 | 指標 | 値 |
 |---|---|
-| duration | 243.4 s |
-| rows | 12276 |
-| evaluated_rows | 12262 |
-| init_time | 0.3 s |
-| lat_rms | 0.010 m |
-| lat_p95 | 0.020 m |
-| lat_max | 0.042 m |
-| lon_rms | 0.151 m |
-| lon_p95 | 0.220 m |
-| lon_max | 0.394 m |
-| xy_rms | 0.151 m |
-| xy_p95 | 0.221 m |
-| xy_max | 0.394 m |
-| yaw_rms_deg | 0.10° |
-| yaw_p95_deg | 0.23° |
-| yaw_max_deg | 0.70° |
-| step_max | 0.218 m |
-| within_3sigma | 6.3% |
-| nees_mean | 232.17 |
-| lidar_share | 83.1% |
-| lost_share | 0.0% |
-| dr_distance_max | 2.773 m |
+| duration | 295.4 s |
+| rows | 14876 |
+| evaluated_rows | 14876 |
+| init_time | 0.0 s |
+| lat_rms | 0.035 m |
+| lat_p95 | 0.064 m |
+| lat_max | 0.235 m |
+| lon_rms | 0.073 m |
+| lon_p95 | 0.168 m |
+| lon_max | 0.293 m |
+| xy_rms | 0.081 m |
+| xy_p95 | 0.178 m |
+| xy_max | 0.351 m |
+| yaw_rms_deg | 0.06° |
+| yaw_p95_deg | 0.14° |
+| yaw_max_deg | 0.34° |
+| step_max | 0.224 m |
+| within_3sigma | 80.2% |
+| nees_mean | 8.26 |
+| lidar_share | 93.1% |
+| lost_share | 2.9% |
+| dr_distance_max | 82.748 m |
 
 | 状態 | 時間の割合 | 横 RMS | 縦 RMS | yaw RMS |
 |---|---|---|---|---|
-| GNSS_AIDED | 16.9% | 0.010 m | 0.158 m | 0.07° |
-| GNSS_LIDAR_AIDED | 83.1% | 0.010 m | 0.150 m | 0.11° |
-v_a1_vgicp: 横 RMS 0.010 m、縦 RMS 0.157 m、yaw RMS 0.10°
+| DEAD_RECKONING | 4.0% | 0.075 m | 0.116 m | 0.10° |
+| LIDAR_AIDED | 93.1% | 0.020 m | 0.068 m | 0.06° |
+| LOST | 2.9% | 0.148 m | 0.133 m | 0.13° |
+v_a1_vgicp: 横 RMS 0.035 m、縦 RMS 0.073 m、yaw RMS 0.07°
 /ws/src/gnss_and_lidar_localization/tools/awsim/log/v_a1_vgicp/report.html（ブラウザで開く）
 録った bag: /ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_vgicp_rec（リポジトリの data/awsim/out/v_a1_vgicp_rec。Foxglove で開き、frame map_local で見る）
 
@@ -114,8 +115,8 @@ v_a1_vgicp: 横 RMS 0.010 m、縦 RMS 0.157 m、yaw RMS 0.10°
 # v_a1_vgicp
 
 - 成功
-- シナリオ lidar.registration=vgicp、録った bag nsj_run1、変換のオプション `（なし）`
-- commit 30e59b6、2026-10-01 02:52:30
+- シナリオ v_a1、録った bag nsj_run1、変換のオプション `--no-gnss --initial-pose 0,0 --set lidar.registration=vgicp`
+- commit 49d4fac +変更あり、2026-10-01 03:19:47
 
 ## LiDAR の取り付け位置・スタンプのずれ
 
@@ -133,140 +134,104 @@ IMU（tamagawa/imu_link）→ base_link の向き: rpy [-179.92   -1.91 -179.67]
 IMU の yaw レートと真値の比 +1.000（+1 に近いはず）
 時刻のずれ（真値に合わせるためにスタンプに足す値）: IMU -18 ms、車速 -68 ms（yaw レートで見ると +176 ms）（直して出す）
 車速の横向きの速さ: yaw レートに比例する分 +1.140 m ×（yaw レート）を取り除く（真値との差の RMS 0.093 → 0.011 m/s）。yaw レートは IMU の値にする
-GNSS: 2992 件（RTK-FIX 2992、外した 0）、10 Hz、σ 0.02 m
 全体の地図 /map/points: 460663 点（1.0 m で間引き、frame map_local）
+パラメータ lidar.registration = 'vgicp'
 ```
 
 ## 評価
 
 | 指標 | 値 |
 |---|---|
-| duration | 243.4 s |
-| rows | 12276 |
-| evaluated_rows | 12262 |
-| init_time | 0.3 s |
-| lat_rms | 0.010 m |
-| lat_p95 | 0.020 m |
-| lat_max | 0.042 m |
-| lon_rms | 0.151 m |
-| lon_p95 | 0.220 m |
-| lon_max | 0.394 m |
-| xy_rms | 0.151 m |
-| xy_p95 | 0.221 m |
-| xy_max | 0.394 m |
-| yaw_rms_deg | 0.10° |
-| yaw_p95_deg | 0.23° |
-| yaw_max_deg | 0.70° |
-| step_max | 0.218 m |
-| within_3sigma | 6.3% |
-| nees_mean | 232.17 |
-| lidar_share | 83.1% |
-| lost_share | 0.0% |
-| dr_distance_max | 2.773 m |
+| duration | 295.4 s |
+| rows | 14876 |
+| evaluated_rows | 14876 |
+| init_time | 0.0 s |
+| lat_rms | 0.035 m |
+| lat_p95 | 0.064 m |
+| lat_max | 0.235 m |
+| lon_rms | 0.073 m |
+| lon_p95 | 0.168 m |
+| lon_max | 0.293 m |
+| xy_rms | 0.081 m |
+| xy_p95 | 0.178 m |
+| xy_max | 0.351 m |
+| yaw_rms_deg | 0.06° |
+| yaw_p95_deg | 0.14° |
+| yaw_max_deg | 0.34° |
+| step_max | 0.224 m |
+| within_3sigma | 80.2% |
+| nees_mean | 8.26 |
+| lidar_share | 93.1% |
+| lost_share | 2.9% |
+| dr_distance_max | 82.748 m |
 
 | 状態 | 時間の割合 | 横 RMS | 縦 RMS | yaw RMS |
 |---|---|---|---|---|
-| GNSS_AIDED | 16.9% | 0.010 m | 0.158 m | 0.07° |
-| GNSS_LIDAR_AIDED | 83.1% | 0.010 m | 0.150 m | 0.11° |
+| DEAD_RECKONING | 4.0% | 0.075 m | 0.116 m | 0.10° |
+| LIDAR_AIDED | 93.1% | 0.020 m | 0.068 m | 0.06° |
+| LOST | 2.9% | 0.148 m | 0.133 m | 0.13° |
 
 ## 10 秒ごと（raw の姿勢の誤差。|yaw レート| は真値の最大）
 
 | 時刻 [s] | 状態 | 横 RMS [m] | 縦 RMS [m] | yaw RMS [°] | yaw レート [rad/s] |
 |---|---|---|---|---|---|
-| 0 | GNSS_LIDAR_AIDED 97% / INITIALIZING 3% | 0.015 | 0.096 | 0.41 | 0.31 |
-| 10 | GNSS_LIDAR_AIDED 99% / GNSS_AIDED 1% | 0.007 | 0.170 | 0.04 | 0.01 |
-| 20 | GNSS_LIDAR_AIDED | 0.007 | 0.115 | 0.03 | 0.01 |
-| 30 | GNSS_LIDAR_AIDED | 0.007 | 0.134 | 0.16 | 0.30 |
-| 40 | GNSS_LIDAR_AIDED | 0.012 | 0.160 | 0.10 | 0.23 |
-| 50 | GNSS_LIDAR_AIDED 77% / GNSS_AIDED 23% | 0.009 | 0.188 | 0.06 | 0.00 |
-| 60 | GNSS_LIDAR_AIDED | 0.010 | 0.122 | 0.13 | 0.29 |
-| 70 | GNSS_LIDAR_AIDED 99% / GNSS_AIDED 1% | 0.009 | 0.167 | 0.05 | 0.19 |
-| 80 | GNSS_LIDAR_AIDED 97% / GNSS_AIDED 3% | 0.007 | 0.164 | 0.04 | 0.00 |
-| 90 | GNSS_LIDAR_AIDED 75% / GNSS_AIDED 25% | 0.009 | 0.174 | 0.05 | 0.01 |
-| 100 | GNSS_LIDAR_AIDED 94% / GNSS_AIDED 6% | 0.010 | 0.160 | 0.05 | 0.02 |
-| 110 | GNSS_LIDAR_AIDED 82% / GNSS_AIDED 18% | 0.010 | 0.179 | 0.11 | 0.16 |
-| 120 | GNSS_LIDAR_AIDED 89% / GNSS_AIDED 11% | 0.010 | 0.158 | 0.22 | 0.36 |
-| 130 | GNSS_LIDAR_AIDED 97% / GNSS_AIDED 3% | 0.010 | 0.172 | 0.11 | 0.17 |
-| 140 | GNSS_LIDAR_AIDED 97% / GNSS_AIDED 3% | 0.013 | 0.154 | 0.19 | 0.06 |
-| 150 | GNSS_LIDAR_AIDED 94% / GNSS_AIDED 6% | 0.007 | 0.165 | 0.12 | 0.33 |
-| 160 | GNSS_LIDAR_AIDED 77% / GNSS_AIDED 23% | 0.015 | 0.144 | 0.15 | 0.36 |
-| 170 | GNSS_AIDED 90% / GNSS_LIDAR_AIDED 10% | 0.010 | 0.164 | 0.06 | 0.00 |
-| 180 | GNSS_LIDAR_AIDED | 0.011 | 0.171 | 0.05 | 0.00 |
-| 190 | GNSS_LIDAR_AIDED 98% / GNSS_AIDED 2% | 0.011 | 0.159 | 0.08 | 0.00 |
-| 200 | GNSS_LIDAR_AIDED 99% / GNSS_AIDED 1% | 0.010 | 0.135 | 0.04 | 0.00 |
-| 210 | GNSS_AIDED 76% / GNSS_LIDAR_AIDED 24% | 0.011 | 0.173 | 0.07 | 0.00 |
-| 220 | GNSS_LIDAR_AIDED 72% / GNSS_AIDED 28% | 0.009 | 0.135 | 0.25 | 0.00 |
-| 230 | GNSS_LIDAR_AIDED 63% / GNSS_AIDED 37% | 0.002 | 0.024 | 0.06 | 0.00 |
-| 240 | GNSS_AIDED | 0.004 | 0.032 | 0.08 | 0.00 |
+| 0 | LIDAR_AIDED | 0.001 | 0.002 | 0.05 | 0.00 |
+| 10 | LIDAR_AIDED | 0.001 | 0.002 | 0.05 | 0.00 |
+| 20 | LIDAR_AIDED | 0.001 | 0.002 | 0.05 | 0.00 |
+| 30 | LIDAR_AIDED | 0.001 | 0.002 | 0.05 | 0.00 |
+| 40 | LIDAR_AIDED | 0.001 | 0.002 | 0.05 | 0.00 |
+| 50 | LIDAR_AIDED | 0.008 | 0.058 | 0.09 | 0.31 |
+| 60 | LIDAR_AIDED | 0.008 | 0.086 | 0.06 | 0.09 |
+| 70 | LIDAR_AIDED | 0.007 | 0.050 | 0.04 | 0.01 |
+| 80 | LIDAR_AIDED | 0.014 | 0.032 | 0.09 | 0.29 |
+| 90 | LIDAR_AIDED | 0.035 | 0.059 | 0.05 | 0.30 |
+| 100 | LIDAR_AIDED | 0.015 | 0.040 | 0.03 | 0.00 |
+| 110 | LIDAR_AIDED | 0.022 | 0.066 | 0.06 | 0.29 |
+| 120 | LIDAR_AIDED | 0.016 | 0.110 | 0.07 | 0.29 |
+| 130 | LIDAR_AIDED | 0.008 | 0.042 | 0.03 | 0.00 |
+| 140 | LIDAR_AIDED | 0.016 | 0.031 | 0.04 | 0.00 |
+| 150 | LIDAR_AIDED | 0.010 | 0.031 | 0.02 | 0.02 |
+| 160 | LIDAR_AIDED | 0.011 | 0.044 | 0.08 | 0.16 |
+| 170 | LIDAR_AIDED | 0.022 | 0.047 | 0.10 | 0.36 |
+| 180 | LIDAR_AIDED | 0.014 | 0.060 | 0.07 | 0.17 |
+| 190 | LIDAR_AIDED | 0.010 | 0.037 | 0.04 | 0.06 |
+| 200 | LIDAR_AIDED | 0.016 | 0.038 | 0.05 | 0.08 |
+| 210 | LIDAR_AIDED | 0.043 | 0.102 | 0.13 | 0.36 |
+| 220 | DEAD_RECKONING 62% / LOST 38% | 0.135 | 0.166 | 0.13 | 0.00 |
+| 230 | LIDAR_AIDED 90% / LOST 10% | 0.071 | 0.156 | 0.06 | 0.00 |
+| 240 | LIDAR_AIDED | 0.009 | 0.099 | 0.03 | 0.00 |
+| 250 | LIDAR_AIDED | 0.006 | 0.043 | 0.03 | 0.00 |
+| 260 | DEAD_RECKONING 56% / LIDAR_AIDED 44% | 0.024 | 0.032 | 0.05 | 0.00 |
+| 270 | LIDAR_AIDED 60% / LOST 40% | 0.044 | 0.057 | 0.05 | 0.00 |
+| 280 | LIDAR_AIDED | 0.005 | 0.074 | 0.06 | 0.00 |
+| 290 | LIDAR_AIDED | 0.001 | 0.161 | 0.05 | 0.00 |
 
 ## 推定ノードのログ
 
-照合: `LiDAR matching summary (gicp): 2305 scans matched, 1060 accepted, 245 rejected by quality, time mean 21.3 ms / max 44.4 ms`
+照合: `LiDAR matching summary (vgicp): 2483 scans matched, 2248 accepted, 235 rejected by quality, time mean 18.6 ms / max 68.5 ms`
 
-状態の移り変わり 50 回（時刻は初期化からの秒）:
+状態の移り変わり 7 回（時刻は初期化からの秒）:
 
 ```
-     0.3  INITIALIZING -> GNSS_LIDAR_AIDED
-    13.6  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    13.7  GNSS_AIDED -> GNSS_LIDAR_AIDED
-    50.9  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    52.1  GNSS_AIDED -> GNSS_LIDAR_AIDED
-    55.3  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    55.4  GNSS_AIDED -> GNSS_LIDAR_AIDED
-    56.4  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    57.4  GNSS_AIDED -> GNSS_LIDAR_AIDED
-    77.0  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    77.1  GNSS_AIDED -> GNSS_LIDAR_AIDED
-    83.0  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    83.3  GNSS_AIDED -> GNSS_LIDAR_AIDED
-    92.6  GNSS_LIDAR_AIDED -> GNSS_AIDED
-    95.1  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   106.5  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   107.1  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   116.2  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   116.8  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   117.8  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   119.0  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   127.3  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   127.3  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   128.3  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   129.4  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   134.9  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   135.2  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   141.7  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   142.0  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   155.7  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   156.1  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   157.1  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   157.3  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   166.3  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   166.9  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   168.3  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   179.0  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   199.1  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   199.3  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   200.4  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   200.5  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   212.4  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   222.8  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   233.4  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   233.6  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   234.6  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   235.0  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   236.0  GNSS_LIDAR_AIDED -> GNSS_AIDED
-   236.4  GNSS_AIDED -> GNSS_LIDAR_AIDED
-   237.4  GNSS_LIDAR_AIDED -> GNSS_AIDED
+     0.0  INITIALIZING -> LIDAR_AIDED
+   220.2  LIDAR_AIDED -> DEAD_RECKONING
+   226.3  DEAD_RECKONING -> LOST
+   231.0  LOST -> LIDAR_AIDED
+   264.4  LIDAR_AIDED -> DEAD_RECKONING
+   270.3  DEAD_RECKONING -> LOST
+   274.2  LOST -> LIDAR_AIDED
 ```
 
 警告・エラー（数字を # にまとめた種類ごと）:
 
 | 回数 | 最初（s） | 内容 |
 |---|---|---|
-| 9 | 3.5 | `WARN re-anchored to GNSS (d#=#)` |
-| 1 | -55.6 | `WARN point cloud has no per-point time field: deskew is disabled` |
+| 4 | 221.7 | `WARN LiDAR matching failed repeatedly (last: LOW_OVERLAP, inlier #, overlap #): relocalizing around the estimate` |
+| 4 | 221.8 | `WARN relocalization failed (low overlap): # hypotheses, overlap # (second #), # ms` |
+| 2 | 223.4 | `ERROR dead reckoning for # m without GNSS / LiDAR position (limit # m)` |
+| 2 | 224.0 | `WARN LiDAR matching failed repeatedly (last: FEW_INLIERS, inlier #, overlap #): relocalizing around the estimate` |
+| 2 | 224.2 | `WARN relocalization failed (low inlier ratio): # hypotheses, overlap # (second #), # ms` |
+| 1 | -3.6 | `WARN point cloud has no per-point time field: deskew is disabled` |
 
 
 ======== コミットして push
-fatal: User cancelled dialog.
-fatal: could not read Username for 'https://github.com': terminal prompts disabled
-push した: tools/awsim/log/v_a1_vgicp
