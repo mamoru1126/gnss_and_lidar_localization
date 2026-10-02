@@ -1,0 +1,6 @@
+# tools/awsim/awsim_to_bag.py が作った。地図座標（MGRS の区画の中の座標）= UTM − MGRS の原点
+utm: {zone: 54, hemisphere: north}
+map_groups:
+  - id: awsim
+    tile_index: /ws/src/gnss_and_lidar_localization/data/awsim/nsj_tiles/tile_index.yaml
+    anchor: {map_point: [81381.727, 49920.188, 41.250], easting: 381381.727, northing: 3949920.188, ellipsoid_height: 41.250, grid_heading_deg: 90.0, use_scale_factor: false, stddev_xy: 0.01, stddev_yaw_deg: 0.05}

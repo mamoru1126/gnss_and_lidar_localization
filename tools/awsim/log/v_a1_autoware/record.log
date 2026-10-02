@@ -1,0 +1,24 @@
+stdin is not a terminal device. Keyboard handling disabled.[0m[INFO] [1790918942.509661083] [rosbag2_recorder]: Press SPACE for pausing/resuming[0m
+[0m[INFO] [1790918942.509667752] [rosbag2_recorder]: Event publisher thread: Started[0m
+[0m[INFO] [1790918942.512022702] [rosbag2_recorder]: Starting recording to '/ws/src/gnss_and_lidar_localization/data/awsim/out/v_a1_autoware_rec'[0m
+[0m[INFO] [1790918942.513466661] [rosbag2_recorder]: Listening for topics...[0m
+[0m[INFO] [1790918942.513483717] [rosbag2_recorder]: Recording...[0m
+[0m[INFO] [1790918942.513571361] [rosbag2_recorder]: Topics discovery started.[0m
+[0m[INFO] [1790918943.041995728] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/odometry'[0m
+[0m[INFO] [1790918943.042610609] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/pose'[0m
+[0m[INFO] [1790918943.043820198] [rosbag2_recorder]: Subscribed to topic '/diagnostics'[0m
+[0m[INFO] [1790918943.044156252] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/lidar_pose'[0m
+[0m[INFO] [1790918943.044463070] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/raw_pose'[0m
+[0m[INFO] [1790918943.045457419] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/map_points'[0m
+[0m[INFO] [1790918943.045757665] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/debug/scan_points'[0m
+[0m[INFO] [1790918943.047050839] [rosbag2_recorder]: Subscribed to topic '/tf'[0m
+[0m[INFO] [1790918943.047426575] [rosbag2_recorder]: Subscribed to topic '/gll_localizer/output/status'[0m
+[0m[INFO] [1790918943.047717688] [rosbag2_recorder]: Subscribed to topic '/tf_static'[0m
+[0m[INFO] [1790918948.013914601] [rosbag2_recorder]: Subscribed to topic '/groundtruth/pose'[0m
+[0m[INFO] [1790918948.014316819] [rosbag2_recorder]: Subscribed to topic '/initialpose'[0m
+[0m[INFO] [1790918948.015040004] [rosbag2_recorder]: Subscribed to topic '/map/points'[0m
+[0m[INFO] [1790919250.440348558] [rosbag2_recorder]: Topics discovery stopped.[0m
+[0m[INFO] [1790919250.440705566] [rosbag2_recorder]: Pausing recording.[0m
+[0m[INFO] [1790919250.440867922] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while[0m
+[0m[INFO] [1790919250.451339069] [rosbag2_recorder]: Recording stopped[0m
+[0m[INFO] [1790919250.457611677] [rosbag2_recorder]: Event publisher thread: Exited[0m
