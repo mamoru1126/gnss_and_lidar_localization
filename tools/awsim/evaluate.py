@@ -80,6 +80,16 @@ def evaluate(out_rows, gt_rows, t_from=0.0, t_to=0.0):
         nees = dx ** 2 / vx + dy ** 2 / vy + eyaw ** 2 / vyaw
     m["within_3sigma"] = float(np.mean(in3[use]))
     m["nees_mean"] = float(np.nanmean(nees[use]))  # 3 自由度（対角だけ）: 整合していれば 3 前後
+    if "raw_cov_xy" in out_rows[0]:
+        # 縦（車の前後）と横に分けた整合性（推定値 raw とその共分散で。誤差 / σ の RMS は整合していれば 1 前後）
+        rdx, rdy = col(out_rows, "raw_x") - gx, col(out_rows, "raw_y") - gy
+        rvx, rvy, rcxy = col(out_rows, "raw_var_x"), col(out_rows, "raw_var_y"), col(out_rows, "raw_cov_xy")
+        for name, (a, b) in (("lon", (c, s)), ("lat", (-s, c))):
+            e = a * rdx + b * rdy
+            with np.errstate(divide="ignore", invalid="ignore"):
+                z = e / np.sqrt(a * a * rvx + 2 * a * b * rcxy + b * b * rvy)
+            m[f"{name}_within_3sigma"] = float(np.mean(np.abs(z[use]) <= 3))
+            m[f"{name}_z_rms"] = float(np.sqrt(np.nanmean(z[use] ** 2)))
     m["lidar_share"] = float(np.mean(np.char.find(status[use].astype(str), "LIDAR") >= 0))
     m["lost_share"] = float(np.mean(status[use] == "LOST"))
     m["dr_distance_max"] = float(np.max(col(out_rows, "dr_distance")[use]))
@@ -93,7 +103,8 @@ def evaluate(out_rows, gt_rows, t_from=0.0, t_to=0.0):
 
 def report(m, per, title):
     lines = [f"# {title}", "", "| 指標 | 値 |", "|---|---|"]
-    fmt = {"duration": "{:.1f} s", "init_time": "{:.1f} s", "within_3sigma": "{:.1%}", "lidar_share": "{:.1%}",
+    fmt = {"duration": "{:.1f} s", "init_time": "{:.1f} s", "within_3sigma": "{:.1%}", "lon_within_3sigma": "{:.1%}", "lat_within_3sigma": "{:.1%}",
+           "lon_z_rms": "{:.2f}", "lat_z_rms": "{:.2f}", "lidar_share": "{:.1%}",
            "lost_share": "{:.1%}", "nees_mean": "{:.2f}", "rows": "{}", "evaluated_rows": "{}"}
     for k, v in m.items():
         f = fmt.get(k, "{:.2f}°" if k.endswith("_deg") else "{:.3f} m")
