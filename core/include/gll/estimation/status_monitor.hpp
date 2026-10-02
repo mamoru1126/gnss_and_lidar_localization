@@ -21,9 +21,12 @@ class StatusMonitor {
   bool drDistanceExceeded() const { return dr_distance_ > cfg_.dr_error_distance; }
   double drErrorDistance() const { return cfg_.dr_error_distance; }
 
-  /// cov_world は出力の共分散（世界座標系の x, y, yaw）。
+  /// cov_world は出力の共分散（世界座標系の x, y, yaw）、yaw は出力の向き（横方向の標準偏差に使う）。
   LocalizationStatus evaluate(double t, bool ready, const Mat3& cov_world, bool offset_exceeded,
-                              RecoveryState recovery) const;
+                              RecoveryState recovery, double yaw = 0.0) const;
+
+  /// 位置の共分散が LOST の条件（lost_stddev、lost_stddev_lateral）に当たるか。
+  bool lostByCovariance(const Mat3& cov_world, double yaw) const;
 
   double lastGnssTime() const { return last_gnss_; }
   double lastLidarTime() const { return last_lidar_; }

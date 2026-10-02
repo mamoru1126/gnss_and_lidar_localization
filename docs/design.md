@@ -1,7 +1,7 @@
 # 設計書: GNSS / LiDAR 統合自己位置推定
 
 - 関連文書: [要件定義](./requirements.md) / [ソフトウェア構成（コンポーネント図・クラス図）](./architecture.md) / [アルゴリズム説明書（Invariant EKF の解説を含む）](./algorithm.md) / [検証計画: AWSIM](./validation_awsim.md)
-- 状態: ドラフト（v0.14。Phase 2 を実装済み。地図のライブラリ tiled_pcd_map を切り出した。検証を AWSIM から始める）
+- 状態: ドラフト（v0.15。LiDAR の採否と LOST の判定に、Autoware に倣った選択肢を足した。v0.14：Phase 2 を実装済み。地図のライブラリ tiled_pcd_map を切り出した。検証を AWSIM から始める）
 
 | 版 | 変更内容 |
 |---|---|
@@ -334,14 +334,14 @@ v0.5 で、GNSS の入力を標準の `sensor_msgs/NavSatFix` に変更した（
 
 - $`\Sigma_{\mathrm{reg}}`$: スキャンマッチングの共分散（6.2 節の式）から、(x, y, yaw) の成分を取り出したもの。small_gicp の情報行列はもともと機体座標系側の摂動に対するものなので、**座標変換をせずにそのまま使える**。これも左不変誤差を選んだ利点である（roll / pitch が小さいことを前提に、SE(3) → SE(2) の射影として近似する）。
 - $`\Sigma_{\mathrm{anchor}}`$: アンカーの不確かさ（世界座標系で与える。maps.yaml の `stddev_xy` / `stddev_yaw_deg`）。
-- $`\Sigma_{\mathrm{floor}}`$: 下限値（`min_stddev_xy` 既定 0.02 m、`min_stddev_yaw` 既定 0.2°）。
+- $`\Sigma_{\mathrm{floor}}`$: 下限値（`min_stddev_xy` 既定 0.02 m、`min_stddev_yaw` 既定 0.2°）。機体座標系で足す。前後（縦）と左右（横）を `min_stddev_lon` / `min_stddev_lat` で別に決められる（負なら `min_stddev_xy`。v0.15）。長い直線では縦が決まりにくく、H から求めた縦の共分散が小さすぎることがある（AWSIM の V-A1 で、縦の誤差は 1σ の約 2.6 倍）。Autoware の ndt_scan_matcher も、推定した共分散に base_link の向きで前後・左右の下限をかける。
 
 **注意**: アンカー誤差は時間的に相関するバイアスで、白色雑音ではない。上の式はそれを保守的に近似しているだけである。GNSS と LiDAR が両方有効な区間で、両者の差からアンカー誤差をオンライン推定する拡張（状態に地図グループごとのオフセットを追加する）は Phase 4 の検討事項とする。
 
 **採用条件**（実装: `LidarMeasurementBuilder`）:
 
 - 位置合わせが収束した（反復回数が上限未満）。
-- インライア率（`min_inlier_ratio` 既定 0.6）と overlap（`min_overlap` 既定 0.5）が閾値を満たす（6.2 節）。
+- インライア率（`min_inlier_ratio` 既定 0.6）と overlap（`min_overlap` 既定 0.5）が閾値を満たす（6.2 節）。`overlap_near_distance` を決めると、overlap の分母を地図の近くにある点に絞る（6.2 節、v0.15）。
 - 初期値（予測姿勢）からの移動量が `max_jump_xy` / `max_jump_yaw`（既定 1.0 m / 5°）以内。
 - GNSS FIX 中は 3.13.2 節の食い違いの判定、それ以外は 3.5 節の Mahalanobis ゲートを通過した。
 
@@ -443,7 +443,7 @@ z は常に楕円体高（`map` の z）で保持する（v0.9）。スキャン
 | `GNSS_LIDAR_AIDED` | 両方を採用した |
 | `DEAD_RECKONING` | どちらも採用していない。ただし位置の標準偏差が `dr_max_stddev`（既定 0.3 m）未満 |
 | `DEGRADED` | 位置の標準偏差が `dr_max_stddev` 以上、または出力オフセットが閾値を超えた |
-| `LOST` | 位置の標準偏差が `lost_stddev`（既定 1.0 m）以上、または棄却が連続した → 再初期化が必要 |
+| `LOST` | 位置の標準偏差が `lost_stddev`（既定 1.0 m）以上、横方向（車の左右）の標準偏差が `lost_stddev_lateral` 以上（0 なら見ない。既定 0。v0.15）、または再位置推定が続けて失敗した（`relocalize.lost_on_failure` が true のとき）→ 再初期化が必要 |
 
 経路追従側は `DEGRADED` で減速、`LOST` で停止する、といった使い方を想定する（振る舞いは下流側の設計で決める）。
 
@@ -552,7 +552,7 @@ GNSS が無い区間で LiDAR の観測が互いに一致しない場合は、�
    - 推定位置の周りに初期値の候補を並べる。半径は、推定値の共分散の 3σ と、位置の観測なしで走った距離（3.12 節）の `radius_per_dr_distance` 倍（既定 5 %）の大きい方を、`min_radius`〜`max_radius`（既定 1〜3 m）に収めたもの。yaw は 3σ を 10°〜30° に収めたもの（v0.10）。フィルタの共分散は、モデル化していない誤差（スリップなど）があると小さすぎることがあるので、走った距離からも下限を決める。
    - 次のスキャンで、各候補から位置合わせを行う（6.4 節の多仮説の探索。粗い VGICP → GICP の 2 段階）。
 3. 最良の結果が品質条件を満たし、かつ 2 番目に良い候補（最良から 1 m または 10° 以上離れたもの）より overlap が十分大きい場合（`uniqueness_ratio` 既定 1.5 倍）だけ採用し、再アンカーする。一意に決まらない場合は採用しない（対称な構造での取り違えを防ぐ）。
-4. `max_attempts`（既定 3）回失敗したら `LOST` にする。
+4. `max_attempts`（既定 3）回失敗したら `LOST` にする。`relocalize.lost_on_failure: false` なら LOST にせず、照合がまた `after_rejects` 回続けて捨てられたら再位置推定をやり直す。LOST は位置の標準偏差だけで決める（v0.15。照合が正しくても捨て続けた区間で LOST にしないため。Autoware も、照合を捨てても診断で WARN を出すだけで、位置を失ったかは EKF の共分散の楕円で判定する）。
 5. `LOST` の間は、GNSS FIX が無ければ `lost_retry_interval`（既定 5 s）ごとに、最も広い範囲（3 m・30°）で再位置推定を試す（地図だけの現場で自動的に復帰できるように。v0.10）。ほかに、GNSS の採用・再アンカー、外部から与えた初期姿勢、ゲートを通った LiDAR の観測でも復帰する。
 
 合成環境のシミュレーションでは、LiDAR が 25 秒止まって 1.55 m ずれた状態から、LiDAR が戻って 2 秒後に再位置推定（39 候補、0.2 s）で戻った（9 章）。
@@ -844,6 +844,7 @@ sequenceDiagram
 - `converged` かつ反復回数が上限未満
 - インライア率（対応点が見つかったスキャンの点の割合）≥ `min_inlier_ratio`（既定 0.6）
 - **overlap** ≥ `min_overlap`（既定 0.5）: 位置合わせ後のスキャンの点のうち、`overlap_distance`（既定 0.3 m）以内に地図の点があるものの割合。**法線が鉛直に近い点（地面・天井）は数えない**（v0.10）。地面はどの水平位置でも重なるので、含めると誤った解でも overlap が高くなるため。水平でない面（壁・柱など）の点が 50 点未満なら、全点で数える
+  - `overlap_near_distance` > 0（既定 0。v0.15）なら、分母を「この距離以内に地図の点がある構造の点」に絞る。地図に無い物（車・人・木など）の点は地図から離れているので数えず、地図の構造が少ない所で overlap が大きく下がらないようにする。Autoware の NVTL が、半径（ボクセルの大きさ）以内にボクセルがある点だけで平均するのと同じ考え。姿勢が大きく外れて地図から離れた点も分母から抜けるので、全点で数えるインライア率と初期値からの移動量の条件は残す。再位置推定の候補の比べ合いには使わない（今の overlap のまま）
 - 初期値からの移動量 ≤ `max_jump_xy` / `max_jump_yaw`（既定 1.0 m / 5°）
 
 **共分散**（v0.10 で確定）:
@@ -1090,8 +1091,10 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | | `gnss_settle_reset_gap` | 3.0 s | GNSS のメッセージがこれ以上途切れたら、安定待ちをやり直す（v0.9） |
 | GNSS | `cog_min_speed` / `cog_max_yaw_rate` | 0.5 m/s / 5 deg/s | 進行方位観測の採用条件 |
 | LiDAR | `min_inlier_ratio` / `min_overlap` / `overlap_distance` | 0.6 / 0.5 / 0.3 m | 品質の条件（6.2 節）。実データで調整 |
+| | `overlap_near_distance` | 0（使わない） | overlap の分母を、この距離以内に地図の点がある点に絞る（6.2 節、v0.15） |
 | | `cov_scale` | 0.15 | 観測共分散の係数 $`\kappa`$（6.2 節）。実データで調整 |
 | | `min_stddev_xy` / `min_stddev_yaw` | 0.02 m / 0.2 deg | 観測共分散の下限 |
+| | `min_stddev_lon` / `min_stddev_lat` | −1 / −1（`min_stddev_xy`） | 下限を前後・左右で別に決める（v0.15） |
 | | `source_voxel_size` / `source_num_neighbors` | 0.5 m / 10 | スキャンの間引きと共分散 |
 | | `min_range` / `max_range` | 1.0 m / 50 m | |
 | | `extrinsic_xyz` / `extrinsic_rpy_deg` | 0 | base_link から見た LiDAR |
@@ -1137,6 +1140,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | | `relocalize.radius_per_dr_distance` | 0.05 | 探索半径の下限を、位置の観測なしで走った距離のこの割合まで広げる |
 | | `relocalize.uniqueness_ratio` / `min_overlap` | 1.5 / 0.6 | 最良と次点の overlap の比、採用する overlap の下限 |
 | | `relocalize.max_attempts` / `lost_retry_interval` | 3 / 5 s | |
+| | `relocalize.lost_on_failure` | true | false なら再位置推定の失敗で LOST にしない（v0.15） |
 | 地図上の初期化 | `relocalize.init_min_radius` / `init_max_radius` | 0.5 m / 5 m | 初期姿勢の 3σ をこの範囲に収めて探す |
 | | `relocalize.init_min_yaw` / `init_max_yaw` | 10 deg / 180 deg | |
 | | `relocalize.position_step` / `yaw_step` | 1 m / 20 deg | 候補の間隔 |
@@ -1147,6 +1151,7 @@ v0.11 で、地図の部分を `tiled_pcd_map` に分けた。`tiled_pcd_map` �
 | | `lidar.base_link_height` | 0 m | 地面から base_link までの高さ（z の初期値） |
 | 監視 | `aid_timeout` | 1.0 s | |
 | | `dr_max_stddev` / `lost_stddev` | 0.3 m / 1.0 m | |
+| | `lost_stddev_lateral` | 0（見ない） | 横方向の標準偏差がこれ以上でも LOST（v0.15。Autoware の localization_error_monitor は横の 3σ 0.3 m で ERROR） |
 | | `dr_error_distance` | 30 m（仮） | 位置の観測なしでこの距離を走ったら diagnostics で ERROR（3.12 節、v0.9）。自社の車両のデータで決める（AWSIM の V-A5 は参考値） |
 | 履歴 | `history_length` | 2.0 s | |
 

@@ -89,6 +89,7 @@ gll::LocalizerConfig LocalizerNode::loadConfig() {
   c.monitor.aid_timeout = d("monitor.aid_timeout", c.monitor.aid_timeout);
   c.monitor.dr_max_stddev = d("monitor.dr_max_stddev", c.monitor.dr_max_stddev);
   c.monitor.lost_stddev = d("monitor.lost_stddev", c.monitor.lost_stddev);
+  c.monitor.lost_stddev_lateral = d("monitor.lost_stddev_lateral", c.monitor.lost_stddev_lateral);
   c.monitor.dr_error_distance = d("monitor.dr_error_distance", c.monitor.dr_error_distance);
   dr_error_distance_ = c.monitor.dr_error_distance;
   // arbiter（GNSS FIX 中の LiDAR。設計書 3.13.2 節）
@@ -131,10 +132,13 @@ gll::LocalizerConfig LocalizerNode::loadConfig() {
   c.lidar.min_inlier_ratio = d("lidar.min_inlier_ratio", c.lidar.min_inlier_ratio);
   c.lidar.overlap_distance = d("lidar.overlap_distance", c.lidar.overlap_distance);
   c.lidar.min_overlap = d("lidar.min_overlap", c.lidar.min_overlap);
+  c.lidar.overlap_near_distance = d("lidar.overlap_near_distance", c.lidar.overlap_near_distance);
   c.lidar.max_jump_xy = d("lidar.max_jump_xy", c.lidar.max_jump_xy);
   c.lidar.max_jump_yaw = deg("lidar.max_jump_yaw_deg", c.lidar.max_jump_yaw);
   c.lidar.cov_scale = d("lidar.cov_scale", c.lidar.cov_scale);
   c.lidar.min_stddev_xy = d("lidar.min_stddev_xy", c.lidar.min_stddev_xy);
+  c.lidar.min_stddev_lon = d("lidar.min_stddev_lon", c.lidar.min_stddev_lon);
+  c.lidar.min_stddev_lat = d("lidar.min_stddev_lat", c.lidar.min_stddev_lat);
   c.lidar.min_stddev_yaw = deg("lidar.min_stddev_yaw_deg", c.lidar.min_stddev_yaw);
   c.lidar.min_interval = d("lidar.min_interval", c.lidar.min_interval);
   c.lidar.base_link_height = d("lidar.base_link_height", c.lidar.base_link_height);
@@ -173,6 +177,7 @@ gll::LocalizerConfig LocalizerNode::loadConfig() {
   r.max_radius = d("relocalize.max_radius", r.max_radius);
   r.max_yaw = deg("relocalize.max_yaw_deg", r.max_yaw);
   r.max_attempts = i("relocalize.max_attempts", r.max_attempts);
+  r.lost_on_failure = b("relocalize.lost_on_failure", r.lost_on_failure);
   r.lost_retry_interval = d("relocalize.lost_retry_interval", r.lost_retry_interval);
   return c;
 }
@@ -321,7 +326,7 @@ LocalizerNode::LocalizerNode(const rclcpp::NodeOptions& options) : rclcpp::Node(
     if (csv_) {
       csv_ << "t,x,y,yaw,raw_x,raw_y,raw_yaw,var_x,var_y,var_yaw,raw_var_x,raw_var_y,raw_var_yaw,"
               "offset_x,offset_y,offset_yaw,status,recovery_state,active_map_group,roll,pitch,gyro_bias,odom_scale,"
-              "dr_distance\n";
+              "dr_distance,raw_cov_xy,lidar_t,lidar_status,lidar_inlier,lidar_overlap,lidar_overlap_near\n";
       csv_.precision(15);  // UNIX 秒の時刻を 10 µs まで、UTM を 0.1 µm まで残す
     } else {
       RCLCPP_WARN(get_logger(), "cannot open debug_csv_path: %s", csv_path.c_str());
@@ -530,7 +535,14 @@ void LocalizerNode::writeCsv(const gll::LocalizationOutput& o) {
        << ',' << o.raw_cov(0, 0) << ',' << o.raw_cov(1, 1) << ',' << o.raw_cov(2, 2) << ',' << o.offset(0) << ','
        << o.offset(1) << ',' << o.offset(2) << ',' << gll::toString(o.status) << ',' << gll::toString(o.recovery)
        << ',' << o.active_map_group << ',' << o.roll << ',' << o.pitch << ',' << o.gyro_bias << ','
-       << o.odom_scale << ',' << o.dr_distance << '\n';
+       << o.odom_scale << ',' << o.dr_distance << ',' << o.raw_cov(0, 1);
+  // 直近の LiDAR の照合（行ごとに同じ照合が繰り返し出る。lidar_t で区別する）
+  if (const auto m = localizer_->lastLidarMatch()) {
+    csv_ << ',' << m->t << ',' << m->status << ',' << m->inlier_ratio << ',' << m->overlap << ',' << m->overlap_near;
+  } else {
+    csv_ << ",,,,,";
+  }
+  csv_ << '\n';
 }
 
 }  // namespace gll_ros2

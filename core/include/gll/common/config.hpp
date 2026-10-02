@@ -75,7 +75,10 @@ struct OutputConfig {
 struct MonitorConfig {
   double aid_timeout = 1.0;    ///< [s]
   double dr_max_stddev = 0.3;  ///< [m]
-  double lost_stddev = 1.0;    ///< [m]
+  double lost_stddev = 1.0;    ///< 位置の標準偏差（いちばん大きい向き）がこれ以上なら LOST [m]
+  /// 0 より大きければ、横方向（車の左右）の位置の標準偏差がこれ以上でも LOST にする [m]
+  /// （Autoware の localization_error_monitor は横方向を別に見る）
+  double lost_stddev_lateral = 0.0;
   /// 位置の観測（GNSS / LiDAR / 再アンカー / 初期姿勢）なしで走ったこの距離を超えたら、
   /// 診断でエラーを通知する [m]（設計書 3.12 節）
   double dr_error_distance = 30.0;
@@ -123,10 +126,18 @@ struct LidarConfig {
   double min_inlier_ratio = 0.6;     ///< 対応点が見つかった点の割合の下限
   double overlap_distance = 0.3;     ///< overlap（位置合わせの良さ）を数える距離 [m]
   double min_overlap = 0.5;          ///< overlap_distance 以内に地図の点がある割合の下限
+  /// 0 より大きければ、追跡の照合の overlap の分母を「この距離以内に地図の点がある構造の点」に絞る [m]。
+  /// 地図に無い物（車・人・木など、地図から離れた点）で overlap が下がらないようにする
+  /// （Autoware の NVTL が、近くにボクセルがある点だけで平均するのと同じ考え）。0 なら構造の点すべて
+  double overlap_near_distance = 0.0;
   double max_jump_xy = 1.0;          ///< 初期値からの移動量の上限 [m]
   double max_jump_yaw = deg2rad(5.0);  ///< [rad]
   double cov_scale = 0.15;           ///< 観測共分散 Σ = cov_scale · N_inlier · H⁻¹（設計書 6.2 節）
   double min_stddev_xy = 0.02;       ///< 観測共分散の下限 Σ_floor [m]
+  /// 観測共分散の下限を、車の前後（縦）と左右（横）で別に決める [m]。負なら min_stddev_xy を使う。
+  /// 長い直線では縦が決まりにくく、H から求めた縦の共分散が小さすぎることがある
+  double min_stddev_lon = -1.0;
+  double min_stddev_lat = -1.0;
   double min_stddev_yaw = deg2rad(0.2);  ///< [rad]
   double min_interval = 0.0;         ///< 照合の最小間隔 [s]（0 ならすべてのスキャン）
   double base_link_height = 0.0;     ///< 地面から base_link までの高さ [m]（地図上の初期化で z を決めるのに使う）
@@ -160,7 +171,10 @@ struct RelocalizeConfig {
   double radius_per_dr_distance = 0.05;  ///< 探索半径の下限を、位置の観測なしで走った距離のこの割合まで広げる
   double max_radius = 3.0;           ///< 再位置推定の探索半径の上限 [m]
   double max_yaw = deg2rad(30.0);    ///< [rad]
-  int max_attempts = 3;              ///< 再位置推定がこの回数失敗したら LOST
+  int max_attempts = 3;              ///< 再位置推定がこの回数失敗したら LOST（lost_on_failure のとき）
+  /// false なら、再位置推定が続けて失敗しても LOST にしない（LOST は位置の標準偏差だけで決める）。
+  /// 照合がまた after_rejects 回続けて捨てられたら、再位置推定をやり直す
+  bool lost_on_failure = true;
   double lost_retry_interval = 5.0;  ///< LOST の間に再位置推定を試す間隔 [s]
 };
 

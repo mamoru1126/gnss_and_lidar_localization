@@ -159,6 +159,34 @@ TEST(GicpMatcher, AlignsFromPerturbedInitialGuess) {
   EXPECT_GT(Eigen::SelfAdjointEigenSolver<Mat6>(r.H).eigenvalues().minCoeff(), 0.0);
 }
 
+TEST(GicpMatcher, OverlapNearMapIgnoresUnmappedObjects) {
+  // 地図に無い物（ここでは高い所に浮いた壁）の点を足すと、overlap は下がるが、
+  // 地図の近くにある点だけで数えた overlap（overlap_near_distance）はほとんど下がらない
+  LidarConfig c = lidarConfig();
+  c.overlap_near_distance = 1.0;
+  const Fixture& f = campus();
+  const GicpMatcher m(c);
+  const Eigen::Isometry3d truth = makePose(Vec3(3.0, -2.0, 0.0), 0.0, 0.0, 0.6);
+  const LidarScan scan = staticScan(f.world, truth);
+  auto pts = ScanPreprocessor(c).process(scan, ScanMotion());
+  const auto clean = m.prepareSource(pts, 0.5);
+  const auto [ov_clean, near_clean] = m.overlapWithNear(*clean, *f.target, truth, c.overlap_distance, 1.0);
+  for (double y = -6.0; y <= 6.0; y += 0.1)
+    for (double z = 12.0; z <= 16.0; z += 0.1) pts.push_back(Vec3f(6.0f, static_cast<float>(y), static_cast<float>(z)));
+  const auto cluttered = m.prepareSource(pts, 0.5);
+  const auto [ov, near] = m.overlapWithNear(*cluttered, *f.target, truth, c.overlap_distance, 1.0);
+  std::printf("[overlap] clean %.2f (near %.2f), with an unmapped wall %.2f (near %.2f)\n", ov_clean, near_clean, ov,
+              near);
+  EXPECT_NEAR(near_clean, ov_clean, 0.05);
+  EXPECT_LT(ov, ov_clean - 0.1);
+  EXPECT_GT(near, ov_clean - 0.05);
+  // align も同じ値を返す。overlap_near_distance が 0 なら overlap_near は overlap と同じ
+  const RegistrationResult r = m.align(*cluttered, *f.target, truth);
+  EXPECT_GT(r.overlap_near, r.overlap + 0.1);
+  const RegistrationResult r0 = f.matcher->align(*cluttered, *f.target, truth);
+  EXPECT_DOUBLE_EQ(r0.overlap_near, r0.overlap);
+}
+
 TEST(GicpMatcher, VgicpAlignsFromPerturbedInitialGuess) {
   // lidar.registration: vgicp（ターゲットはボクセルごとのガウス分布）でも、GICP と同じ精度で合う
   const Fixture& f = campus();

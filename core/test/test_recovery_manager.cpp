@@ -1,6 +1,7 @@
 // RecoveryManager の LiDAR 部分（再アンカー・再位置推定・LOST）の単体テスト（設計書 3.13.3〜3.13.5 節）。
 #include "gll/estimation/inv_ekf_se2.hpp"
 #include "gll/estimation/recovery_manager.hpp"
+#include "gll/estimation/status_monitor.hpp"
 
 #include <gtest/gtest.h>
 
@@ -113,4 +114,48 @@ TEST(RecoveryLidar, RepeatedRelocalizationFailuresMeanLost) {
   // 位置の観測を採用できたら解除する
   rm.onAccepted(offsetPose(h, est, 2.9, 0, 0, 0));
   EXPECT_EQ(rm.state(), RecoveryState::TRACKING);
+}
+
+TEST(RecoveryLidar, RelocalizationFailuresDoNotMeanLostWhenDisabled) {
+  // relocalize.lost_on_failure: false なら、再位置推定が何回失敗しても LOST にしない。
+  // 照合がまた after_rejects 回続けて捨てられたら、再位置推定をやり直す
+  const InvEkfSe2 est;
+  const StateHistory h = straightHistory(est);
+  RelocalizeConfig rc;
+  rc.lost_on_failure = false;
+  RecoveryManager rm(RecoveryConfig(), rc);
+  for (int k = 0; k < rc.max_attempts + 2; ++k) {
+    for (int i = 0; i < rc.after_rejects - 1; ++i)
+      EXPECT_EQ(rm.onLidarFailure(2.9, h, est, false, 10.0).kind, RecoveryAction::Kind::NONE);
+    const RecoveryAction act = rm.onLidarFailure(2.9, h, est, false, 10.0);
+    ASSERT_EQ(act.kind, RecoveryAction::Kind::RELOCALIZE) << "attempt " << k;
+    EXPECT_EQ(rm.state(), RecoveryState::RELOCALIZE);
+    rm.onRelocalizeResult(10.0 + k, false);
+    EXPECT_NE(rm.state(), RecoveryState::LOST);
+  }
+  // 位置の不確かさが大きくなれば LOST（共分散が小さくなれば解除）
+  rm.updateLost(true);
+  EXPECT_EQ(rm.state(), RecoveryState::LOST);
+  rm.updateLost(false);
+  EXPECT_NE(rm.state(), RecoveryState::LOST);
+}
+
+TEST(StatusMonitor, LateralStddevMeansLost) {
+  MonitorConfig mc;
+  mc.lost_stddev = 1.0;
+  mc.lost_stddev_lateral = 0.3;
+  const StatusMonitor sm(mc);
+  // 東向き（yaw 0）で、前後（x）に 0.8 m、左右（y）に 0.2 m
+  Mat3 cov = Mat3::Zero();
+  cov(0, 0) = 0.8 * 0.8;
+  cov(1, 1) = 0.2 * 0.2;
+  cov(2, 2) = 1e-4;
+  EXPECT_FALSE(sm.lostByCovariance(cov, 0.0));
+  EXPECT_NE(sm.evaluate(0.0, true, cov, false, RecoveryState::TRACKING, 0.0), LocalizationStatus::LOST);
+  // 北向き（yaw 90°）なら、同じ共分散でも左右が 0.8 m → LOST
+  EXPECT_TRUE(sm.lostByCovariance(cov, kPi / 2.0));
+  EXPECT_EQ(sm.evaluate(0.0, true, cov, false, RecoveryState::TRACKING, kPi / 2.0), LocalizationStatus::LOST);
+  // 横を見ない設定（既定）なら LOST ではない
+  const StatusMonitor sm0{MonitorConfig()};
+  EXPECT_FALSE(sm0.lostByCovariance(cov, kPi / 2.0));
 }

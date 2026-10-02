@@ -69,6 +69,7 @@ struct Diagnostics {
   double match_ms_max = 0.0;
   double last_inlier_ratio = 0.0;
   double last_overlap = 0.0;
+  double last_overlap_near = 0.0;
   MapTileManager::Stats map;
   std::map<std::string, MismatchStats> anchor_mismatch;  ///< 地図グループごとの GNSS とのずれ（世界座標系）
 };
@@ -82,6 +83,7 @@ struct LidarMatchInfo {
   std::string status;           ///< ACCEPTED / REJECTED の理由など
   double inlier_ratio = 0.0;
   double overlap = 0.0;
+  double overlap_near = 0.0;    ///< 地図の近くにある点だけで数えた overlap（lidar.overlap_near_distance）
   double time_ms = 0.0;
   Mat3 cov_body = Mat3::Identity();
   /// 可視化用: 照合に使った点（base_link、前処理の後）と、照合結果の 3D の姿勢（UTM。base_link → UTM）

@@ -47,6 +47,8 @@ struct RegistrationResult {
   double inlier_ratio = 0.0;     ///< num_inliers / num_source
   double error_per_point = 0.0;  ///< error / num_inliers
   double overlap = 0.0;          ///< overlap_distance 以内に地図の点がある、スキャンの点の割合
+  /// overlap の分母を、overlap_near_distance 以内に地図の点がある点に絞ったもの（overlap_near_distance が 0 なら overlap）
+  double overlap_near = 0.0;
 };
 
 /// 複数の初期値から位置合わせを試す（地図上での初期化と再位置推定。設計書 3.11 節・3.13.4 節）。

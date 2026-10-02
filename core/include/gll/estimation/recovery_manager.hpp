@@ -47,14 +47,16 @@ class RecoveryManager {
   /// 再アンカーを実行した後に呼ぶ。
   void onReanchored();
 
-  /// 再位置推定の結果を知らせる。失敗が max_attempts 回続いたら LOST にする。
+  /// 再位置推定の結果を知らせる。失敗が max_attempts 回続いたら LOST にする（relocalize.lost_on_failure のとき）。
   void onRelocalizeResult(double t, bool success);
 
   /// 外部から初期姿勢を与えたときに呼ぶ（LOST などをすべて解除する）。
   void onExternalPose();
 
   /// 位置の不確かさから LOST を判定する。
-  void updateLost(double pos_stddev, double lost_stddev);
+  void updateLost(double pos_stddev, double lost_stddev) { updateLost(pos_stddev >= lost_stddev); }
+  /// lost: 位置の共分散が LOST の条件に当たるか（StatusMonitor::lostByCovariance）。
+  void updateLost(bool lost);
 
   /// LOST の間、lost_retry_interval ごとに再位置推定を試す時刻になったか。
   bool relocalizeDue(double t) const;

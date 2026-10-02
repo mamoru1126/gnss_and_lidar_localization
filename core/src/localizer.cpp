@@ -534,6 +534,7 @@ void Localizer::processScan(const LidarScan& scan) {
   diag_.match_ms_max = std::max(diag_.match_ms_max, ms);
   diag_.last_inlier_ratio = r.inlier_ratio;
   diag_.last_overlap = r.overlap;
+  diag_.last_overlap_near = r.overlap_near;
   LidarMatchInfo info;
   info.t = scan.t;
   info.pose = Pose2D{Tu.translation().x(), Tu.translation().y(), yawOf(Tu.linear())};
@@ -542,6 +543,7 @@ void Localizer::processScan(const LidarScan& scan) {
   info.group = target->group;
   info.inlier_ratio = r.inlier_ratio;
   info.overlap = r.overlap;
+  info.overlap_near = r.overlap_near;
   info.time_ms = ms;
   if (!filter_initialized_ || pending_init_) return;  // 処理中に初期化し直された
   if (!built.pose) {
@@ -552,7 +554,9 @@ void Localizer::processScan(const LidarScan& scan) {
     if (act.kind == RecoveryAction::Kind::RELOCALIZE && act.relocalize) {
       pending_relocalize_ = act.relocalize;
       logger_->warn(std::string("LiDAR matching failed repeatedly (last: ") + toString(built.reason) + ", inlier " +
-                    fmt(r.inlier_ratio, 2) + ", overlap " + fmt(r.overlap, 2) + "): relocalizing around the estimate");
+                    fmt(r.inlier_ratio, 2) + ", overlap " + fmt(r.overlap, 2) +
+                    (cfg_.lidar.overlap_near_distance > 0.0 ? ", near the map " + fmt(r.overlap_near, 2) : std::string()) +
+                    "): relocalizing around the estimate");
     }
   } else {
     info.cov_body = built.pose->cov_body;
@@ -582,8 +586,7 @@ std::optional<LocalizationOutput> Localizer::getOutput() {
   const Pose2D raw = st.X.toPose();
   const SmoothedOutput so = smoother_.apply(raw, raw_cov, dt);
 
-  const Eigen::SelfAdjointEigenSolver<Mat2> es(raw_cov.topLeftCorner<2, 2>());
-  recovery_.updateLost(std::sqrt(std::max(es.eigenvalues().maxCoeff(), 0.0)), cfg_.monitor.lost_stddev);
+  recovery_.updateLost(monitor_.lostByCovariance(raw_cov, raw.yaw));
 
   LocalizationOutput out;
   out.t = st.t;
@@ -600,7 +603,7 @@ std::optional<LocalizationOutput> Localizer::getOutput() {
   out.gyro_bias = st.b;
   out.odom_scale = st.s;
   out.recovery = recovery_.state();
-  out.status = monitor_.evaluate(st.t, ready, so.cov, smoother_.offsetExceeded(), recovery_.state());
+  out.status = monitor_.evaluate(st.t, ready, so.cov, smoother_.offsetExceeded(), recovery_.state(), so.pose.yaw);
   out.dr_distance = monitor_.drDistance();
   out.dr_distance_exceeded = ready && monitor_.drDistanceExceeded();
   if (maps_) out.active_map_group = maps_->activeGroup();

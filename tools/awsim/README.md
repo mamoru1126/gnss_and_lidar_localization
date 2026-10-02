@@ -144,6 +144,26 @@ tools/awsim/run_scenario.sh v_a1 --name v_a1_vgicp05 --set lidar.registration=vg
 python3 tools/awsim/plot_run.py tools/awsim/log/v_a1 tools/awsim/log/v_a1_vgicp --out compare.html
 ```
 
+LiDAR の採否と LOST の判定を Autoware に倣って変えたもの（[検討資料](https://claude.ai/artifact/4AcCGAYnuYTtYcMTPfSXFT)。既定は今のまま）:
+
+```bash
+tools/awsim/run_scenario.sh v_a1 --name v_a1_autoware \
+  --set lidar.overlap_near_distance=1.0 \
+  --set lidar.min_inlier_ratio=0.45 \
+  --set lidar.min_stddev_lon=0.06 \
+  --set relocalize.lost_on_failure=false --push
+```
+
+| パラメータ | 中身 |
+|---|---|
+| `lidar.overlap_near_distance` | overlap の分母を、この距離以内に地図の点がある構造の点に絞る（地図に無い物で下がらない。Autoware の NVTL と同じ考え） |
+| `lidar.min_inlier_ratio` | 全点で数えるインライア率の下限。分母を絞った overlap と組み合わせ、大きく外れた解を捨てる粗い確かめにする |
+| `lidar.min_stddev_lon` / `min_stddev_lat` | 観測共分散の下限を、車の前後と左右で別に決める（縦の共分散が小さすぎるのを抑える） |
+| `relocalize.lost_on_failure` | false なら、再位置推定の失敗で LOST にしない（LOST は位置の標準偏差だけで決める） |
+| `monitor.lost_stddev_lateral` | 横方向の標準偏差がこれ以上でも LOST（既定 0 で見ない。Autoware は横の 3σ 0.3 m で ERROR） |
+
+出力の CSV には、直近の照合の結果（`lidar_t`、`lidar_status`、`lidar_inlier`、`lidar_overlap`、`lidar_overlap_near`）と `raw_cov_xy` が入る。summary.md の「LiDAR の照合」に、結果ごとの回数と中央値が出る。
+
 `summary.md` の「推定ノードのログ」の「照合:」の行に、方式・照合した数・採用した数・品質で落とした数・照合の時間（平均・最大）が出る。
 `--set` の値は `summary.md` の「変換」にも出るので、意図した値で動いたかを確かめる。
 シナリオ名のほかに知らない引数（`--no-gnss` など `awsim_to_bag.py` のオプション）を渡すとエラーにする。`awsim_to_bag.py` のオプションは `--` の後ろに書く。

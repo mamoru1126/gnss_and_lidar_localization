@@ -115,7 +115,27 @@ TEST(LidarMeasurementBuilder, CovarianceQualityAndConversion) {
   // 初期値から 1 m 以上動いた結果は棄却する
   EXPECT_EQ(b.build(5.0, r, target, makePose(Vec3(11.5, 0, 0), 0, 0, 0.1)).reason, LidarRejectReason::JUMP);
   r.overlap = 0.3;
+  r.overlap_near = 0.8;
   EXPECT_EQ(b.build(5.0, r, target, r.T_map_base).reason, LidarRejectReason::LOW_OVERLAP);
+  // overlap_near_distance を決めると、地図の近くにある点だけで数えた overlap で判定する
+  LidarConfig cn = c;
+  cn.overlap_near_distance = 1.0;
+  const LidarMeasurementBuilder bn(cn);
+  EXPECT_EQ(bn.build(5.0, r, target, r.T_map_base).reason, LidarRejectReason::NONE);
+  r.overlap_near = 0.4;
+  EXPECT_EQ(bn.build(5.0, r, target, r.T_map_base).reason, LidarRejectReason::LOW_OVERLAP);
+}
+
+TEST(LidarMeasurementBuilder, SeparateLongitudinalAndLateralFloors) {
+  LidarConfig c;
+  c.min_stddev_lon = 0.06;  // 縦だけ下限を上げる。横は min_stddev_xy のまま
+  const LidarMeasurementBuilder b(c);
+  RegistrationResult r;
+  r.num_inliers = 900;
+  r.H = Mat6::Identity() * 1e9;  // H からの共分散はほぼ 0
+  const Mat3 cov = b.covarianceBody(r);
+  EXPECT_NEAR(cov(0, 0), 0.06 * 0.06, 1e-6);
+  EXPECT_NEAR(cov(1, 1), c.min_stddev_xy * c.min_stddev_xy, 1e-6);
 }
 
 TEST(PoseStore, SaveAndLoad) {

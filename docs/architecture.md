@@ -586,7 +586,7 @@ classDiagram
     +onReanchored()
     +onRelocalizeResult(t, bool success)
     +onExternalPose()
-    +updateLost(pos_stddev, lost_stddev)
+    +updateLost(lost)
     +relocalizeDue(t) bool
     +makeRelocalizeRequest(t, state, estimator, widest, dr_distance) RelocalizeRequest
     +state() RecoveryState
@@ -641,7 +641,8 @@ classDiagram
     -MonitorConfig cfg_
     -double dr_distance_
     +onAccepted(MeasurementKind, double t)
-    +evaluate(t, ready, cov_world, offset_exceeded, recovery) LocalizationStatus
+    +evaluate(t, ready, cov_world, offset_exceeded, recovery, yaw) LocalizationStatus
+    +lostByCovariance(cov_world, yaw) bool
     +addTravel(double distance)
     +resetTravel()
     +drDistance() double
@@ -1246,7 +1247,7 @@ sequenceDiagram
     W->>L: reanchorWith(結果, 残差に応じた inflation)
     W->>RC: onRelocalizeResult(true)
   else 見つからない
-    W->>RC: onRelocalizeResult(false)（max_attempts 回続けば LOST。LOST の間は 5 s ごとに最大範囲で再試行）
+    W->>RC: onRelocalizeResult(false)（max_attempts 回続けば LOST（lost_on_failure のとき）。LOST の間は 5 s ごとに最大範囲で再試行）
   end
 ```
 

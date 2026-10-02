@@ -4,6 +4,8 @@
 
 #include "gll/matching/scan_matcher.hpp"
 
+#include <utility>
+
 namespace gll {
 
 class GicpMatcher : public IScanMatcher {
@@ -27,6 +29,12 @@ class GicpMatcher : public IScanMatcher {
   /// の点で数える。そうした点が少なければ全点）。num_threads <= 0 なら設定の値を使う。
   double overlap(const SourceCloud& source, const MatchTarget& target, const Eigen::Isometry3d& T,
                  double distance, int num_threads = 0, bool structure_only = true) const;
+
+  /// overlap と同じ点を数え、分母を「near_distance 以内に地図の点がある点」に絞った割合も返す（{全体, 近い点だけ}）。
+  /// 近い点が 1 つもなければ、近い点だけの割合は 0。
+  std::pair<double, double> overlapWithNear(const SourceCloud& source, const MatchTarget& target,
+                                            const Eigen::Isometry3d& T, double distance, double near_distance,
+                                            int num_threads = 0, bool structure_only = true) const;
 
  private:
   LidarConfig cfg_;

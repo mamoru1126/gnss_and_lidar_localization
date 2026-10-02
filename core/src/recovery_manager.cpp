@@ -166,6 +166,11 @@ void RecoveryManager::onRelocalizeResult(double t, bool success) {
     return;
   }
   ++relocalize_attempts_;
+  if (!reloc_.lost_on_failure && state_ != RecoveryState::LOST) {
+    // LOST は位置の不確かさだけで決める。照合がまた続けて捨てられたら、もう一度再位置推定する
+    state_ = RecoveryState::SUSPECT;
+    return;
+  }
   if (relocalize_attempts_ >= reloc_.max_attempts || state_ == RecoveryState::LOST) {
     state_ = RecoveryState::LOST;
     lost_by_relocalize_ = true;
@@ -183,8 +188,8 @@ void RecoveryManager::onExternalPose() {
   state_ = RecoveryState::TRACKING;
 }
 
-void RecoveryManager::updateLost(double pos_stddev, double lost_stddev) {
-  if (pos_stddev >= lost_stddev) {
+void RecoveryManager::updateLost(bool lost) {
+  if (lost) {
     state_ = RecoveryState::LOST;
   } else if (state_ == RecoveryState::LOST && !lost_by_relocalize_) {
     state_ = RecoveryState::TRACKING;

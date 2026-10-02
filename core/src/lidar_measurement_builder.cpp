@@ -10,7 +10,9 @@ namespace gll {
 LidarRejectReason LidarMeasurementBuilder::checkQuality(const RegistrationResult& r) const {
   if (!r.converged) return LidarRejectReason::NOT_CONVERGED;
   if (r.inlier_ratio < cfg_.min_inlier_ratio) return LidarRejectReason::FEW_INLIERS;
-  if (r.overlap < cfg_.min_overlap) return LidarRejectReason::LOW_OVERLAP;
+  // overlap_near_distance を決めていれば、地図の近くにある点だけで数えた overlap で判定する
+  const double ov = cfg_.overlap_near_distance > 0.0 ? r.overlap_near : r.overlap;
+  if (ov < cfg_.min_overlap) return LidarRejectReason::LOW_OVERLAP;
   return LidarRejectReason::NONE;
 }
 
@@ -25,8 +27,11 @@ Mat3 LidarMeasurementBuilder::covarianceBody(const RegistrationResult& r) const 
   for (int i = 0; i < 3; ++i)
     for (int j = 0; j < 3; ++j) c(i, j) = cov6(idx[i], idx[j]);
   c = 0.5 * (c + c.transpose());
-  c(0, 0) += cfg_.min_stddev_xy * cfg_.min_stddev_xy;
-  c(1, 1) += cfg_.min_stddev_xy * cfg_.min_stddev_xy;
+  // 下限は機体座標系で、前後（x）と左右（y）に別々に足す（負なら min_stddev_xy）
+  const double s_lon = cfg_.min_stddev_lon >= 0.0 ? cfg_.min_stddev_lon : cfg_.min_stddev_xy;
+  const double s_lat = cfg_.min_stddev_lat >= 0.0 ? cfg_.min_stddev_lat : cfg_.min_stddev_xy;
+  c(0, 0) += s_lon * s_lon;
+  c(1, 1) += s_lat * s_lat;
   c(2, 2) += cfg_.min_stddev_yaw * cfg_.min_stddev_yaw;
   return c;
 }

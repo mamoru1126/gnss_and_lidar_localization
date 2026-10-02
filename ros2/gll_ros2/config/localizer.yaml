@@ -78,7 +78,8 @@ gll_localizer:
     monitor:
       aid_timeout: 1.0
       dr_max_stddev: 0.3
-      lost_stddev: 1.0
+      lost_stddev: 1.0                    # 位置の標準偏差（いちばん大きい向き）がこれ以上なら LOST [m]
+      lost_stddev_lateral: 0.0            # >0 なら横方向（車の左右）の標準偏差がこれ以上でも LOST [m]（0 なら見ない）
       dr_error_distance: 30.0             # 位置の観測なしでこの距離を走ったら diagnostics で ERROR（仮の値。実データで調整）
 
     arbiter:                              # GNSS FIX 中の LiDAR（設計書 3.13.2 節）
@@ -130,10 +131,13 @@ gll_localizer:
       min_inlier_ratio: 0.6
       overlap_distance: 0.3
       min_overlap: 0.5
+      overlap_near_distance: 0.0          # >0 なら overlap の分母を、この距離以内に地図の点がある構造の点に絞る [m]（地図に無い物で下がらない。0 なら構造の点すべて）
       max_jump_xy: 1.0
       max_jump_yaw_deg: 5.0
       cov_scale: 0.15                     # 観測共分散 = cov_scale * N_inlier * H^-1（実データで調整）
       min_stddev_xy: 0.02
+      min_stddev_lon: -1.0                # 観測共分散の下限の、車の前後（縦）と左右（横）[m]。負なら min_stddev_xy
+      min_stddev_lat: -1.0
       min_stddev_yaw_deg: 0.2
       min_interval: 0.0                   # 照合の最小間隔 [s]
       base_link_height: 0.0               # 地面から base_link までの高さ [m]（地図上の初期化で z を決める）
@@ -162,4 +166,5 @@ gll_localizer:
       max_radius: 3.0
       max_yaw_deg: 30.0
       max_attempts: 3
+      lost_on_failure: true               # false なら再位置推定の失敗で LOST にしない（LOST は位置の標準偏差だけで決める）
       lost_retry_interval: 5.0

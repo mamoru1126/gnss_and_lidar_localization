@@ -257,3 +257,4 @@ AWSIM の bag と同じトピック・型の小さな合成データ（壁と建
 6. **曲がり角での GNSS と LiDAR の食い違い**: 2 回目の V-A0 で、曲がっている間だけ GNSS の観測がゲートに落ち、再アンカー → DEGRADED を繰り返した。点群（か IMU）のスタンプのずれを疑っている（3.4 節の `--time-offset`）。V-A1（LiDAR だけ）でも確かめる。
 7. **`debug_events_path` の実装**（5.2 節。V-A1 の前に）。
 8. **V-A6 の作り方**（地図の一部を外したタイルの集合を作るスクリプト）。
+9. **長い直線での LiDAR の棄却と LOST**（V-A1）: 初期化から 220〜231 s と 264〜274 s で照合を捨て続け（overlap 0.30〜0.44、inlier 0.55〜0.67）、再位置推定が 3 回失敗して LOST になった。その間の実際の誤差は 28 cm 以下で、照合は正しかった。どちらも LiDAR の視野に入る地図の構造が経路の下位 2 %・10 % の所で、地図に無い物の点で overlap が下がったと見ている（[検討資料](https://claude.ai/artifact/4AcCGAYnuYTtYcMTPfSXFT)）。Autoware に倣った選択肢（overlap の分母を地図の近くの点に絞る、縦の共分散の下限、再位置推定の失敗で LOST にしない）を足した。比べ方は [tools/awsim/README.md](../tools/awsim/README.md) の「パラメータを変えて比べる」。

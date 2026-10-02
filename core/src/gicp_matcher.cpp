@@ -17,6 +17,7 @@
 #include <cmath>
 #include <mutex>
 #include <stdexcept>
+#include <tuple>
 
 namespace gll {
 namespace {
@@ -181,23 +182,36 @@ std::shared_ptr<const SourceCloud> GicpMatcher::prepareSource(const std::vector<
 
 double GicpMatcher::overlap(const SourceCloud& source, const MatchTarget& target, const Eigen::Isometry3d& T,
                             double distance, int num_threads, bool structure_only) const {
+  return overlapWithNear(source, target, T, distance, 0.0, num_threads, structure_only).first;
+}
+
+std::pair<double, double> GicpMatcher::overlapWithNear(const SourceCloud& source, const MatchTarget& target,
+                                                       const Eigen::Isometry3d& T, double distance,
+                                                       double near_distance, int num_threads,
+                                                       bool structure_only) const {
   const int threads = num_threads > 0 ? num_threads : cfg_.num_threads;
   const GicpSource& src = asSource(source);
   const GicpTarget& tgt = asTarget(target);
-  if (!tgt.tree || src.size() == 0) return 0.0;
+  if (!tgt.tree || src.size() == 0) return {0.0, 0.0};
   const bool use_structure = structure_only && src.structure.size() >= kMinStructurePoints;
   const std::int64_t n = static_cast<std::int64_t>(use_structure ? src.structure.size() : src.size());
   const double d2max = distance * distance;
+  const double d2near = std::max(near_distance, distance) * std::max(near_distance, distance);
   std::int64_t hits = 0;
-#pragma omp parallel for num_threads(threads) reduction(+ : hits)
+  std::int64_t near = 0;
+#pragma omp parallel for num_threads(threads) reduction(+ : hits, near)
   for (std::int64_t i = 0; i < n; ++i) {
     const std::size_t idx = use_structure ? src.structure[static_cast<std::size_t>(i)] : static_cast<std::size_t>(i);
     const Eigen::Vector4d q = T * src.cloud->points[idx];
     std::size_t k = 0;
     double d2 = 0.0;
-    if (tgt.tree->nearest_neighbor_search(q, &k, &d2) && d2 <= d2max) ++hits;
+    if (!tgt.tree->nearest_neighbor_search(q, &k, &d2)) continue;
+    if (d2 <= d2max) ++hits;
+    if (d2 <= d2near) ++near;
   }
-  return static_cast<double>(hits) / static_cast<double>(n);
+  const double all = static_cast<double>(hits) / static_cast<double>(n);
+  if (!(near_distance > 0.0)) return {all, all};
+  return {all, near > 0 ? static_cast<double>(hits) / static_cast<double>(near) : 0.0};
 }
 
 RegistrationResult GicpMatcher::align(const SourceCloud& source, const MatchTarget& target,
@@ -241,7 +255,8 @@ RegistrationResult GicpMatcher::align(const SourceCloud& source, const MatchTarg
     out.inlier_ratio = overlap(source, target, out.T_map_base, cfg_.max_correspondence_distance, 0, false);
   }
   out.error_per_point = r.num_inliers > 0 ? r.error / static_cast<double>(r.num_inliers) : 0.0;
-  out.overlap = overlap(source, target, out.T_map_base, cfg_.overlap_distance);
+  std::tie(out.overlap, out.overlap_near) =
+      overlapWithNear(source, target, out.T_map_base, cfg_.overlap_distance, cfg_.overlap_near_distance);
   return out;
 }
 

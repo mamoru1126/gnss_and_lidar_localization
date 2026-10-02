@@ -80,6 +80,27 @@ def segments(out_rows, gt_rows, width=10.0):
     return rows
 
 
+def lidar_section(out_rows):
+    """出力の CSV の lidar_* 列（直近の照合が行ごとに繰り返し出る）から、照合ごとの結果をまとめる。"""
+    seen, scans = set(), []
+    for r in out_rows:
+        if not r.get("lidar_t") or r["lidar_t"] in seen:
+            continue
+        seen.add(r["lidar_t"])
+        scans.append(r)
+    if not scans:
+        return []
+    L = ["", f"## LiDAR の照合（{len(scans)} 回。出力の CSV から）", "",
+         "| 結果 | 回数 | inlier 中央値 | overlap 中央値 | overlap（地図の近く）中央値 |", "|---|---|---|---|---|"]
+    by = collections.defaultdict(list)
+    for r in scans:
+        by[r["lidar_status"]].append(r)
+    for k, rs in sorted(by.items(), key=lambda kv: -len(kv[1])):
+        med = [np.median([float(r[c]) for r in rs]) for c in ("lidar_inlier", "lidar_overlap", "lidar_overlap_near")]
+        L.append(f"| {k} | {len(rs)} | {med[0]:.2f} | {med[1]:.2f} | {med[2]:.2f} |")
+    return L
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dir", type=Path)
@@ -122,6 +143,9 @@ def main():
         for t, c, la, lo, ya, yr in segments(out_rows, gt_rows):
             s = " / ".join(f"{k} {n / sum(v for _, v in c) * 100:.0f}%" for k, n in c) if len(c) > 1 else c[0][0]
             L.append(f"| {t:.0f} | {s} | {la:.3f} | {lo:.3f} | {ya:.2f} | {yr:.2f} |")
+
+    if out_rows and out_rows[0].get("lidar_t") is not None:
+        L += lidar_section(out_rows)
 
     nl = read(d / "node.log")
     if nl:
