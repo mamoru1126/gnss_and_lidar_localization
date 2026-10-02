@@ -146,12 +146,6 @@ python3 tools/awsim/plot_run.py tools/awsim/log/v_a1 tools/awsim/log/v_a1_vgicp 
 
 LiDAR の採否と LOST の判定を Autoware に倣って変えたもの（[検討資料](https://claude.ai/artifact/4AcCGAYnuYTtYcMTPfSXFT)。既定は今のまま）:
 
-
-
-
-
-
-
 ```bash
 tools/awsim/run_scenario.sh v_a1 --name v_a1_autoware --set lidar.overlap_near_distance=1.0 --set lidar.min_inlier_ratio=0.45 --set lidar.min_stddev_lon=0.06 --set relocalize.lost_on_failure=false --push
 ```

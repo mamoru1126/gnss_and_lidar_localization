@@ -20,7 +20,8 @@ import numpy as np
 
 def load_csv(path):
     with open(path, newline="") as fp:
-        rows = list(csv.DictReader(fp))
+        # 推定ノードを止めたときに書きかけた最後の行など、列が足りない行は捨てる
+        rows = [r for r in csv.DictReader(fp) if None not in r.values()]
     if not rows:
         sys.exit(f"{path}: 行が無い")
     return rows

@@ -50,7 +50,7 @@ def load_csv_gz(p):
     if not p.exists():
         return None
     with gzip.open(p, "rt") as fp:
-        return list(csv.DictReader(fp))
+        return [r for r in csv.DictReader(fp) if None not in r.values()]  # 書きかけの行は捨てる
 
 
 def segments(out_rows, gt_rows, width=10.0):

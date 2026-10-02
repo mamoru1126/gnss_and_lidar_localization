@@ -542,7 +542,8 @@ void LocalizerNode::writeCsv(const gll::LocalizationOutput& o) {
   } else {
     csv_ << ",,,,,";
   }
-  csv_ << '\n';
+  // 1 行ずつ書き出す（止めたときに、書きかけの行が残らないように）
+  csv_ << std::endl;
 }
 
 }  // namespace gll_ros2

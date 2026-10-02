@@ -34,7 +34,7 @@ def read_csv(path):
     p = Path(path)
     op = gzip.open if p.suffix == ".gz" else open
     with op(p, "rt", newline="") as fp:
-        return list(csv.DictReader(fp))
+        return [r for r in csv.DictReader(fp) if None not in r.values()]  # 書きかけの行は捨てる
 
 
 def col(rows, k):
